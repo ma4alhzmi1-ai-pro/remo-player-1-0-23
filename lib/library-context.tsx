@@ -92,11 +92,11 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       const [audioPage, videoPage] = await Promise.all([
         MediaLibrary.getAssetsAsync({
           first: 250,
-          mediaType: MediaLibrary.MediaType.AUDIO,
+          mediaType: MediaLibrary.MediaType.audio,
         }),
         MediaLibrary.getAssetsAsync({
           first: 250,
-          mediaType: MediaLibrary.MediaType.VIDEO,
+          mediaType: MediaLibrary.MediaType.video,
         }),
       ]);
 
