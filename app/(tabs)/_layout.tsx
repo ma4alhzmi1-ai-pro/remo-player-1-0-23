@@ -2,7 +2,7 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Platform } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 
@@ -31,10 +31,39 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: "الرئيسية",
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="home-filled" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="music"
+        options={{
+          title: "الموسيقى",
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="library-music" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="video"
+        options={{
+          title: "الفيديو",
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="movie" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="playlists"
+        options={{
+          title: "القوائم",
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="queue-music" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="search"
+        options={{
+          title: "بحث",
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="search" color={color} />,
+        }}
+      />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

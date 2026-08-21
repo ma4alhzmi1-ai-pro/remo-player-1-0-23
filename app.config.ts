@@ -32,7 +32,7 @@ const env = {
   appSlug: "remo-player",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "",
+  logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663906474911/ocmxUaNaAqOweSnC.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -92,6 +92,15 @@ const config: ExpoConfig = {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
       },
     ],
+    [
+      "expo-media-library",
+      {
+        "photosPermission": "السماح لـ $(PRODUCT_NAME) بالوصول إلى الوسائط المحلية.",
+        "granularPermissions": ["audio", "video"],
+      },
+    ],
+    "expo-document-picker",
+    "expo-image-picker",
     [
       "expo-video",
       {

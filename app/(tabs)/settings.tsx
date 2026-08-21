@@ -1,0 +1,16 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+
+import { colors } from "@/components/remo-ui";
+import { ScreenContainer } from "@/components/screen-container";
+import { useLibrary } from "@/lib/library-context";
+
+export default function SettingsScreen() {
+  const { refreshDeviceLibrary, isRefreshing, importFiles } = useLibrary();
+  const refresh = async () => { const complete = await refreshDeviceLibrary(); if (!complete) Alert.alert("لم تُفهرس الوسائط", "يمكنك منح الإذن من إعدادات Android أو استيراد ملفات محددة."); };
+  return <ScreenContainer><View style={styles.header}><Text style={styles.title}>الإعدادات</Text><Text style={styles.subtitle}>إدارة مكتبتك وتفضيلات REMO PLAYER</Text></View><View style={styles.group}><ActionRow icon="refresh" title="إعادة فهرسة المكتبة" description="البحث عن الموسيقى والفيديوهات في جهازك" onPress={() => void refresh()} disabled={isRefreshing} /><ActionRow icon="file-open" title="استيراد ملفات" description="اختيار وسائط محددة من التخزين" onPress={() => void importFiles()} /><ActionRow icon="info-outline" title="عن REMO PLAYER" description="مشغل وسائط محلي خاص بملفاتك" onPress={() => Alert.alert("REMO PLAYER", "إصدار محلي مخصص لتشغيل الموسيقى والفيديو من جهازك.")} /></View></ScreenContainer>;
+}
+
+function ActionRow({ icon, title, description, onPress, disabled }: { icon: keyof typeof MaterialIcons.glyphMap; title: string; description: string; onPress: () => void; disabled?: boolean }) { return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.row, pressed && styles.pressed, disabled && styles.disabled]}><View style={styles.rowIcon}><MaterialIcons name={icon} size={22} color={colors.cyan} /></View><View style={styles.rowCopy}><Text style={styles.rowTitle}>{title}</Text><Text style={styles.rowDescription}>{description}</Text></View><MaterialIcons name="chevron-left" size={22} color={colors.muted} /></Pressable>; }
+
+const styles = StyleSheet.create({ header: { paddingHorizontal: 18, paddingTop: 13, paddingBottom: 16, alignItems: "flex-end" }, title: { color: colors.text, fontSize: 25, lineHeight: 32, fontWeight: "900" }, subtitle: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: "right" }, group: { borderRadius: 18, overflow: "hidden", marginHorizontal: 16, borderWidth: 1, borderColor: colors.border }, row: { minHeight: 76, paddingHorizontal: 13, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 11 }, rowIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#10263B" }, rowCopy: { flex: 1, alignItems: "flex-end" }, rowTitle: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: "800", textAlign: "right" }, rowDescription: { color: colors.muted, fontSize: 11, lineHeight: 17, textAlign: "right" }, pressed: { opacity: 0.65 }, disabled: { opacity: 0.5 } });
