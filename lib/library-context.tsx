@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
-import * as MediaLibrary from "expo-media-library";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
 
@@ -10,6 +9,11 @@ import type { MediaItem, Playlist } from "@/types/media";
 
 const LIBRARY_KEY = "remo-player.library.v1";
 const PLAYLISTS_KEY = "remo-player.playlists.v1";
+
+function getMediaLibrary() {
+  if (Platform.OS === "web") return null;
+  return require("expo-media-library") as typeof import("expo-media-library");
+}
 
 type LibraryContextValue = {
   items: MediaItem[];
@@ -72,7 +76,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   }, [isReady, playlists]);
 
   const refreshDeviceLibrary = useCallback(async () => {
-    if (Platform.OS === "web") return false;
+    const MediaLibrary = getMediaLibrary();
+    if (!MediaLibrary) return false;
     setIsRefreshing(true);
     try {
       const permission = await MediaLibrary.requestPermissionsAsync(false, ["audio", "video"]);

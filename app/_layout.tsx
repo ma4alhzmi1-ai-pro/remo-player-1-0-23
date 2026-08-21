@@ -11,6 +11,7 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { LibraryProvider } from "@/lib/library-context";
 import { PlayerProvider } from "@/lib/player-context";
 import { MiniPlayer } from "@/components/mini-player";
+import { DeveloperCreditToast } from "@/components/developer-credit-toast";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -100,6 +101,7 @@ export default function RootLayout() {
                 <Stack.Screen name="oauth/callback" />
               </Stack>
               <MiniPlayer />
+              <DeveloperCreditToast />
               <StatusBar style="light" />
             </PlayerProvider>
           </LibraryProvider>
