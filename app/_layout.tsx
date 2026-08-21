@@ -14,6 +14,7 @@ import { MiniPlayer } from "@/components/mini-player";
 import { DeveloperCreditToast } from "@/components/developer-credit-toast";
 import { AppSideMenuProvider } from "@/components/app-side-menu";
 import { IntroScreen } from "@/components/intro-screen";
+import { AdMobProvider } from "@/lib/admob";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -94,7 +95,7 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <LibraryProvider>
             <PlayerProvider>
-              {introComplete ? <AppSideMenuProvider>
+              <AdMobProvider>{introComplete ? <AppSideMenuProvider>
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="(tabs)" />
                   <Stack.Screen name="player/audio" />
@@ -106,7 +107,7 @@ export default function RootLayout() {
                 </Stack>
                 <MiniPlayer />
                 <DeveloperCreditToast />
-              </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}
+              </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}</AdMobProvider>
               <StatusBar style="light" />
             </PlayerProvider>
           </LibraryProvider>

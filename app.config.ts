@@ -38,6 +38,10 @@ const env = {
   androidPackage: bundleId,
 };
 
+// Google test App ID keeps development builds safe until the owner provides a production ID.
+const adMobAndroidAppId = process.env.ADMOB_ANDROID_APP_ID ?? "ca-app-pub-3940256099942544~3347511713";
+const adMobBannerUnitId = process.env.ADMOB_BANNER_UNIT_ID ?? "";
+
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
@@ -84,6 +88,9 @@ const config: ExpoConfig = {
     output: "static",
     favicon: "./assets/images/favicon.png",
   },
+  extra: {
+    admobBannerUnitId: adMobBannerUnitId,
+  },
   plugins: [
     "expo-router",
     [
@@ -101,6 +108,12 @@ const config: ExpoConfig = {
     ],
     "expo-document-picker",
     "expo-image-picker",
+    [
+      "react-native-google-mobile-ads",
+      {
+        androidAppId: adMobAndroidAppId,
+      },
+    ],
     [
       "expo-video",
       {

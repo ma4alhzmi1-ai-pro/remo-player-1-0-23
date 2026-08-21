@@ -4,6 +4,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 
 import { Artwork, colors, EmptyState, formatDuration, MediaRow } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
+import { OptionalBannerAd } from "@/lib/admob";
 import { useLibrary } from "@/lib/library-context";
 import { usePlayer } from "@/lib/player-context";
 
@@ -73,6 +74,7 @@ export default function HomeScreen() {
         <View style={styles.recentList}>
           {latest.map((item) => <MediaRow key={item.id} item={item} onPress={() => void openItem(item)} />)}
         </View>
+        <OptionalBannerAd />
       </ScrollView>
     </ScreenContainer>
   );
