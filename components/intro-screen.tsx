@@ -5,7 +5,7 @@ import { VideoView, useVideoPlayer } from "expo-video";
 
 import { colors } from "@/components/remo-ui";
 
-export function IntroScreen({ onComplete }: { onComplete: () => void }) {
+export function IntroScreen({ onComplete, onSkip }: { onComplete: () => void; onSkip: () => void }) {
   const player = useVideoPlayer(require("@/assets/video/remo-intro.mp4"), (videoPlayer) => {
     videoPlayer.loop = false;
     videoPlayer.play();
@@ -21,7 +21,7 @@ export function IntroScreen({ onComplete }: { onComplete: () => void }) {
     <View style={styles.fade} pointerEvents="none" />
     <View style={styles.footer} pointerEvents="box-none">
       <Text style={styles.hint}>REMO PLAYER</Text>
-      <Pressable onPress={onComplete} style={({ pressed }) => [styles.skip, pressed && styles.dimmed]}>
+      <Pressable onPress={onSkip} style={({ pressed }) => [styles.skip, pressed && styles.dimmed]}>
         <Text style={styles.skipText}>تخطي</Text><MaterialIcons name="arrow-back" size={18} color={colors.text} />
       </Pressable>
     </View>

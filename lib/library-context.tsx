@@ -1,10 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
 
 import { inferMediaKind, mergeMediaItems, parseArtistAndTitle } from "@/lib/media-utils";
+import { createPlaylistBackup, mergeRestoredPlaylists, parsePlaylistBackup } from "@/lib/playlist-backup";
 import type { MediaItem, Playlist } from "@/types/media";
 
 const LIBRARY_KEY = "remo-player.library.v1";
@@ -27,6 +29,8 @@ type LibraryContextValue = {
   removeItemFromPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
   updateMediaItem: (itemId: string, changes: Partial<Pick<MediaItem, "title" | "artist" | "album" | "thumbnailUri" | "lyrics" | "isFavorite">>) => Promise<void>;
+  exportPlaylistBackup: () => Promise<boolean>;
+  importPlaylistBackup: () => Promise<number>;
 };
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
@@ -176,6 +180,30 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     setItems((current) => current.map((item) => item.id === itemId ? { ...item, ...changes } : item));
   }, []);
 
+  const exportPlaylistBackup = useCallback(async () => {
+    if (Platform.OS === "web" || !(await Sharing.isAvailableAsync())) return false;
+    const backupDirectory = new Directory(Paths.document, "remo-player-backups");
+    if (!backupDirectory.exists) backupDirectory.create({ idempotent: true, intermediates: true });
+    const backupFile = new File(backupDirectory, `remo-player-playlists-${Date.now()}.json`);
+    backupFile.create({ overwrite: true, intermediates: true });
+    backupFile.write(JSON.stringify(createPlaylistBackup(playlists), null, 2));
+    await Sharing.shareAsync(backupFile.uri, { dialogTitle: "حفظ نسخة REMO PLAYER الاحتياطية", mimeType: "application/json" });
+    return true;
+  }, [playlists]);
+
+  const importPlaylistBackup = useCallback(async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: ["application/json", "text/json", "text/plain"], copyToCacheDirectory: true });
+    if (result.canceled) return 0;
+    try {
+      const backup = parsePlaylistBackup(await new File(result.assets[0].uri).text());
+      if (!backup) return 0;
+      setPlaylists((current) => mergeRestoredPlaylists(current, backup.playlists));
+      return backup.playlists.length;
+    } catch {
+      return 0;
+    }
+  }, []);
+
   const value = useMemo<LibraryContextValue>(() => ({
     items,
     playlists,
@@ -188,7 +216,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     removeItemFromPlaylist,
     deletePlaylist,
     updateMediaItem,
-  }), [items, playlists, isReady, isRefreshing, refreshDeviceLibrary, importFiles, createPlaylist, addItemToPlaylist, removeItemFromPlaylist, deletePlaylist, updateMediaItem]);
+    exportPlaylistBackup,
+    importPlaylistBackup,
+  }), [items, playlists, isReady, isRefreshing, refreshDeviceLibrary, importFiles, createPlaylist, addItemToPlaylist, removeItemFromPlaylist, deletePlaylist, updateMediaItem, exportPlaylistBackup, importPlaylistBackup]);
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
