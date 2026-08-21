@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 
 import { inferMediaKind, mergeMediaItems, parseArtistAndTitle } from "@/lib/media-utils";
 import { createPlaylistBackup, mergeRestoredPlaylists, parsePlaylistBackup } from "@/lib/playlist-backup";
+import { PLAYLIST_TEMPLATES, playlistTemplateItems, type PlaylistTemplateId } from "@/lib/playlist-templates";
 import type { MediaItem, Playlist } from "@/types/media";
 
 const LIBRARY_KEY = "remo-player.library.v1";
@@ -25,6 +26,7 @@ type LibraryContextValue = {
   refreshDeviceLibrary: () => Promise<boolean>;
   importFiles: () => Promise<void>;
   createPlaylist: (name: string) => Promise<boolean>;
+  createPlaylistFromTemplate: (templateId: PlaylistTemplateId) => Promise<boolean>;
   addItemToPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   removeItemFromPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
@@ -159,6 +161,16 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     return true;
   }, [playlists]);
 
+  const createPlaylistFromTemplate = useCallback(async (templateId: PlaylistTemplateId) => {
+    const template = PLAYLIST_TEMPLATES.find((item) => item.id === templateId);
+    if (!template) return false;
+    const duplicateCount = playlists.filter((playlist) => playlist.name === template.name).length;
+    const name = duplicateCount ? `${template.name} ${duplicateCount + 1}` : template.name;
+    const itemIds = playlistTemplateItems(templateId, items);
+    setPlaylists((current) => [{ id: `playlist:${templateId}:${Date.now()}`, name, itemIds, createdAt: Date.now() }, ...current]);
+    return true;
+  }, [items, playlists]);
+
   const addItemToPlaylist = useCallback(async (playlistId: string, itemId: string) => {
     setPlaylists((current) => current.map((playlist) => {
       if (playlist.id !== playlistId || playlist.itemIds.includes(itemId)) return playlist;
@@ -212,13 +224,14 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     refreshDeviceLibrary,
     importFiles,
     createPlaylist,
+    createPlaylistFromTemplate,
     addItemToPlaylist,
     removeItemFromPlaylist,
     deletePlaylist,
     updateMediaItem,
     exportPlaylistBackup,
     importPlaylistBackup,
-  }), [items, playlists, isReady, isRefreshing, refreshDeviceLibrary, importFiles, createPlaylist, addItemToPlaylist, removeItemFromPlaylist, deletePlaylist, updateMediaItem, exportPlaylistBackup, importPlaylistBackup]);
+  }), [items, playlists, isReady, isRefreshing, refreshDeviceLibrary, importFiles, createPlaylist, createPlaylistFromTemplate, addItemToPlaylist, removeItemFromPlaylist, deletePlaylist, updateMediaItem, exportPlaylistBackup, importPlaylistBackup]);
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
