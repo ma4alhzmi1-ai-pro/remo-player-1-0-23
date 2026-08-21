@@ -14,7 +14,6 @@ import { MiniPlayer } from "@/components/mini-player";
 import { DeveloperCreditToast } from "@/components/developer-credit-toast";
 import { AppSideMenuProvider } from "@/components/app-side-menu";
 import { IntroScreen } from "@/components/intro-screen";
-import { shouldSkipIntro, skipIntroInFuture } from "@/lib/intro-preferences";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -44,15 +43,6 @@ export default function RootLayout() {
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
     initManusRuntime();
-  }, []);
-
-  useEffect(() => {
-    void shouldSkipIntro().then((skip) => { if (skip) setIntroComplete(true); });
-  }, []);
-
-  const handleSkipIntro = useCallback(() => {
-    void skipIntroInFuture();
-    setIntroComplete(true);
   }, []);
 
   const handleSafeAreaUpdate = useCallback((metrics: Metrics) => {
@@ -113,11 +103,12 @@ export default function RootLayout() {
                   <Stack.Screen name="player/video" />
                   <Stack.Screen name="player/edit-video" />
                   <Stack.Screen name="privacy" />
+                  <Stack.Screen name="support-developer" />
                   <Stack.Screen name="oauth/callback" />
                 </Stack>
                 <MiniPlayer />
                 <DeveloperCreditToast />
-              </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} onSkip={handleSkipIntro} />}
+              </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}
               <StatusBar style="light" />
             </PlayerProvider>
           </LibraryProvider>

@@ -30,6 +30,7 @@ function SideMenu({ visible, onClose }: { visible: boolean; onClose: () => void 
   };
   const openSettings = () => { onClose(); router.push("/settings" as never); };
   const openPrivacy = () => { onClose(); router.push("/privacy" as never); };
+  const openSupport = () => { onClose(); router.push("/support-developer" as never); };
   const toggleTheme = () => setColorScheme(colorScheme === "dark" ? "light" : "dark");
   return <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}><View style={styles.modalRoot}><Pressable onPress={onClose} style={styles.backdrop} /><View style={styles.drawer}>
     <View style={styles.drawerHead}><View style={styles.logoMark}><MaterialIcons name="play-arrow" size={29} color={colors.background} /></View><View style={styles.headCopy}><Text style={styles.appName}>REMO PLAYER</Text><Text style={styles.appSub}>مشغل الوسائط المحلي</Text></View><Pressable onPress={onClose} style={styles.close}><MaterialIcons name="close" size={22} color={colors.text} /></Pressable></View>
@@ -38,6 +39,7 @@ function SideMenu({ visible, onClose }: { visible: boolean; onClose: () => void 
     <MenuRow icon="shield" title="الخصوصية" description="بياناتك وصلاحيات الوسائط" onPress={openPrivacy} />
     <MenuRow icon={colorScheme === "dark" ? "light-mode" : "dark-mode"} title="الثيمات" description={colorScheme === "dark" ? "الوضع الداكن مفعل" : "الوضع الفاتح مفعل"} onPress={toggleTheme} />
     <MenuRow icon="info-outline" title="حول التطبيق" description="REMO PLAYER • إصدار محلي احترافي" onPress={() => Alert.alert("حول REMO PLAYER", "مشغل موسيقى وفيديو محلي مصمم لتشغيل ملفاتك وتنظيمها، مع أدوات تخصيص وترجمة ذكية للفيديوهات.")} />
+    <MenuRow icon="favorite" title="ادعم المطور محمد الحزمي" description="دعم اختياري عبر محفظة جيب" onPress={openSupport} />
     <Text style={styles.section}>منصات المطور</Text>
     <MenuRow icon="campaign" title="تحديث التطبيق" description="قناة المطور على تيليجرام" onPress={() => void openLink("https://t.me/moh_alymani1")} />
     <MenuRow icon="article" title="مدونة المطور" description="مدونة محمد الحزمي على بلوجر" onPress={() => void openLink("https://mohammedalhzmi.blogspot.com")} />
