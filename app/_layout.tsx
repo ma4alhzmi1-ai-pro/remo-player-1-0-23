@@ -12,6 +12,8 @@ import { LibraryProvider } from "@/lib/library-context";
 import { PlayerProvider } from "@/lib/player-context";
 import { MiniPlayer } from "@/components/mini-player";
 import { DeveloperCreditToast } from "@/components/developer-credit-toast";
+import { AppSideMenuProvider } from "@/components/app-side-menu";
+import { IntroScreen } from "@/components/intro-screen";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -36,6 +38,7 @@ export default function RootLayout() {
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
+  const [introComplete, setIntroComplete] = useState(false);
 
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
@@ -91,17 +94,19 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <LibraryProvider>
             <PlayerProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="player/audio" />
-                <Stack.Screen name="player/edit-audio" />
-                <Stack.Screen name="player/lyrics" />
-                <Stack.Screen name="player/video" />
-                <Stack.Screen name="player/edit-video" />
-                <Stack.Screen name="oauth/callback" />
-              </Stack>
-              <MiniPlayer />
-              <DeveloperCreditToast />
+              {introComplete ? <AppSideMenuProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="player/audio" />
+                  <Stack.Screen name="player/edit-audio" />
+                  <Stack.Screen name="player/lyrics" />
+                  <Stack.Screen name="player/video" />
+                  <Stack.Screen name="player/edit-video" />
+                  <Stack.Screen name="oauth/callback" />
+                </Stack>
+                <MiniPlayer />
+                <DeveloperCreditToast />
+              </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}
               <StatusBar style="light" />
             </PlayerProvider>
           </LibraryProvider>

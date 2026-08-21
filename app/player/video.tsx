@@ -1,5 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -8,6 +10,7 @@ import { VideoPlayer, VideoView, useVideoPlayer } from "expo-video";
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { loadLocalSubtitles, saveLocalSubtitles, type LocalSubtitleTrack } from "@/lib/subtitle-store";
+import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
 import { readVideoForTranslation } from "@/lib/translation-upload";
 import { usePlayer } from "@/lib/player-context";
 import { trpc } from "@/lib/trpc";
@@ -116,6 +119,28 @@ export default function VideoPlayerScreen() {
       await Sharing.shareAsync(currentItem.uri, { dialogTitle: `مشاركة ${currentItem.title}`, mimeType: "video/*" });
     } catch { Alert.alert("تعذرت المشاركة", "تحقق من أن الملف ما زال متاحاً ويمكن للتطبيق قراءته."); } finally { setIsSharing(false); }
   };
+  const importSubtitleFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "*/*", multiple: false, copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!supportsSubtitleImport(asset.name)) {
+        Alert.alert("صيغة ترجمة غير مدعومة", "اختر ملف ترجمة نصياً من صيغ SRT أو VTT أو ASS أو SSA أو SAMI أو SUB أو MPL أو PJS أو TXT.");
+        return;
+      }
+      const content = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
+      const cues = parseSubtitleFile(content, asset.name);
+      const extension = asset.name.split(".").pop()?.toUpperCase() ?? "SUB";
+      const track: LocalSubtitleTrack = { targetLanguage: `ملف ${extension}`, detectedLanguage: "ترجمة محلية", createdAt: Date.now(), cues };
+      await saveLocalSubtitles(currentItem.id, track);
+      setSubtitleTrack(track);
+      setSubtitleEnabled(true);
+      Alert.alert("تم استيراد الترجمة", `أُضيفت ${cues.length} أسطر من ملف ${asset.name}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "تعذر قراءة ملف الترجمة.";
+      Alert.alert("تعذر استيراد الترجمة", message);
+    }
+  };
   const generateTranslation = async () => {
     try {
       const videoBase64 = await readVideoForTranslation(currentItem.uri);
@@ -161,8 +186,8 @@ export default function VideoPlayerScreen() {
     <View style={styles.body}>
       <View style={styles.modeRow}>{displayModes.map((mode) => <Pressable key={mode.id} onPress={() => chooseMode(mode.id)} style={[styles.modeButton, displayMode === mode.id && styles.modeActive]}><Text style={[styles.modeText, displayMode === mode.id && styles.modeTextActive]}>{mode.label}</Text></Pressable>)}</View>
       <Pressable onPress={() => setTranslationOpen(true)} style={({ pressed }) => [styles.translateButton, pressed && styles.dimmed]}><MaterialIcons name="translate" size={21} color={colors.background} /><View style={styles.translateCopy}><Text style={styles.translateTitle}>{subtitleTrack ? `الترجمة: ${subtitleTrack.targetLanguage}` : "ترجمة ذكية للفيديو"}</Text><Text style={styles.translateHint}>{subtitleTrack ? "اضغط لتغيير اللغة أو إعادة إنشاء الترجمة" : "تفريغ وترجمة الكلام عبر الإنترنت"}</Text></View><MaterialIcons name="chevron-left" size={23} color={colors.background} /></Pressable>
-      <View style={styles.actionRow}><Pressable onPress={() => router.push("/player/edit-video" as never)} style={styles.actionButton}><MaterialIcons name="content-cut" size={20} color={colors.cyan} /><Text style={styles.actionText}>تحرير</Text></Pressable><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.actionButton}><MaterialIcons name="ios-share" size={20} color={colors.cyan} /><Text style={styles.actionText}>{isSharing ? "جارٍ..." : "مشاركة"}</Text></Pressable>{repeatEnd !== null ? <Pressable onPress={resetAb} style={styles.actionButton}><MaterialIcons name="restart-alt" size={20} color={colors.cyan} /><Text style={styles.actionText}>إلغاء A-B</Text></Pressable> : null}</View>
-      <Text style={styles.note}>تُطبَّق الجودة العالية وHDR حسب الملف وقدرات الشاشة. يتم إرسال الفيديو للذكاء الاصطناعي فقط بعد موافقتك لإنشاء الترجمة.</Text>
+      <View style={styles.actionRow}><Pressable onPress={() => router.push("/player/edit-video" as never)} style={styles.actionButton}><MaterialIcons name="content-cut" size={20} color={colors.cyan} /><Text style={styles.actionText}>تحرير</Text></Pressable><Pressable onPress={() => void importSubtitleFile()} style={styles.actionButton}><MaterialIcons name="subtitles" size={20} color={colors.cyan} /><Text style={styles.actionText}>استيراد ترجمة</Text></Pressable><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.actionButton}><MaterialIcons name="ios-share" size={20} color={colors.cyan} /><Text style={styles.actionText}>{isSharing ? "جارٍ..." : "مشاركة"}</Text></Pressable>{repeatEnd !== null ? <Pressable onPress={resetAb} style={styles.actionButton}><MaterialIcons name="restart-alt" size={20} color={colors.cyan} /><Text style={styles.actionText}>إلغاء A-B</Text></Pressable> : null}</View>
+      <Text style={styles.note}>يدعم REMO PLAYER فهرسة الامتدادات الشائعة والمطلوبة؛ بينما يتحدد التشغيل الفعلي بترميز الملف ودعم Android. يمكنك استيراد ملفات SRT وVTT وASS وSSA وSAMI وSUB وMPL وPJS وTXT النصية.</Text>
     </View>
     <TranslationSheet visible={translationOpen} item={currentItem} selectedLanguage={targetLanguage} onSelectLanguage={setTargetLanguage} generating={translateMutation.isPending} onClose={() => setTranslationOpen(false)} onGenerate={() => void generateTranslation()} />
   </ScreenContainer>;

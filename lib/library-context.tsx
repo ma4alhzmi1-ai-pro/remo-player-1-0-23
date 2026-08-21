@@ -119,7 +119,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   const importFiles = useCallback(async () => {
     const result = await DocumentPicker.getDocumentAsync({
-      type: ["audio/*", "video/*"],
+      type: "*/*",
       multiple: true,
       copyToCacheDirectory: true,
     });
