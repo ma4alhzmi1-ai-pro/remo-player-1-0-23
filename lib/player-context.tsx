@@ -39,15 +39,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffle] = useState(false);
 
   useEffect(() => {
-    void setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: Platform.OS !== "web",
-      interruptionModeAndroid: "duckOthers",
-    });
     return () => {
       statusSubscriptionRef.current?.remove();
       playerRef.current?.remove();
     };
+  }, []);
+
+  const prepareAudioSession = useCallback(async () => {
+    try {
+      await setAudioModeAsync({
+        interruptionMode: "duckOthers",
+        shouldPlayInBackground: Platform.OS !== "web",
+      });
+    } catch (error) {
+      console.warn("تعذر تهيئة جلسة الصوت", error);
+    }
   }, []);
 
   const attachStatusListener = useCallback((player: AudioPlayer) => {
@@ -66,6 +72,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
+      await prepareAudioSession();
       let player = playerRef.current;
       if (!player) {
         player = createAudioPlayer({ uri: item.uri }, { updateInterval: 300 });
@@ -89,7 +96,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
-  }, [attachStatusListener, repeatMode, speed]);
+  }, [attachStatusListener, prepareAudioSession, repeatMode, speed]);
 
   const togglePlayback = useCallback(() => {
     const player = playerRef.current;
