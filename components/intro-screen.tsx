@@ -1,18 +1,38 @@
-import { useEffect } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, Image, StyleSheet, Text, View } from "react-native";
 
 import { colors } from "@/components/remo-ui";
 
 export function IntroScreen({ onComplete }: { onComplete: () => void }) {
+  const motion = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     const timeout = setTimeout(onComplete, 2200);
     return () => clearTimeout(timeout);
   }, [onComplete]);
 
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(motion, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(motion, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [motion]);
+
+  const imageStyle = {
+    opacity: motion.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }),
+    transform: [{ scale: motion.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.02] }) }],
+  };
+  const glowStyle = {
+    opacity: motion.interpolate({ inputRange: [0, 1], outputRange: [0.48, 1] }),
+    transform: [{ scale: motion.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.08] }) }],
+  };
+
   return <View style={styles.container}>
-    <View style={styles.glow} pointerEvents="none" />
+    <Animated.View style={[styles.glow, glowStyle]} pointerEvents="none" />
     <View style={styles.center}>
-      <Image source={require("@/assets/images/icon.png")} style={styles.logo} resizeMode="cover" />
+      <Animated.View style={imageStyle}><Image source={require("@/assets/images/icon.png")} style={styles.logo} resizeMode="cover" /></Animated.View>
       <Text style={styles.title}>REMO PLAYER</Text>
       <Text style={styles.tagline}>مشغل الموسيقى والفيديو المحلي</Text>
     </View>

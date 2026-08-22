@@ -2,6 +2,7 @@ import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Platform } from "react-native";
 
+import { prepareMediaNotificationControls } from "@/lib/media-notification-permission";
 import type { MediaItem } from "@/types/media";
 
 type RepeatMode = "off" | "one";
@@ -41,6 +42,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return () => {
       statusSubscriptionRef.current?.remove();
+      playerRef.current?.clearLockScreenControls();
       playerRef.current?.remove();
     };
   }, []);
@@ -72,6 +74,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
+      await prepareMediaNotificationControls();
       await prepareAudioSession();
       let player = playerRef.current;
       if (!player) {
@@ -87,6 +90,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         title: item.title,
         artist: item.artist,
         albumTitle: item.album,
+        artworkUrl: item.thumbnailUri,
+      }, {
+        showSeekBackward: true,
+        showSeekForward: true,
       });
       setCurrentItem(item);
       setCurrentTime(0);
@@ -105,6 +112,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       player.pause();
       setIsPlaying(false);
     } else {
+      void prepareMediaNotificationControls();
+      player.setActiveForLockScreen(true, {
+        title: currentItem.title,
+        artist: currentItem.artist,
+        albumTitle: currentItem.album,
+        artworkUrl: currentItem.thumbnailUri,
+      }, {
+        showSeekBackward: true,
+        showSeekForward: true,
+      });
       player.play();
       setIsPlaying(true);
     }
@@ -140,6 +157,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => {
     playerRef.current?.pause();
+    playerRef.current?.clearLockScreenControls();
     setIsPlaying(false);
     setCurrentTime(0);
   }, []);

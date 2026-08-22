@@ -3,13 +3,14 @@ import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { VideoPlayer, VideoView, useVideoPlayer } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { loadLocalSubtitles, saveLocalSubtitles, type LocalSubtitleTrack } from "@/lib/subtitle-store";
+import { prepareMediaNotificationControls } from "@/lib/media-notification-permission";
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
 import { readVideoForTranslation } from "@/lib/translation-upload";
 import { usePlayer } from "@/lib/player-context";
@@ -49,9 +50,17 @@ export default function VideoPlayerScreen() {
   const [translationOpen, setTranslationOpen] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState<TranslationLanguage>("العربية");
   const translateMutation = trpc.media.translateVideo.useMutation();
-  const player = useVideoPlayer(currentItem?.mediaType === "video" ? currentItem.uri : null, (videoPlayer) => {
+  const videoSource = useMemo(() => currentItem?.mediaType === "video" ? {
+    uri: currentItem.uri,
+    metadata: {
+      title: currentItem.title,
+      artist: currentItem.artist,
+    },
+  } : null, [currentItem]);
+  const player = useVideoPlayer(videoSource, (videoPlayer) => {
     videoPlayer.staysActiveInBackground = true;
     videoPlayer.showNowPlayingNotification = true;
+    videoPlayer.audioMixingMode = "duckOthers";
     videoPlayer.timeUpdateEventInterval = 0.35;
   });
 
@@ -87,7 +96,18 @@ export default function VideoPlayerScreen() {
     if (mode === "hdr") Alert.alert("HDR عند توفره", "يعرض Android HDR تلقائياً إذا كان الفيديو وشاشة جهازك يدعمانه.");
     setDisplayMode(mode);
   };
-  const togglePlay = () => { if (player.playing) { player.pause(); setIsPlaying(false); } else { player.play(); setIsPlaying(true); } };
+  const togglePlay = async () => {
+    if (player.playing) {
+      player.pause();
+      setIsPlaying(false);
+    } else {
+      await prepareMediaNotificationControls();
+      player.staysActiveInBackground = backgroundEnabled;
+      player.showNowPlayingNotification = true;
+      player.play();
+      setIsPlaying(true);
+    }
+  };
   const cycleSpeed = () => { const values = [0.5, 0.75, 1, 1.25, 1.5, 2]; const next = values[(values.indexOf(speed) + 1) % values.length]; player.playbackRate = next; setSpeed(next); };
   const toggleBackground = () => { const next = !backgroundEnabled; player.staysActiveInBackground = next; setBackgroundEnabled(next); };
   const toggleMute = () => { const next = !muted; player.muted = next; setMuted(next); };
@@ -158,7 +178,7 @@ export default function VideoPlayerScreen() {
   };
   const optionData: Array<{ id: QuickOption; icon: keyof typeof MaterialIcons.glyphMap; label: string; active?: boolean }> = [
     { id: "speed", icon: "speed", label: `${speed}×` },
-    { id: "background", icon: "headset", label: "خلفية", active: backgroundEnabled },
+    { id: "background", icon: "headset", label: "صوت بالخلفية", active: backgroundEnabled },
     { id: "mute", icon: muted ? "volume-off" : "volume-up", label: "كتم", active: muted },
     { id: "mirror", icon: "flip", label: "مرآة", active: mirrored },
     { id: "equalizer", icon: "equalizer", label: "المعادل" },
@@ -180,7 +200,7 @@ export default function VideoPlayerScreen() {
       {controlsVisible ? <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.overlayTop}><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><View style={styles.overlayTopIcons}><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)}><MaterialIcons name="closed-caption" size={23} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable><MaterialIcons name="hd" size={25} color={colors.text} /></View></View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickOptions}>{optionData.map((option) => <Pressable key={option.id} onPress={() => selectOption(option.id)} style={({ pressed }) => [styles.quickOption, option.active && styles.quickActive, pressed && styles.dimmed]}><View style={[styles.quickIcon, option.active && styles.quickIconActive]}><MaterialIcons name={option.icon} size={22} color={option.active ? colors.background : colors.text} /></View><Text style={styles.quickLabel}>{option.label}</Text></Pressable>)}</ScrollView>
-        <View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View style={styles.progressTrack}><View style={styles.progressFill} /></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><View style={styles.playControls}><Pressable onPress={() => player.seekBy(-10)} style={styles.transport}><MaterialIcons name="replay-10" size={28} color={colors.text} /></Pressable><Pressable onPress={() => player.seekBy(-10)} style={styles.transport}><MaterialIcons name="skip-previous" size={29} color={colors.text} /></Pressable><Pressable onPress={togglePlay} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={38} color={colors.text} /></Pressable><Pressable onPress={() => player.seekBy(10)} style={styles.transport}><MaterialIcons name="skip-next" size={29} color={colors.text} /></Pressable><Pressable onPress={() => player.seekBy(10)} style={styles.transport}><MaterialIcons name="forward-10" size={28} color={colors.text} /></Pressable></View></View>
+        <View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View style={styles.progressTrack}><View style={styles.progressFill} /></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><View style={styles.playControls}><Pressable onPress={() => player.seekBy(-10)} style={styles.transport}><MaterialIcons name="replay-10" size={28} color={colors.text} /></Pressable><Pressable onPress={() => player.seekBy(-10)} style={styles.transport}><MaterialIcons name="skip-previous" size={29} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={38} color={colors.text} /></Pressable><Pressable onPress={() => player.seekBy(10)} style={styles.transport}><MaterialIcons name="skip-next" size={29} color={colors.text} /></Pressable><Pressable onPress={() => player.seekBy(10)} style={styles.transport}><MaterialIcons name="forward-10" size={28} color={colors.text} /></Pressable></View></View>
       </View> : null}
     </Pressable>
     <View style={styles.body}>
