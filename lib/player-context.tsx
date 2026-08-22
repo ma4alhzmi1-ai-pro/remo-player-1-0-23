@@ -7,7 +7,7 @@ import { useLibrary } from "@/lib/library-context";
 import { buildPlaybackQueue, nextQueueItem, previousQueueItem } from "@/lib/playback-queue";
 import type { MediaItem } from "@/types/media";
 
-type RepeatMode = "off" | "one";
+export type RepeatMode = "off" | "one" | "all";
 
 type PlayerContextValue = {
   currentItem: MediaItem | null;
@@ -23,7 +23,7 @@ type PlayerContextValue = {
   togglePlayback: () => void;
   seekTo: (seconds: number) => Promise<void>;
   skipBy: (seconds: number) => Promise<void>;
-  playNext: () => Promise<boolean>;
+  playNext: (wrap?: boolean) => Promise<boolean>;
   playPrevious: () => Promise<boolean>;
   setSpeed: (speed: number) => void;
   toggleRepeat: () => void;
@@ -45,6 +45,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [shuffle, setShuffle] = useState(false);
   const [playbackQueue, setPlaybackQueue] = useState<MediaItem[]>([]);
+  const repeatModeRef = useRef<RepeatMode>("off");
+  const autoAdvanceRef = useRef<(wrap: boolean) => Promise<boolean>>(async () => false);
+  const isAutoAdvancingRef = useRef(false);
+
+  useEffect(() => {
+    repeatModeRef.current = repeatMode;
+  }, [repeatMode]);
 
   useEffect(() => {
     return () => {
@@ -71,7 +78,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(status.playing);
       setCurrentTime(status.currentTime || 0);
       setDuration(status.duration || 0);
-      if (status.didJustFinish && !player.loop) setIsPlaying(false);
+      if (status.didJustFinish && !player.loop) {
+        const shouldWrap = repeatModeRef.current === "all";
+        if (isAutoAdvancingRef.current) return;
+        isAutoAdvancingRef.current = true;
+        void autoAdvanceRef.current(shouldWrap).then((advanced) => {
+          if (!advanced) setIsPlaying(false);
+        }).finally(() => { isAutoAdvancingRef.current = false; });
+      }
     });
   }, []);
 
@@ -148,14 +162,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     await seekTo(currentTime + seconds);
   }, [currentTime, seekTo]);
 
-  const playNext = useCallback(async () => {
+  const playNext = useCallback(async (wrap = true) => {
     if (!currentItem) return false;
     const queue = playbackQueue.length ? playbackQueue : items.filter((item) => item.mediaType === currentItem.mediaType);
-    const nextItem = nextQueueItem(queue, currentItem.id, shuffle);
+    const nextItem = nextQueueItem(queue, currentItem.id, shuffle, Math.random, wrap);
     if (!nextItem) return false;
     await playItem(nextItem, queue);
     return true;
   }, [currentItem, items, playbackQueue, playItem, shuffle]);
+
+  useEffect(() => {
+    autoAdvanceRef.current = playNext;
+  }, [playNext]);
 
   const playPrevious = useCallback(async () => {
     if (!currentItem) return false;
@@ -174,7 +192,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggleRepeat = useCallback(() => {
     setRepeatMode((current) => {
-      const next = current === "off" ? "one" : "off";
+      const next: RepeatMode = current === "off" ? "one" : current === "one" ? "all" : "off";
       if (playerRef.current) playerRef.current.loop = next === "one";
       return next;
     });

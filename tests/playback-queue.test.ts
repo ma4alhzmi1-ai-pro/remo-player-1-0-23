@@ -19,4 +19,10 @@ describe("playback queue", () => {
     expect(nextQueueItem(queue, "b", true, () => 0)?.id).toBe("a");
     expect(nextQueueItem(queue, "b", true, () => 0.99)?.id).toBe("c");
   });
+
+  it("stops at the last item when repeat-all is disabled", () => {
+    const queue = [audio("a"), audio("b")];
+    expect(nextQueueItem(queue, "b", false, Math.random, false)).toBeNull();
+    expect(nextQueueItem(queue, "b", false, Math.random, true)?.id).toBe("a");
+  });
 });
