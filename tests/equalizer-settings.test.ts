@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { EQUALIZER_FREQUENCIES, normalizeEqualizerBands, presetBands } from "../lib/equalizer-settings";
+import { EQUALIZER_FREQUENCIES, EQUALIZER_PRESETS, normalizeEqualizerBands, presetBands } from "../lib/equalizer-settings";
 
 describe("equalizer settings", () => {
   it("keeps five frequency bands within the supported range", () => {
@@ -8,7 +8,9 @@ describe("equalizer settings", () => {
     expect(EQUALIZER_FREQUENCIES).toHaveLength(5);
   });
 
-  it("provides the requested metal preset curve", () => {
-    expect(presetBands("metal")).toEqual([4, 1, 9, 3, 0]);
+  it("provides all fourteen requested preset curves", () => {
+    expect(EQUALIZER_PRESETS).toHaveLength(14);
+    expect(presetBands("heavy-metal")).toEqual([4, 1, 9, 3, 0]);
+    expect(presetBands("amplifier")).toEqual([8, 5, 2, 4, 6]);
   });
 });

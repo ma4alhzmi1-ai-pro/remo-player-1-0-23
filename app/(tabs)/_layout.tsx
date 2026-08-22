@@ -5,9 +5,11 @@ import { HapticTab } from "@/components/haptic-tab";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Platform } from "react-native";
 import { useColors } from "@/hooks/use-colors";
+import { useLanguage } from "@/lib/language-provider";
 
 export default function TabLayout() {
   const colors = useColors();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + bottomPadding;
@@ -31,35 +33,35 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "الرئيسية",
+          title: t("home"),
           tabBarIcon: ({ color }) => <MaterialIcons size={24} name="home-filled" color={color} />,
         }}
       />
       <Tabs.Screen
         name="music"
         options={{
-          title: "الموسيقى",
+          title: t("music"),
           tabBarIcon: ({ color }) => <MaterialIcons size={24} name="library-music" color={color} />,
         }}
       />
       <Tabs.Screen
         name="video"
         options={{
-          title: "الفيديو",
+          title: t("video"),
           tabBarIcon: ({ color }) => <MaterialIcons size={24} name="movie" color={color} />,
         }}
       />
       <Tabs.Screen
         name="playlists"
         options={{
-          title: "القوائم",
+          title: t("playlists"),
           tabBarIcon: ({ color }) => <MaterialIcons size={24} name="queue-music" color={color} />,
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
-          title: "بحث",
+          title: t("search"),
           tabBarIcon: ({ color }) => <MaterialIcons size={24} name="search" color={color} />,
         }}
       />

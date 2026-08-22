@@ -14,6 +14,7 @@ import { MiniPlayer } from "@/components/mini-player";
 import { DeveloperCreditToast } from "@/components/developer-credit-toast";
 import { AppSideMenuProvider } from "@/components/app-side-menu";
 import { IntroScreen } from "@/components/intro-screen";
+import { LanguageProvider } from "@/lib/language-provider";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -92,8 +93,9 @@ export default function RootLayout() {
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
-          <LibraryProvider>
-            <PlayerProvider>
+          <LanguageProvider>
+            <LibraryProvider>
+              <PlayerProvider>
               {introComplete ? <AppSideMenuProvider>
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="(tabs)" />
@@ -110,8 +112,9 @@ export default function RootLayout() {
                 <DeveloperCreditToast />
               </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}
               <StatusBar style="light" />
-            </PlayerProvider>
-          </LibraryProvider>
+              </PlayerProvider>
+            </LibraryProvider>
+          </LanguageProvider>
         </QueryClientProvider>
       </trpc.Provider>
     </GestureHandlerRootView>

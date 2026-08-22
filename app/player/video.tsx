@@ -6,7 +6,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { VideoView, useVideoPlayer } from "expo-video";
+import { isPictureInPictureSupported, VideoView, useVideoPlayer } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -173,7 +173,7 @@ export default function VideoPlayerScreen() {
   const cycleSpeed = () => { const values = [0.5, 0.75, 1, 1.25, 1.5, 2]; const next = values[(values.indexOf(speed) + 1) % values.length]; player.playbackRate = next; setSpeed(next); };
   const toggleBackground = () => { const next = !backgroundEnabled; player.staysActiveInBackground = next; setBackgroundEnabled(next); };
   const toggleMute = () => { const next = !muted; player.muted = next; setMuted(next); };
-  const openPip = async () => { try { await viewRef.current?.startPictureInPicture(); } catch { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); } };
+  const openPip = async () => { if (!isPictureInPictureSupported()) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } try { await viewRef.current?.startPictureInPicture(); } catch { Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
   const setAbPoint = () => { if (repeatStart === null || repeatEnd !== null) { setRepeatStart(player.currentTime); setRepeatEnd(null); Alert.alert("تكرار A–B", "تم تحديد النقطة A. انتقل إلى نهاية المقطع واضغط الزر مرة أخرى لتحديد B."); } else { const end = Math.max(player.currentTime, repeatStart + 1); setRepeatEnd(end); Alert.alert("تكرار A–B", `سيُكرر المشغل المقطع بين ${formatDuration(repeatStart)} و${formatDuration(end)}.`); } };
   const resetAb = () => { setRepeatStart(null); setRepeatEnd(null); };
   const previousVideo = async () => { if (!(await playPrevious())) player.seekBy(-10); };
@@ -188,6 +188,7 @@ export default function VideoPlayerScreen() {
     { icon: "translate", label: "ترجمة", active: Boolean(subtitleTrack), onPress: () => setTranslationOpen(true) },
     { icon: "subtitles", label: "استيراد", onPress: () => void importSubtitleFile() },
     { icon: "content-cut", label: "تحرير", onPress: () => router.push("/player/edit-video" as never) },
+    { icon: "picture-in-picture-alt", label: "نافذة", onPress: () => void openPip() },
     { icon: "ios-share", label: isSharing ? "جارٍ" : "مشاركة", onPress: () => void shareVideo() },
   ];
 
