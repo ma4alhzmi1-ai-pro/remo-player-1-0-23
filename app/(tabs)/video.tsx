@@ -42,8 +42,8 @@ export default function VideoScreen() {
     items: playlist.itemIds.map((id) => items.find((item) => item.id === id)).filter((item): item is MediaItem => item?.mediaType === "video"),
   })).filter((playlist) => playlist.items.length > 0), [items, playlists]);
 
-  const openVideo = (item: MediaItem, source = matchingVideos) => {
-    void playItem(item, source);
+  const openVideo = async (item: MediaItem, source = matchingVideos) => {
+    await playItem(item, source);
     router.push("/player/video" as never);
   };
   const goBack = () => router.canGoBack() ? router.back() : router.replace("/" as never);
@@ -76,7 +76,7 @@ export default function VideoScreen() {
       columnWrapperStyle={view === "grid" ? styles.gridRow : undefined}
       keyExtractor={(item) => "items" in item ? item.id : (item as MediaItem).id}
       renderItem={({ item }) => {
-        if (view === "grid") return <VideoCard item={item as MediaItem} onPress={() => openVideo(item as MediaItem)} onAddToPlaylist={() => setPlaylistTarget(item as MediaItem)} />;
+        if (view === "grid") return <VideoCard item={item as MediaItem} onPress={() => void openVideo(item as MediaItem)} onAddToPlaylist={() => setPlaylistTarget(item as MediaItem)} />;
         if (view === "folders") return <FolderRow folder={item as unknown as Folder} onPress={() => setSelectedFolder(item as unknown as Folder)} />;
         return <PlaylistRow playlist={item as unknown as VideoPlaylist} onPress={() => setSelectedPlaylist(item as unknown as VideoPlaylist)} />;
       }}

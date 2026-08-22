@@ -20,16 +20,17 @@ function getMediaLibrary() {
 
 async function createVideoThumbnail(uri: string, durationSeconds = 0) {
   if (Platform.OS === "web") return undefined;
-  try {
-    const VideoThumbnails = require("expo-video-thumbnails") as typeof import("expo-video-thumbnails");
-    const result = await VideoThumbnails.getThumbnailAsync(uri, {
-      time: Math.min(Math.max(800, Math.round(durationSeconds * 160)), 3_000),
-      quality: 0.62,
-    });
-    return result.uri;
-  } catch {
-    return undefined;
+  const VideoThumbnails = require("expo-video-thumbnails") as typeof import("expo-video-thumbnails");
+  const preferredTime = Math.min(Math.max(250, Math.round(durationSeconds * 160)), 3_000);
+  for (const time of [preferredTime, 0]) {
+    try {
+      const result = await VideoThumbnails.getThumbnailAsync(uri, { time, quality: 0.72 });
+      if (result.uri) return result.uri;
+    } catch {
+      // Retry from the first frame for short clips and videos without a keyframe at the preferred time.
+    }
   }
+  return undefined;
 }
 
 async function mapWithConcurrency<T, R>(values: T[], mapper: (value: T) => Promise<R>, concurrency = 4) {
