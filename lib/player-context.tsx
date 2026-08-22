@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Alert, Platform } from "react-native";
 
 import { prepareMediaNotificationControls } from "@/lib/media-notification-permission";
+import { useLibrary } from "@/lib/library-context";
+import { buildPlaybackQueue, nextQueueItem, previousQueueItem } from "@/lib/playback-queue";
 import type { MediaItem } from "@/types/media";
 
 type RepeatMode = "off" | "one";
@@ -15,11 +17,14 @@ type PlayerContextValue = {
   speed: number;
   repeatMode: RepeatMode;
   shuffle: boolean;
-  playItem: (item: MediaItem) => Promise<void>;
+  playbackQueue: MediaItem[];
+  playItem: (item: MediaItem, queue?: MediaItem[]) => Promise<void>;
   setCurrentItem: (item: MediaItem | null) => void;
   togglePlayback: () => void;
   seekTo: (seconds: number) => Promise<void>;
   skipBy: (seconds: number) => Promise<void>;
+  playNext: () => Promise<boolean>;
+  playPrevious: () => Promise<boolean>;
   setSpeed: (speed: number) => void;
   toggleRepeat: () => void;
   toggleShuffle: () => void;
@@ -29,6 +34,7 @@ type PlayerContextValue = {
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
+  const { items } = useLibrary();
   const playerRef = useRef<AudioPlayer | null>(null);
   const statusSubscriptionRef = useRef<{ remove: () => void } | null>(null);
   const [currentItem, setCurrentItem] = useState<MediaItem | null>(null);
@@ -38,6 +44,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [speed, setSpeedState] = useState(1);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [shuffle, setShuffle] = useState(false);
+  const [playbackQueue, setPlaybackQueue] = useState<MediaItem[]>([]);
 
   useEffect(() => {
     return () => {
@@ -68,7 +75,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const playItem = useCallback(async (item: MediaItem) => {
+  const playItem = useCallback(async (item: MediaItem, sourceQueue?: MediaItem[]) => {
+    const queue = buildPlaybackQueue(item, sourceQueue, items);
+    setPlaybackQueue(queue);
     if (item.mediaType === "video") {
       setCurrentItem(item);
       return;
@@ -103,7 +112,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
-  }, [attachStatusListener, prepareAudioSession, repeatMode, speed]);
+  }, [attachStatusListener, items, prepareAudioSession, repeatMode, speed]);
 
   const togglePlayback = useCallback(() => {
     const player = playerRef.current;
@@ -139,6 +148,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     await seekTo(currentTime + seconds);
   }, [currentTime, seekTo]);
 
+  const playNext = useCallback(async () => {
+    if (!currentItem) return false;
+    const queue = playbackQueue.length ? playbackQueue : items.filter((item) => item.mediaType === currentItem.mediaType);
+    const nextItem = nextQueueItem(queue, currentItem.id, shuffle);
+    if (!nextItem) return false;
+    await playItem(nextItem, queue);
+    return true;
+  }, [currentItem, items, playbackQueue, playItem, shuffle]);
+
+  const playPrevious = useCallback(async () => {
+    if (!currentItem) return false;
+    const queue = playbackQueue.length ? playbackQueue : items.filter((item) => item.mediaType === currentItem.mediaType);
+    const previousItem = previousQueueItem(queue, currentItem.id);
+    if (!previousItem) return false;
+    await playItem(previousItem, queue);
+    return true;
+  }, [currentItem, items, playbackQueue, playItem]);
+
   const setSpeed = useCallback((nextSpeed: number) => {
     const safeSpeed = Math.max(0.5, Math.min(nextSpeed, 2));
     playerRef.current?.setPlaybackRate(safeSpeed);
@@ -164,6 +191,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PlayerContextValue>(() => ({
     currentItem,
+    playbackQueue,
     isPlaying,
     currentTime,
     duration,
@@ -175,11 +203,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     togglePlayback,
     seekTo,
     skipBy,
+    playNext,
+    playPrevious,
     setSpeed,
     toggleRepeat,
     toggleShuffle,
     stop,
-  }), [currentItem, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, setSpeed, toggleRepeat, toggleShuffle, stop]);
+  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

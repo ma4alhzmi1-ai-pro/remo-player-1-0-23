@@ -36,6 +36,14 @@ export function inferMediaKind(name: string, mimeType?: string | null): MediaIte
 
 export function mergeMediaItems(current: MediaItem[], incoming: MediaItem[]) {
   const byUri = new Map(current.map((item) => [item.uri, item]));
-  incoming.forEach((item) => byUri.set(item.uri, item));
+  incoming.forEach((item) => {
+    const existing = byUri.get(item.uri);
+    byUri.set(item.uri, existing ? {
+      ...item,
+      thumbnailUri: existing.thumbnailUri ?? item.thumbnailUri,
+      lyrics: existing.lyrics ?? item.lyrics,
+      isFavorite: existing.isFavorite ?? item.isFavorite,
+    } : item);
+  });
   return Array.from(byUri.values()).sort((a, b) => b.addedAt - a.addedAt);
 }

@@ -10,19 +10,14 @@ import { usePlayer } from "@/lib/player-context";
 export default function HomeScreen() {
   const router = useRouter();
   const { items, isReady, importFiles, isRefreshing, refreshDeviceLibrary } = useLibrary();
-  const { currentItem, playItem, setCurrentItem } = usePlayer();
+  const { currentItem, playItem } = usePlayer();
   const latest = items.slice(0, 4);
   const audioCount = items.filter((item) => item.mediaType === "audio").length;
   const videoCount = items.filter((item) => item.mediaType === "video").length;
 
   const openItem = async (item: (typeof items)[number]) => {
-    if (item.mediaType === "video") {
-      setCurrentItem(item);
-      router.push("/player/video" as never);
-      return;
-    }
-    await playItem(item);
-    router.push("/player/audio" as never);
+    await playItem(item, items.filter((candidate) => candidate.mediaType === item.mediaType));
+    router.push(item.mediaType === "video" ? "/player/video" as never : "/player/audio" as never);
   };
 
   if (isReady && items.length === 0) {

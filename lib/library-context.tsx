@@ -18,6 +18,33 @@ function getMediaLibrary() {
   return require("expo-media-library") as typeof import("expo-media-library");
 }
 
+async function createVideoThumbnail(uri: string, durationSeconds = 0) {
+  if (Platform.OS === "web") return undefined;
+  try {
+    const VideoThumbnails = require("expo-video-thumbnails") as typeof import("expo-video-thumbnails");
+    const result = await VideoThumbnails.getThumbnailAsync(uri, {
+      time: Math.min(Math.max(800, Math.round(durationSeconds * 160)), 3_000),
+      quality: 0.62,
+    });
+    return result.uri;
+  } catch {
+    return undefined;
+  }
+}
+
+async function mapWithConcurrency<T, R>(values: T[], mapper: (value: T) => Promise<R>, concurrency = 4) {
+  const results = new Array<R>(values.length);
+  let index = 0;
+  const worker = async () => {
+    while (index < values.length) {
+      const currentIndex = index++;
+      results[currentIndex] = await mapper(values[currentIndex]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker));
+  return results;
+}
+
 type LibraryContextValue = {
   items: MediaItem[];
   playlists: Playlist[];
@@ -25,7 +52,7 @@ type LibraryContextValue = {
   isRefreshing: boolean;
   refreshDeviceLibrary: () => Promise<boolean>;
   importFiles: () => Promise<void>;
-  createPlaylist: (name: string) => Promise<boolean>;
+  createPlaylist: (name: string) => Promise<Playlist | null>;
   createPlaylistFromTemplate: (templateId: PlaylistTemplateId) => Promise<boolean>;
   addItemToPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   removeItemFromPlaylist: (playlistId: string, itemId: string) => Promise<void>;
@@ -100,21 +127,31 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         }),
       ]);
 
-      const asMediaItem = (asset: (typeof audioPage.assets)[number]): MediaItem => {
+      const asMediaItem = async (asset: (typeof audioPage.assets)[number]): Promise<MediaItem> => {
         const parsed = parseArtistAndTitle(asset.filename);
+        const isVideo = asset.mediaType === "video";
+        let uri = asset.uri;
+        try {
+          const info = await MediaLibrary.getAssetInfoAsync(asset);
+          uri = info.localUri ?? asset.uri;
+        } catch {
+          uri = asset.uri;
+        }
         return {
           id: `device:${asset.id}`,
           title: parsed.title,
-          artist: asset.mediaType === "video" ? "فيديو محلي" : parsed.artist,
-          album: asset.mediaType === "video" ? "مقاطع الفيديو" : "الموسيقى المحلية",
-          uri: asset.uri,
+          artist: isVideo ? "فيديو محلي" : parsed.artist,
+          album: isVideo ? "مقاطع الفيديو" : "الموسيقى المحلية",
+          uri,
           duration: Math.max(0, asset.duration ?? 0),
-          mediaType: asset.mediaType === "video" ? "video" : "audio",
+          mediaType: isVideo ? "video" : "audio",
           addedAt: asset.modificationTime || asset.creationTime || Date.now(),
+          thumbnailUri: isVideo ? await createVideoThumbnail(uri, asset.duration ?? 0) : undefined,
         };
       };
 
-      setItems((current) => mergeMediaItems(current, [...audioPage.assets, ...videoPage.assets].map(asMediaItem)));
+      const scanned = await mapWithConcurrency([...audioPage.assets, ...videoPage.assets], asMediaItem);
+      setItems((current) => mergeMediaItems(current, scanned));
       return true;
     } catch {
       return false;
@@ -145,6 +182,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           duration: 0,
           mediaType,
           addedAt: asset.lastModified ?? Date.now(),
+          thumbnailUri: mediaType === "video" ? await createVideoThumbnail(persistentUri) : undefined,
         };
       }))).filter((item): item is MediaItem => item !== null);
 
@@ -153,12 +191,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   const createPlaylist = useCallback(async (rawName: string) => {
     const name = rawName.trim();
-    if (!name || playlists.some((playlist) => playlist.name.toLowerCase() === name.toLowerCase())) return false;
+    if (!name || playlists.some((playlist) => playlist.name.toLowerCase() === name.toLowerCase())) return null;
+    const playlist = { id: `playlist:${Date.now()}`, name, itemIds: [], createdAt: Date.now() };
     setPlaylists((current) => [
-      { id: `playlist:${Date.now()}`, name, itemIds: [], createdAt: Date.now() },
+      playlist,
       ...current,
     ]);
-    return true;
+    return playlist;
   }, [playlists]);
 
   const createPlaylistFromTemplate = useCallback(async (templateId: PlaylistTemplateId) => {

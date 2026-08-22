@@ -27,10 +27,11 @@ export function formatDuration(rawSeconds: number) {
 
 export function Artwork({ item, size = 52 }: { item: MediaItem; size?: number }) {
   const isVideo = item.mediaType === "video";
+  const initial = item.title.trim().charAt(0).toLocaleUpperCase("ar") || "♫";
   return (
     <View style={[styles.artwork, { width: size, height: size, borderRadius: Math.max(12, size * 0.23) }, isVideo && styles.videoArtwork]}>
-      {item.thumbnailUri ? <Image source={{ uri: item.thumbnailUri }} style={StyleSheet.absoluteFillObject} /> : null}
-      <MaterialIcons name={isVideo ? "play-circle-filled" : "graphic-eq"} size={Math.max(20, size * 0.46)} color={isVideo ? colors.cyan : "#D7C7FF"} />
+      {item.thumbnailUri ? <Image source={{ uri: item.thumbnailUri }} style={StyleSheet.absoluteFillObject} /> : <View style={[styles.audioFallback, { borderRadius: Math.max(12, size * 0.23) }]}><Text style={[styles.audioInitial, { fontSize: Math.max(16, size * 0.34) }]}>{initial}</Text><MaterialIcons name="music-note" size={Math.max(15, size * 0.28)} color="rgba(255,255,255,0.72)" style={styles.audioNote} /></View>}
+      {isVideo ? <View style={styles.videoPlayBadge}><MaterialIcons name="play-arrow" size={Math.max(19, size * 0.38)} color={colors.text} /></View> : null}
     </View>
   );
 }
@@ -66,6 +67,10 @@ export function EmptyState({ icon, title, description, actionLabel, onAction }: 
 const styles = StyleSheet.create({
   artwork: { alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#2A2150", borderWidth: 1, borderColor: "#41346F" },
   videoArtwork: { backgroundColor: "#0D3E52", borderColor: "#1B627D" },
+  audioFallback: { ...StyleSheet.absoluteFillObject, backgroundColor: "#3C2B68", justifyContent: "center", alignItems: "center" },
+  audioInitial: { color: "#FFFFFF", fontWeight: "900" },
+  audioNote: { position: "absolute", left: 6, bottom: 5 },
+  videoPlayBadge: { width: "48%", aspectRatio: 1, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.54)", alignItems: "center", justifyContent: "center" },
   mediaRow: { minHeight: 72, flexDirection: "row-reverse", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
   pressed: { opacity: 0.68 },
   mediaInfo: { flex: 1, alignItems: "flex-end" },
