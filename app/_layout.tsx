@@ -14,6 +14,7 @@ import { MiniPlayer } from "@/components/mini-player";
 import { DeveloperCreditToast } from "@/components/developer-credit-toast";
 import { AppSideMenuProvider } from "@/components/app-side-menu";
 import { IntroScreen } from "@/components/intro-screen";
+import { YandexAdsInitializer } from "@/components/yandex-ads-initializer";
 import { LanguageProvider } from "@/lib/language-provider";
 import {
   SafeAreaFrameContext,
@@ -96,6 +97,7 @@ export default function RootLayout() {
           <LanguageProvider>
             <LibraryProvider>
               <PlayerProvider>
+              <YandexAdsInitializer />
               {introComplete ? <AppSideMenuProvider>
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="(tabs)" />
