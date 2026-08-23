@@ -8,6 +8,10 @@ const HORIZONTAL_SWIPE_THRESHOLD = 32;
 const VERTICAL_SWIPE_THRESHOLD = 28;
 
 export function resolveVideoGesture(translationX: number, translationY: number, touchX: number, surfaceWidth: number): VideoGestureAction {
+  if (![translationX, translationY, touchX, surfaceWidth].every(Number.isFinite) || surfaceWidth <= 0) {
+    return null;
+  }
+
   const horizontalDistance = Math.abs(translationX);
   const verticalDistance = Math.abs(translationY);
 

@@ -18,4 +18,10 @@ describe("video gesture resolution", () => {
   it("ignores taps and short accidental movement", () => {
     expect(resolveVideoGesture(12, 9, 50, 300)).toBeNull();
   });
+
+  it("ignores invalid native gesture values instead of throwing", () => {
+    expect(resolveVideoGesture(Number.NaN, 40, 50, 300)).toBeNull();
+    expect(resolveVideoGesture(4, 40, Number.NaN, 300)).toBeNull();
+    expect(resolveVideoGesture(4, 40, 50, 0)).toBeNull();
+  });
 });
