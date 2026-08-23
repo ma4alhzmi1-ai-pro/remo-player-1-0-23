@@ -1,18 +1,14 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { Directory, File, Paths } from "expo-file-system";
+import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
-import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { useLibrary } from "@/lib/library-context";
 import { usePlayer } from "@/lib/player-context";
-
-function getImagePicker() {
-  if (Platform.OS === "web") return null;
-  return require("expo-image-picker") as typeof import("expo-image-picker");
-}
 
 export default function EditAudioScreen() {
   const router = useRouter();
@@ -24,7 +20,7 @@ export default function EditAudioScreen() {
   const [lyrics, setLyrics] = useState(currentItem?.lyrics ?? "");
   const [coverUri, setCoverUri] = useState(currentItem?.thumbnailUri ?? "");
   if (!currentItem || currentItem.mediaType !== "audio") return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر أغنية أولاً.</Text></View></ScreenContainer>;
-  const chooseCover = async () => { const ImagePicker = getImagePicker(); if (!ImagePicker) { Alert.alert("اختيار الغلاف", "اختيار غلاف من صور الجهاز متاح في تطبيق Android فقط."); return; } const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.85 }); if (!result.canceled) setCoverUri(saveCoverLocally(result.assets[0].uri)); };
+  const chooseCover = async () => { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.85 }); if (!result.canceled) setCoverUri(saveCoverLocally(result.assets[0].uri)); };
   const save = async () => { const changes = { title: title.trim() || currentItem.title, artist: artist.trim() || "فنان غير معروف", album: album.trim() || "بدون ألبوم", lyrics: lyrics.trim(), thumbnailUri: coverUri || undefined }; await updateMediaItem(currentItem.id, changes); setCurrentItem({ ...currentItem, ...changes }); Alert.alert("تم حفظ التعديلات", "حُفظت بيانات المسار وتخصيصاته محلياً على جهازك."); router.back(); };
   return <ScreenContainer edges={["top", "bottom", "left", "right"]}><ScrollView contentContainerStyle={styles.content}><View style={styles.header}><Pressable onPress={() => router.back()} style={styles.headerButton}><MaterialIcons name="arrow-forward" size={24} color={colors.text} /></Pressable><Text style={styles.headerTitle}>تحرير الأغنية</Text><Pressable onPress={() => void save()} style={styles.saveHeader}><Text style={styles.saveHeaderText}>حفظ</Text></Pressable></View><Pressable onPress={() => void chooseCover()} style={styles.coverPicker}>{coverUri ? <Image source={{ uri: coverUri }} style={styles.coverImage} /> : <View style={styles.coverFallback}><MaterialIcons name="music-note" size={43} color={colors.cyan} /></View>}<View style={styles.coverEdit}><MaterialIcons name="photo-camera" size={17} color={colors.background} /></View></Pressable><Text style={styles.coverHint}>اضغط لاختيار غلاف أو خلفية مخصصة</Text><Field label="اسم الأغنية" value={title} onChangeText={setTitle} /><Field label="الفنان" value={artist} onChangeText={setArtist} /><Field label="الألبوم" value={album} onChangeText={setAlbum} /><Text style={styles.label}>الكلمات</Text><TextInput value={lyrics} onChangeText={setLyrics} placeholder="ألصق كلمات الأغنية هنا لعرضها أثناء التشغيل" placeholderTextColor={colors.muted} multiline textAlign="right" style={styles.lyricsInput} /><Pressable onPress={() => void save()} style={({ pressed }) => [styles.saveButton, pressed && styles.dimmed]}><Text style={styles.saveButtonText}>حفظ كل التعديلات</Text></Pressable></ScrollView></ScreenContainer>;
 }

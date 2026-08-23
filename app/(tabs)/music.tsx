@@ -15,7 +15,7 @@ type MusicView = "tracks" | "albums" | "artists" | "folders";
 type Collection = MediaItem & { name: string; count: number; items: MediaItem[]; icon: keyof typeof MaterialIcons.glyphMap };
 type Folder = MediaItem & { name: string; path: string; items: MediaItem[] };
 
-const views: Array<{ id: MusicView; label: string }> = [
+const views: { id: MusicView; label: string }[] = [
   { id: "tracks", label: "الأغاني" },
   { id: "albums", label: "الألبومات" },
   { id: "artists", label: "الفنانون" },
@@ -36,14 +36,14 @@ export default function MusicScreen() {
   const albums = useMemo(() => groupTracks(tracks, "album", "album"), [tracks]);
   const folders = useMemo(() => groupFolders(tracks), [tracks]);
   const visibleTracks = useMemo(() => filterMediaItems(tracks, query), [query, tracks]);
+  const visibleFolders = useMemo(() => folders.filter((folder) => !query.trim() || `${folder.title} ${folder.path}`.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [folders, query]);
+  const visibleAlbums = useMemo(() => albums.filter((album) => !query.trim() || album.name.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [albums, query]);
+  const visibleArtists = useMemo(() => artists.filter((artist) => !query.trim() || artist.name.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [artists, query]);
   const openTrack = async (item: MediaItem) => { await playItem(item, tracks); router.push("/player/audio" as never); };
 
   if (selectedCollection) return <CollectionDetail title={selectedCollection.name} subtitle={`${selectedCollection.count} أغنيات`} items={selectedCollection.items} onBack={() => setSelectedCollection(null)} onOpenTrack={openTrack} />;
   if (selectedFolder) return <CollectionDetail title={selectedFolder.title} subtitle={`${selectedFolder.items.length} أغنيات · ${selectedFolder.path}`} items={selectedFolder.items} onBack={() => setSelectedFolder(null)} onOpenTrack={openTrack} />;
 
-  const visibleFolders = useMemo(() => folders.filter((folder) => !query.trim() || `${folder.title} ${folder.path}`.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [folders, query]);
-  const visibleAlbums = useMemo(() => albums.filter((album) => !query.trim() || album.name.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [albums, query]);
-  const visibleArtists = useMemo(() => artists.filter((artist) => !query.trim() || artist.name.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [artists, query]);
   return <ScreenContainer className="px-0"><FlatList data={activeView === "tracks" ? visibleTracks : activeView === "folders" ? visibleFolders : activeView === "albums" ? visibleAlbums : visibleArtists} keyExtractor={(item) => "items" in item ? (item as unknown as Folder | Collection).name : (item as MediaItem).id} renderItem={({ item }) => {
     if ("items" in item && activeView === "folders") return <FolderRow folder={item as unknown as Folder} onPress={() => setSelectedFolder(item as unknown as Folder)} />;
     if ("items" in item) return <CollectionRow collection={item as unknown as Collection} onPress={() => setSelectedCollection(item as unknown as Collection)} />;
