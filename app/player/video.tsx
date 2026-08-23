@@ -21,14 +21,14 @@ import { resolveVideoGesture } from "@/lib/video-gesture";
 import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import type { MediaItem } from "@/types/media";
 
-type DisplayMode = "auto" | "cinematic" | "hdr" | "ultra";
+type DisplayMode = "auto" | "cinematic" | "hdr" | "quality";
 type TranslationLanguage = "العربية" | "English" | "Français" | "Español" | "Türkçe";
 
 const displayModes: { id: DisplayMode; label: string }[] = [
   { id: "auto", label: "تلقائي" },
   { id: "cinematic", label: "سينمائي" },
   { id: "hdr", label: "HDR" },
-  { id: "ultra", label: "فائق الدقة" },
+  { id: "quality", label: "الجودة" },
 ];
 const translationLanguages: TranslationLanguage[] = ["العربية", "English", "Français", "Español", "Türkçe"];
 
@@ -205,9 +205,13 @@ export default function VideoPlayerScreen() {
     void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
   };
   const chooseMode = (mode: DisplayMode) => {
-    if (mode === "ultra") {
+    if (mode === "quality") {
       const bestTrack = [...player.availableVideoTracks].filter((track) => track.isSupported).sort((a, b) => (b.size.width * b.size.height) - (a.size.width * a.size.height))[0];
-      Alert.alert("الجودة الفائقة", bestTrack ? `يستخدم Android أفضل مسار مدعوم: ${bestTrack.size.width}×${bestTrack.size.height}.` : "سيستمر Android باستخدام أفضل جودة يدعمها الجهاز والملف.");
+      if (bestTrack) {
+        Alert.alert("معلومات الجودة", `أعلى مسار متاح لهذا الملف هو ${bestTrack.size.width}×${bestTrack.size.height}. يختار Android المسار الفعلي وفق دعم الجهاز والترميز.`);
+      } else {
+        Alert.alert("معلومات الجودة", "لا يوفّر هذا الملف مسارات جودة قابلة للفحص؛ يستخدم Android أفضل جودة يدعمها الجهاز والترميز.");
+      }
     }
     if (mode === "hdr") Alert.alert("HDR عند توفره", "يعرض Android HDR تلقائياً عندما يدعمه الفيديو وشاشة جهازك.");
     setDisplayMode(mode);
@@ -232,7 +236,7 @@ export default function VideoPlayerScreen() {
   const shareVideo = async () => { setIsSharing(true); try { if (!(await Sharing.isAvailableAsync())) { Alert.alert("المشاركة غير متاحة", "لا تتوفر لوحة المشاركة في بيئة المعاينة أو على هذا الجهاز."); return; } await Sharing.shareAsync(currentItem.uri, { dialogTitle: `مشاركة ${currentItem.title}`, mimeType: "video/*" }); } catch { Alert.alert("تعذرت المشاركة", "تحقق من أن الملف ما زال متاحاً ويمكن للتطبيق قراءته."); } finally { setIsSharing(false); } };
   const importSubtitleFile = async () => { try { const result = await DocumentPicker.getDocumentAsync({ type: "*/*", multiple: false, copyToCacheDirectory: true }); if (result.canceled) return; const asset = result.assets[0]; if (!supportsSubtitleImport(asset.name)) { Alert.alert("صيغة ترجمة غير مدعومة", "اختر ملف ترجمة نصياً من صيغ SRT أو VTT أو ASS أو SSA أو SAMI أو SUB أو MPL أو PJS أو TXT."); return; } const content = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 }); const cues = parseSubtitleFile(content, asset.name); const extension = asset.name.split(".").pop()?.toUpperCase() ?? "SUB"; const track: LocalSubtitleTrack = { targetLanguage: `ملف ${extension}`, detectedLanguage: "ترجمة محلية", createdAt: Date.now(), cues }; await saveLocalSubtitles(currentItem.id, track); setSubtitleTrack(track); setSubtitleEnabled(true); Alert.alert("تم استيراد الترجمة", `أُضيفت ${cues.length} أسطر من ملف ${asset.name}.`); } catch (error) { const message = error instanceof Error ? error.message : "تعذر قراءة ملف الترجمة."; Alert.alert("تعذر استيراد الترجمة", message); } };
   const generateTranslation = async () => { try { const videoBase64 = await readVideoForTranslation(currentItem.uri); const generated = await translateMutation.mutateAsync({ videoBase64, targetLanguage }); const track: LocalSubtitleTrack = { ...generated, createdAt: Date.now() }; await saveLocalSubtitles(currentItem.id, track); setSubtitleTrack(track); setSubtitleEnabled(true); setTranslationOpen(false); Alert.alert("تم إنشاء الترجمة", `حُفظت ${track.cues.length} أسطر باللغة ${targetLanguage} داخل REMO PLAYER.`); } catch (error) { const message = error instanceof Error ? error.message : "تعذّر إنشاء الترجمة حالياً."; Alert.alert("تعذرت الترجمة", message); } };
-  const displayIcon = (mode: DisplayMode): keyof typeof MaterialIcons.glyphMap => mode === "hdr" ? "hdr-on" : mode === "cinematic" ? "movie-filter" : mode === "ultra" ? "high-quality" : "auto-awesome";
+  const displayIcon = (mode: DisplayMode): keyof typeof MaterialIcons.glyphMap => mode === "hdr" ? "hdr-on" : mode === "cinematic" ? "movie-filter" : mode === "quality" ? "high-quality" : "auto-awesome";
   const topActions: { icon: keyof typeof MaterialIcons.glyphMap; label: string; active?: boolean; onPress: () => void }[] = [
     ...displayModes.map((mode) => ({ icon: displayIcon(mode.id), label: mode.label, active: displayMode === mode.id, onPress: () => chooseMode(mode.id) })),
     { icon: "translate", label: "ترجمة", active: Boolean(subtitleTrack), onPress: () => setTranslationOpen(true) },
