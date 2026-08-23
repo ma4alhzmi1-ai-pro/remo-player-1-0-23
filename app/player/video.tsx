@@ -98,12 +98,26 @@ export default function VideoPlayerScreen() {
   }, []);
 
   useEffect(() => {
+    if (!currentItem || currentItem.mediaType !== "video" || Platform.OS === "web") return;
+    let active = true;
+    setIsFullscreen(true);
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {
+      if (active) setIsFullscreen(false);
+    });
+    return () => {
+      active = false;
+      void ScreenOrientation.unlockAsync();
+    };
+  }, [currentItem?.id, currentItem?.mediaType]);
+
+  useEffect(() => {
     if (!videoSource) return;
     const generation = ++replaceGenerationRef.current;
     setIsPlaying(false);
     player.pause();
     void player.replaceAsync(videoSource).then(() => {
       if (generation !== replaceGenerationRef.current) return;
+      void prepareMediaNotificationControls();
       player.staysActiveInBackground = backgroundEnabled;
       player.showNowPlayingNotification = true;
       player.play();
@@ -246,6 +260,36 @@ export default function VideoPlayerScreen() {
       }),
   ), [handleMediaGestureEnd]);
 
+  const previousVideo = useCallback(async () => {
+    if (transitionLockRef.current) return;
+    transitionLockRef.current = true;
+    const advanced = await playPrevious().catch(() => false);
+    if (!advanced) {
+      player.seekBy(-10);
+      transitionLockRef.current = false;
+    }
+  }, [playPrevious, player]);
+
+  const nextVideo = useCallback(async () => {
+    if (transitionLockRef.current) return;
+    transitionLockRef.current = true;
+    const advanced = await playNext(repeatMode === "all").catch(() => false);
+    if (!advanced) {
+      setIsPlaying(false);
+      transitionLockRef.current = false;
+    }
+  }, [playNext, repeatMode]);
+
+  useEffect(() => {
+    const addRemoteListener = player.addListener as unknown as (event: string, listener: () => void) => { remove: () => void };
+    const previousSubscription = addRemoteListener("remotePrevious", () => { void previousVideo(); });
+    const nextSubscription = addRemoteListener("remoteNext", () => { void nextVideo(); });
+    return () => {
+      previousSubscription.remove();
+      nextSubscription.remove();
+    };
+  }, [nextVideo, player, previousVideo]);
+
   if (!currentItem || currentItem.mediaType !== "video") {
     return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر فيديو من مكتبتك أولاً.</Text><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/video" as never)} style={styles.backButton}><Text style={styles.backText}>العودة للفيديوهات</Text></Pressable></View></ScreenContainer>;
   }
@@ -274,24 +318,6 @@ export default function VideoPlayerScreen() {
   const openPip = async () => { if (!isPictureInPictureSupported()) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } try { await viewRef.current?.startPictureInPicture(); } catch { Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
   const setAbPoint = () => { if (repeatStart === null || repeatEnd !== null) { setRepeatStart(player.currentTime); setRepeatEnd(null); Alert.alert("تكرار A–B", "تم تحديد النقطة A. انتقل إلى نهاية المقطع واضغط الزر مرة أخرى لتحديد B."); } else { const end = Math.max(player.currentTime, repeatStart + 1); setRepeatEnd(end); Alert.alert("تكرار A–B", `سيُكرر المشغل المقطع بين ${formatDuration(repeatStart)} و${formatDuration(end)}.`); } };
   const resetAb = () => { setRepeatStart(null); setRepeatEnd(null); };
-  const previousVideo = async () => {
-    if (transitionLockRef.current) return;
-    transitionLockRef.current = true;
-    const advanced = await playPrevious().catch(() => false);
-    if (!advanced) {
-      player.seekBy(-10);
-      transitionLockRef.current = false;
-    }
-  };
-  const nextVideo = async () => {
-    if (transitionLockRef.current) return;
-    transitionLockRef.current = true;
-    const advanced = await playNext(repeatMode === "all").catch(() => false);
-    if (!advanced) {
-      setIsPlaying(false);
-      transitionLockRef.current = false;
-    }
-  };
   const toggleFullscreen = async () => {
     const next = !isFullscreen;
     setIsFullscreen(next);
