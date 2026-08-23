@@ -1,12 +1,13 @@
 export type VideoGestureAction =
   | { type: "seek"; seconds: number }
   | { type: "volume"; delta: number }
+  | { type: "brightness"; delta: number }
   | null;
 
 const HORIZONTAL_SWIPE_THRESHOLD = 32;
 const VERTICAL_SWIPE_THRESHOLD = 28;
 
-export function resolveVideoGesture(translationX: number, translationY: number): VideoGestureAction {
+export function resolveVideoGesture(translationX: number, translationY: number, touchX: number, surfaceWidth: number): VideoGestureAction {
   const horizontalDistance = Math.abs(translationX);
   const verticalDistance = Math.abs(translationY);
 
@@ -16,7 +17,8 @@ export function resolveVideoGesture(translationX: number, translationY: number):
   }
 
   if (verticalDistance >= VERTICAL_SWIPE_THRESHOLD) {
-    return { type: "volume", delta: translationY < 0 ? 0.1 : -0.1 };
+    const delta = translationY < 0 ? 0.1 : -0.1;
+    return touchX >= surfaceWidth / 2 ? { type: "brightness", delta } : { type: "volume", delta };
   }
 
   return null;

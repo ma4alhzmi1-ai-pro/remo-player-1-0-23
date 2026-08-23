@@ -4,6 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Sharing from "expo-sharing";
+import * as Brightness from "expo-brightness";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -35,6 +36,11 @@ export default function VideoPlayerScreen() {
   const router = useRouter();
   const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat } = usePlayer();
   const viewRef = useRef<any>(null);
+  const gestureStartXRef = useRef(0);
+  const volumeRef = useRef(1);
+  const brightnessRef = useRef(0.5);
+  const brightnessOverrideRef = useRef(false);
+  const brightnessReadyRef = useRef(false);
   const isAutoAdvancingRef = useRef(false);
   const replaceGenerationRef = useRef(0);
   const transitionLockRef = useRef(false);
@@ -44,6 +50,8 @@ export default function VideoPlayerScreen() {
   const [speed, setSpeed] = useState(1);
   const [volume, setVolume] = useState(1);
   const [volumeHud, setVolumeHud] = useState(false);
+  const [brightness, setBrightness] = useState(0.5);
+  const [brightnessHud, setBrightnessHud] = useState(false);
   const [backgroundEnabled, setBackgroundEnabled] = useState(true);
   const [muted, setMuted] = useState(false);
   const [mirrored, setMirrored] = useState(false);
@@ -165,21 +173,59 @@ export default function VideoPlayerScreen() {
     return () => clearTimeout(timeout);
   }, [volumeHud]);
 
+  useEffect(() => {
+    if (!brightnessHud) return;
+    const timeout = setTimeout(() => setBrightnessHud(false), 900);
+    return () => clearTimeout(timeout);
+  }, [brightnessHud]);
+
+  useEffect(() => () => {
+    if (Platform.OS !== "web" && brightnessOverrideRef.current) {
+      void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
+    }
+  }, []);
+
   const changeVolume = useCallback((amount: number) => {
-    const nextVolume = Math.max(0, Math.min(1, Number((volume + amount).toFixed(2))));
+    const nextVolume = Math.max(0, Math.min(1, Number((volumeRef.current + amount).toFixed(2))));
+    volumeRef.current = nextVolume;
     player.volume = nextVolume;
     setVolume(nextVolume);
     setVolumeHud(true);
-  }, [player, volume]);
+  }, [player]);
 
-  const handleMediaGestureEnd = useCallback((translationX: number, translationY: number) => {
+  const changeBrightness = useCallback((amount: number) => {
+    if (Platform.OS === "web") return;
+    void (async () => {
+      try {
+        if (!brightnessReadyRef.current) {
+          if (!(await Brightness.isAvailableAsync())) return;
+          const permissions = await Brightness.getPermissionsAsync();
+          const permission = permissions.granted ? permissions : await Brightness.requestPermissionsAsync();
+          if (!permission.granted) return;
+          brightnessRef.current = await Brightness.getBrightnessAsync();
+          brightnessReadyRef.current = true;
+        }
+        const nextBrightness = Math.max(0.05, Math.min(1, Number((brightnessRef.current + amount).toFixed(2))));
+        await Brightness.setBrightnessAsync(nextBrightness);
+        brightnessRef.current = nextBrightness;
+        brightnessOverrideRef.current = true;
+        setBrightness(nextBrightness);
+        setBrightnessHud(true);
+      } catch {
+        // Brightness is optional and must never interrupt media playback.
+      }
+    })();
+  }, []);
+
+  const handleMediaGestureEnd = useCallback((translationX: number, translationY: number, touchX: number) => {
     if (transitionLockRef.current) return;
-    const action = resolveVideoGesture(translationX, translationY);
+    const action = resolveVideoGesture(translationX, translationY, touchX, width);
     if (!action) return;
     if (action.type === "seek") player.seekBy(action.seconds);
-    else changeVolume(action.delta);
+    else if (action.type === "volume") changeVolume(action.delta);
+    else changeBrightness(action.delta);
     setControlsVisible(true);
-  }, [changeVolume, player]);
+  }, [changeBrightness, changeVolume, player, width]);
 
   const mediaGesture = useMemo(() => Gesture.Exclusive(
     Gesture.Pan()
@@ -187,8 +233,9 @@ export default function VideoPlayerScreen() {
       .maxPointers(1)
       .averageTouches(true)
       .runOnJS(true)
+      .onStart((event) => { gestureStartXRef.current = event.x; })
       .onEnd((event, success) => {
-        if (success) handleMediaGestureEnd(event.translationX, event.translationY);
+        if (success) handleMediaGestureEnd(event.translationX, event.translationY, gestureStartXRef.current);
       }),
     Gesture.Tap()
       .maxDistance(10)
@@ -278,6 +325,7 @@ export default function VideoPlayerScreen() {
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <View pointerEvents="none" style={styles.volumeHud}><MaterialIcons name="volume-up" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(volume * 100)}%</Text></View> : null}
+        {brightnessHud ? <View pointerEvents="none" style={styles.brightnessHud}><MaterialIcons name="brightness-6" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(brightness * 100)}%</Text></View> : null}
         {controlsVisible ? <View style={styles.overlay} pointerEvents="box-none">
           <View style={styles.overlayTop}><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/video" as never)} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>
@@ -296,7 +344,7 @@ function TranslationSheet({ visible, item, selectedLanguage, onSelectLanguage, g
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 }, landscapeRoot: { backgroundColor: "#02060B" }, header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" }, headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" }, headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 }, mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden" }, fullViewportSurface: { flex: 1, aspectRatio: undefined }, cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 }, videoContainer: { flex: 1 }, mirrored: { transform: [{ scaleX: -1 }] }, video: { flex: 1 }, nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" }, subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" }, subtitleText: { color: "#FFFFFF", fontSize: 15, lineHeight: 22, fontWeight: "800", textAlign: "center" }, volumeHud: { position: "absolute", top: "41%", alignSelf: "center", minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" }, overlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", backgroundColor: "rgba(0, 8, 15, 0.28)", paddingVertical: 10 }, overlayTop: { paddingHorizontal: 14, flexDirection: "row-reverse", alignItems: "center", gap: 8 }, overlayTitle: { flex: 1, color: colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" }, overlayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.36)" }, topActions: { paddingHorizontal: 14, gap: 7, alignItems: "center" }, topAction: { minHeight: 31, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: "rgba(8,17,31,0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" }, topActionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, topActionText: { color: colors.text, fontSize: 10, fontWeight: "800" }, topActionTextActive: { color: colors.background }, centerControls: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 28 }, transport: { width: 45, height: 45, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" }, playButton: { width: 62, height: 62, borderRadius: 31, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.text, backgroundColor: "rgba(0,0,0,0.36)" }, overlayBottom: { paddingHorizontal: 15 }, progressWrap: { flexDirection: "row-reverse", alignItems: "center", gap: 8 }, time: { color: colors.text, fontSize: 10, fontVariant: ["tabular-nums"] }, progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.42)", overflow: "hidden" }, progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.cyan }, quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "space-between", gap: 5 }, quickIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)", alignItems: "center", justifyContent: "center" }, quickIconActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, quickSpeed: { color: colors.text, fontSize: 10, fontWeight: "900" }, resetAb: { alignSelf: "center", marginTop: 14, paddingHorizontal: 13, minHeight: 38, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 5 }, resetAbText: { color: colors.cyan, fontSize: 12, fontWeight: "800" }, dimmed: { opacity: 0.6 }, empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 }, emptyText: { color: colors.muted, fontSize: 15 }, backButton: { height: 42, paddingHorizontal: 16, borderRadius: 13, backgroundColor: colors.cyan, justifyContent: "center" }, backText: { color: colors.background, fontWeight: "800" },
+  root: { flex: 1 }, landscapeRoot: { backgroundColor: "#02060B" }, header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" }, headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" }, headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 }, mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden" }, fullViewportSurface: { flex: 1, aspectRatio: undefined }, cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 }, videoContainer: { flex: 1 }, mirrored: { transform: [{ scaleX: -1 }] }, video: { flex: 1 }, nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" }, subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" }, subtitleText: { color: "#FFFFFF", fontSize: 15, lineHeight: 22, fontWeight: "800", textAlign: "center" }, volumeHud: { position: "absolute", top: "41%", left: 22, minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, brightnessHud: { position: "absolute", top: "41%", right: 22, minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" }, overlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", backgroundColor: "rgba(0, 8, 15, 0.28)", paddingVertical: 10 }, overlayTop: { paddingHorizontal: 14, flexDirection: "row-reverse", alignItems: "center", gap: 8 }, overlayTitle: { flex: 1, color: colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" }, overlayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.36)" }, topActions: { paddingHorizontal: 14, gap: 7, alignItems: "center" }, topAction: { minHeight: 31, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: "rgba(8,17,31,0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" }, topActionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, topActionText: { color: colors.text, fontSize: 10, fontWeight: "800" }, topActionTextActive: { color: colors.background }, centerControls: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 28 }, transport: { width: 45, height: 45, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" }, playButton: { width: 62, height: 62, borderRadius: 31, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.text, backgroundColor: "rgba(0,0,0,0.36)" }, overlayBottom: { paddingHorizontal: 15 }, progressWrap: { flexDirection: "row-reverse", alignItems: "center", gap: 8 }, time: { color: colors.text, fontSize: 10, fontVariant: ["tabular-nums"] }, progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.42)", overflow: "hidden" }, progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.cyan }, quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "space-between", gap: 5 }, quickIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)", alignItems: "center", justifyContent: "center" }, quickIconActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, quickSpeed: { color: colors.text, fontSize: 10, fontWeight: "900" }, resetAb: { alignSelf: "center", marginTop: 14, paddingHorizontal: 13, minHeight: 38, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 5 }, resetAbText: { color: colors.cyan, fontSize: 12, fontWeight: "800" }, dimmed: { opacity: 0.6 }, empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 }, emptyText: { color: colors.muted, fontSize: 15 }, backButton: { height: 42, paddingHorizontal: 16, borderRadius: 13, backgroundColor: colors.cyan, justifyContent: "center" }, backText: { color: colors.background, fontWeight: "800" },
 });
 
 const sheetStyles = StyleSheet.create({
