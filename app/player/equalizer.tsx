@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PanResponder, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 
 import { colors } from "@/components/remo-ui";
@@ -13,7 +13,7 @@ const EQUALIZER_STORAGE_KEY = "remo-player.equalizer.v1";
 type RoomEffect = "none" | "small" | "medium" | "large";
 type StoredEqualizer = { enabled: boolean; preset: EqualizerPresetId; bands: number[]; room: RoomEffect; bass: number; virtualizer: number };
 
-const roomOptions: Array<{ id: RoomEffect; label: string }> = [
+const roomOptions: { id: RoomEffect; label: string }[] = [
   { id: "none", label: "لا شيء" },
   { id: "small", label: "غرفة صغيرة" },
   { id: "medium", label: "غرفة متوسطة" },
@@ -102,8 +102,8 @@ export default function EqualizerScreen() {
 function FrequencyBand({ value, frequency, onChange, disabled }: { value: number; frequency: number; onChange: (value: number) => void; disabled: boolean }) {
   const height = 230;
   const percent = ((value + 12) / 24) * 100;
-  const applyY = (y: number) => { if (!disabled) onChange(12 - (y / height) * 24); };
-  const responder = useMemo(() => PanResponder.create({ onStartShouldSetPanResponder: () => !disabled, onMoveShouldSetPanResponder: () => !disabled, onPanResponderGrant: (event) => applyY(event.nativeEvent.locationY), onPanResponderMove: (event) => applyY(event.nativeEvent.locationY) }), [disabled, onChange]);
+  const applyY = useCallback((y: number) => { if (!disabled) onChange(12 - (y / height) * 24); }, [disabled, onChange]);
+  const responder = useMemo(() => PanResponder.create({ onStartShouldSetPanResponder: () => !disabled, onMoveShouldSetPanResponder: () => !disabled, onPanResponderGrant: (event) => applyY(event.nativeEvent.locationY), onPanResponderMove: (event) => applyY(event.nativeEvent.locationY) }), [applyY, disabled]);
   return <View style={styles.bandWrap}><Text style={styles.dbLabel}>{value >= 0 ? `${value}dB` : `${value}dB`}</Text><View {...responder.panHandlers} style={styles.bandHit}><View style={styles.bandRail}><View style={[styles.bandFill, { height: `${percent}%` }]} /><View style={[styles.bandThumb, { bottom: `${Math.max(0, Math.min(100, percent))}%` }]} /></View></View><Text style={styles.frequency}>{frequency >= 1000 ? `${frequency / 1000}kHz` : `${frequency}Hz`}</Text></View>;
 }
 
