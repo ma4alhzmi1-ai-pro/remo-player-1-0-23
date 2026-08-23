@@ -5,7 +5,8 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { isPictureInPictureSupported, VideoView, useVideoPlayer } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
@@ -16,6 +17,7 @@ import { loadLocalSubtitles, saveLocalSubtitles, type LocalSubtitleTrack } from 
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
 import { readVideoForTranslation } from "@/lib/translation-upload";
 import { trpc } from "@/lib/trpc";
+import { resolveVideoGesture } from "@/lib/video-gesture";
 import type { MediaItem } from "@/types/media";
 
 type DisplayMode = "auto" | "cinematic" | "hdr" | "ultra";
@@ -33,7 +35,6 @@ export default function VideoPlayerScreen() {
   const router = useRouter();
   const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat } = usePlayer();
   const viewRef = useRef<any>(null);
-  const touchStartX = useRef(0);
   const isAutoAdvancingRef = useRef(false);
   const replaceGenerationRef = useRef(0);
   const transitionLockRef = useRef(false);
@@ -171,23 +172,32 @@ export default function VideoPlayerScreen() {
     setVolumeHud(true);
   }, [player, volume]);
 
-  const panResponder = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 18 || Math.abs(gesture.dy) > 18,
-    onPanResponderGrant: (event) => { touchStartX.current = event.nativeEvent.locationX; },
-    onPanResponderRelease: (_, gesture) => {
-      if (transitionLockRef.current) return;
-      if (Math.abs(gesture.dx) >= Math.abs(gesture.dy) && Math.abs(gesture.dx) > 28) {
-        const seconds = Math.max(5, Math.min(45, Math.round(Math.abs(gesture.dx) / 7)));
-        player.seekBy(gesture.dx > 0 ? seconds : -seconds);
-        setControlsVisible(true);
-        return;
-      }
-      if (Math.abs(gesture.dy) > 26) {
-        changeVolume(gesture.dy < 0 ? 0.1 : -0.1);
-        setControlsVisible(true);
-      }
-    },
-  }), [changeVolume, player, width]);
+  const handleMediaGestureEnd = useCallback((translationX: number, translationY: number) => {
+    if (transitionLockRef.current) return;
+    const action = resolveVideoGesture(translationX, translationY);
+    if (!action) return;
+    if (action.type === "seek") player.seekBy(action.seconds);
+    else changeVolume(action.delta);
+    setControlsVisible(true);
+  }, [changeVolume, player]);
+
+  const mediaGesture = useMemo(() => Gesture.Exclusive(
+    Gesture.Pan()
+      .minDistance(12)
+      .maxPointers(1)
+      .averageTouches(true)
+      .runOnJS(true)
+      .onEnd((event, success) => {
+        if (success) handleMediaGestureEnd(event.translationX, event.translationY);
+      }),
+    Gesture.Tap()
+      .maxDistance(10)
+      .maxDuration(350)
+      .runOnJS(true)
+      .onEnd((_event, success) => {
+        if (success) setControlsVisible((visible) => !visible);
+      }),
+  ), [handleMediaGestureEnd]);
 
   if (!currentItem || currentItem.mediaType !== "video") {
     return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر فيديو من مكتبتك أولاً.</Text><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/video" as never)} style={styles.backButton}><Text style={styles.backText}>العودة للفيديوهات</Text></Pressable></View></ScreenContainer>;
@@ -263,8 +273,8 @@ export default function VideoPlayerScreen() {
   return <ScreenContainer edges={["top", "bottom", "left", "right"]}>
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
       {!usesFullViewport ? <View style={styles.header}><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/video" as never)} style={styles.headerIcon}><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.headerTitle}>{currentItem.title}</Text><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.headerIcon}><MaterialIcons name="share" size={21} color={colors.text} /></Pressable></View> : null}
-      <Pressable {...panResponder.panHandlers} onPress={() => setControlsVisible((visible) => !visible)} style={[styles.mediaSurface, usesFullViewport && styles.fullViewportSurface, displayMode === "cinematic" && !usesFullViewport && styles.cinematicSurface]}>
-        <View style={[styles.videoContainer, mirrored && styles.mirrored]}><VideoView ref={viewRef} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={usesFullViewport || displayMode === "cinematic" ? "cover" : "contain"} surfaceType="textureView" /></View>
+      <View style={[styles.mediaSurface, usesFullViewport && styles.fullViewportSurface, displayMode === "cinematic" && !usesFullViewport && styles.cinematicSurface]}>
+        <GestureDetector gesture={mediaGesture}><View style={[styles.videoContainer, mirrored && styles.mirrored]}><VideoView ref={viewRef} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={usesFullViewport || displayMode === "cinematic" ? "cover" : "contain"} surfaceType="textureView" /></View></GestureDetector>
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <View pointerEvents="none" style={styles.volumeHud}><MaterialIcons name="volume-up" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(volume * 100)}%</Text></View> : null}
@@ -274,7 +284,7 @@ export default function VideoPlayerScreen() {
           <View style={styles.centerControls}><Pressable onPress={() => void previousVideo()} style={styles.transport}><MaterialIcons name="skip-previous" size={32} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={40} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.transport}><MaterialIcons name="skip-next" size={32} color={colors.text} /></Pressable></View>
           <View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><View style={styles.quickIcons}><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={toggleBackground} style={[styles.quickIcon, backgroundEnabled && styles.quickIconActive]}><MaterialIcons name="headset" size={20} color={backgroundEnabled ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={() => void openPip()} style={styles.quickIcon}><MaterialIcons name="picture-in-picture-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((value) => !value)} style={[styles.quickIcon, nightMode && styles.quickIconActive]}><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable></View></View>
         </View> : null}
-      </Pressable>
+      </View>
       {!usesFullViewport && repeatEnd !== null ? <Pressable onPress={resetAb} style={styles.resetAb}><MaterialIcons name="restart-alt" size={19} color={colors.cyan} /><Text style={styles.resetAbText}>إلغاء تكرار A-B</Text></Pressable> : null}
     </View>
     <TranslationSheet visible={translationOpen} item={currentItem} selectedLanguage={targetLanguage} onSelectLanguage={setTargetLanguage} generating={translateMutation.isPending} onClose={() => setTranslationOpen(false)} onGenerate={() => void generateTranslation()} />
