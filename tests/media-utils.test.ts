@@ -26,6 +26,11 @@ describe("media utilities", () => {
     expect(inferMediaKind("notes.txt", "text/plain")).toBeNull();
   });
 
+  it("indexes MVR and FVL filenames as video formats", () => {
+    expect(inferMediaKind("sample.mvr")).toBe("video");
+    expect(inferMediaKind("sample.fvl")).toBe("video");
+  });
+
   it("extracts an artist and title from a common local media filename", () => {
     expect(parseArtistAndTitle("Nour - Midnight City.mp3")).toEqual({ artist: "Nour", title: "Midnight City" });
     expect(parseArtistAndTitle("ambient_loop.wav")).toEqual({ artist: "فنان غير معروف", title: "ambient loop" });

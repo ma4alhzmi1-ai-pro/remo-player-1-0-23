@@ -25,4 +25,5 @@ export type PlaybackSnapshot = {
   itemId: string;
   position: number;
   updatedAt: number;
+  volume?: number;
 };

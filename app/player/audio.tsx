@@ -9,7 +9,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useLibrary } from "@/lib/library-context";
 import { usePlayer } from "@/lib/player-context";
 
-const speeds = [0.75, 1, 1.25, 1.5, 2];
+const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 export default function AudioPlayerScreen() {
   const router = useRouter();

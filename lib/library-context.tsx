@@ -117,18 +117,30 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       const permission = await MediaLibrary.requestPermissionsAsync(false, ["audio", "video"]);
       if (!permission.granted) return false;
 
-      const [audioPage, videoPage] = await Promise.all([
-        MediaLibrary.getAssetsAsync({
-          first: 250,
-          mediaType: MediaLibrary.MediaType.audio,
-        }),
-        MediaLibrary.getAssetsAsync({
-          first: 250,
-          mediaType: MediaLibrary.MediaType.video,
-        }),
+      const getAllAssets = async (mediaType: "audio" | "video") => {
+        const collected: Awaited<ReturnType<typeof MediaLibrary.getAssetsAsync>>["assets"] = [];
+        let after: string | undefined;
+        let hasNextPage = true;
+        while (hasNextPage) {
+          const page = await MediaLibrary.getAssetsAsync({
+            first: 200,
+            after,
+            mediaType,
+            sortBy: [[MediaLibrary.SortBy.modificationTime, false]],
+          });
+          collected.push(...page.assets);
+          after = page.endCursor;
+          hasNextPage = page.hasNextPage && Boolean(page.endCursor);
+        }
+        return collected;
+      };
+
+      const [audioAssets, videoAssets] = await Promise.all([
+        getAllAssets(MediaLibrary.MediaType.audio),
+        getAllAssets(MediaLibrary.MediaType.video),
       ]);
 
-      const asMediaItem = async (asset: (typeof audioPage.assets)[number]): Promise<MediaItem> => {
+      const asMediaItem = async (asset: (typeof audioAssets)[number]): Promise<MediaItem> => {
         const parsed = parseArtistAndTitle(asset.filename);
         const isVideo = asset.mediaType === "video";
         let uri = asset.uri;
@@ -151,7 +163,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         };
       };
 
-      const scanned = await mapWithConcurrency([...audioPage.assets, ...videoPage.assets], asMediaItem);
+      const scanned = await mapWithConcurrency([...audioAssets, ...videoAssets], asMediaItem);
       setItems((current) => mergeMediaItems(current, scanned));
       return true;
     } catch {

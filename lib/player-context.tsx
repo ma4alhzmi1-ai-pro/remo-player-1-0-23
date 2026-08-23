@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Alert, Platform } from "react-native";
 
 import { prepareMediaNotificationControls } from "@/lib/media-notification-permission";
+import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
 import { useLibrary } from "@/lib/library-context";
 import { buildPlaybackQueue, nextQueueItem, previousQueueItem } from "@/lib/playback-queue";
 import type { MediaItem } from "@/types/media";
@@ -48,6 +49,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const repeatModeRef = useRef<RepeatMode>("off");
   const autoAdvanceRef = useRef<(wrap: boolean) => Promise<boolean>>(async () => false);
   const isAutoAdvancingRef = useRef(false);
+  const currentItemRef = useRef<MediaItem | null>(null);
+  const lastSnapshotSecondRef = useRef(0);
+
+  useEffect(() => {
+    currentItemRef.current = currentItem;
+  }, [currentItem]);
 
   useEffect(() => {
     repeatModeRef.current = repeatMode;
@@ -78,6 +85,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(status.playing);
       setCurrentTime(status.currentTime || 0);
       setDuration(status.duration || 0);
+      const item = currentItemRef.current;
+      const roundedSecond = Math.floor(status.currentTime || 0);
+      if (item?.mediaType === "audio" && roundedSecond >= 4 && roundedSecond - lastSnapshotSecondRef.current >= 4) {
+        lastSnapshotSecondRef.current = roundedSecond;
+        void savePlaybackMemory({ itemId: item.id, position: status.currentTime || 0, updatedAt: Date.now() });
+      }
       if (status.didJustFinish && !player.loop) {
         const shouldWrap = repeatModeRef.current === "all";
         if (isAutoAdvancingRef.current) return;
@@ -118,8 +131,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         showSeekBackward: true,
         showSeekForward: true,
       });
+      const memory = await getPlaybackMemory(item.id);
+      const resumeAt = resumePosition(memory, item.duration);
+      if (resumeAt > 0) await player.seekTo(resumeAt);
+      currentItemRef.current = item;
       setCurrentItem(item);
-      setCurrentTime(0);
+      lastSnapshotSecondRef.current = resumeAt;
+      setCurrentTime(resumeAt);
       setDuration(item.duration);
       player.play();
       setIsPlaying(true);

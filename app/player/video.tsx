@@ -13,6 +13,7 @@ import { isPictureInPictureSupported, VideoView, useVideoPlayer } from "expo-vid
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { prepareMediaNotificationControls } from "@/lib/media-notification-permission";
+import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
 import { usePlayer } from "@/lib/player-context";
 import { loadLocalSubtitles, saveLocalSubtitles, type LocalSubtitleTrack } from "@/lib/subtitle-store";
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
@@ -23,6 +24,7 @@ import type { MediaItem } from "@/types/media";
 
 type DisplayMode = "auto" | "cinematic" | "hdr" | "ultra";
 type TranslationLanguage = "العربية" | "English" | "Français" | "Español" | "Türkçe";
+type VideoPresentation = "2d" | "sbs" | "360";
 
 const displayModes: Array<{ id: DisplayMode; label: string }> = [
   { id: "auto", label: "تلقائي" },
@@ -31,6 +33,14 @@ const displayModes: Array<{ id: DisplayMode; label: string }> = [
   { id: "ultra", label: "فائق الدقة" },
 ];
 const translationLanguages: TranslationLanguage[] = ["العربية", "English", "Français", "Español", "Türkçe"];
+const playbackSpeeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+
+function detectPresentation(uri: string): VideoPresentation {
+  const source = uri.toLocaleLowerCase();
+  if (source.includes("360") || source.includes("vr")) return "360";
+  if (source.includes("sbs") || source.includes("3d")) return "sbs";
+  return "2d";
+}
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
@@ -57,6 +67,9 @@ export default function VideoPlayerScreen() {
   const [mirrored, setMirrored] = useState(false);
   const [nightMode, setNightMode] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsLocked, setControlsLocked] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [videoIssue, setVideoIssue] = useState<string | null>(null);
   const [repeatStart, setRepeatStart] = useState<number | null>(null);
   const [repeatEnd, setRepeatEnd] = useState<number | null>(null);
   const [subtitleTrack, setSubtitleTrack] = useState<LocalSubtitleTrack | null>(null);
@@ -80,7 +93,9 @@ export default function VideoPlayerScreen() {
     videoPlayer.audioMixingMode = "duckOthers";
     videoPlayer.timeUpdateEventInterval = 0.25;
     videoPlayer.volume = 1;
+    videoPlayer.preservesPitch = true;
   });
+  const presentation = currentItem?.mediaType === "video" ? detectPresentation(currentItem.uri) : "2d";
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -111,17 +126,29 @@ export default function VideoPlayerScreen() {
   }, [currentItem?.id, currentItem?.mediaType]);
 
   useEffect(() => {
-    if (!videoSource) return;
+    if (!videoSource || !currentItem) return;
     const generation = ++replaceGenerationRef.current;
     setIsPlaying(false);
+    setIsBuffering(true);
+    setVideoIssue(null);
     player.pause();
-    void player.replaceAsync(videoSource).then(() => {
+    void player.replaceAsync(videoSource).then(async () => {
       if (generation !== replaceGenerationRef.current) return;
+      const memory = await getPlaybackMemory(currentItem.id);
+      const resumeAt = resumePosition(memory, player.duration || currentItem.duration);
+      if (resumeAt > 0) player.currentTime = resumeAt;
+      if (typeof memory?.volume === "number") {
+        const rememberedVolume = Math.max(0, Math.min(1, memory.volume));
+        player.volume = rememberedVolume;
+        volumeRef.current = rememberedVolume;
+        setVolume(rememberedVolume);
+      }
       void prepareMediaNotificationControls();
       player.staysActiveInBackground = backgroundEnabled;
       player.showNowPlayingNotification = true;
       player.play();
       setIsPlaying(true);
+      setIsBuffering(false);
       transitionLockRef.current = false;
       isAutoAdvancingRef.current = false;
     }).catch(() => {
@@ -129,9 +156,34 @@ export default function VideoPlayerScreen() {
         transitionLockRef.current = false;
         isAutoAdvancingRef.current = false;
         setIsPlaying(false);
+        setIsBuffering(false);
+        setVideoIssue("تعذّر تحميل الفيديو. تأكد من أن الملف ما زال متاحاً ثم حاول مرة أخرى.");
       }
     });
   }, [currentItem?.id, player, videoSource]);
+
+  useEffect(() => {
+    if (!currentItem || currentItem.mediaType !== "video") return;
+    const timer = setInterval(() => {
+      if (player.currentTime < 1) return;
+      void savePlaybackMemory({ itemId: currentItem.id, position: player.currentTime, volume: volumeRef.current, updatedAt: Date.now() });
+    }, 4_000);
+    return () => clearInterval(timer);
+  }, [currentItem?.id, currentItem?.mediaType, player]);
+
+  useEffect(() => {
+    const addStatusListener = player.addListener as unknown as (event: string, listener: (event: unknown) => void) => { remove: () => void };
+    const subscription = addStatusListener("statusChange", (event) => {
+      const statusEvent = event as { status?: string; error?: { message?: string } | string | null };
+      if (statusEvent.status === "loading") setIsBuffering(true);
+      if (statusEvent.status === "readyToPlay") setIsBuffering(false);
+      if (statusEvent.error) {
+        setIsBuffering(false);
+        setVideoIssue(typeof statusEvent.error === "string" ? statusEvent.error : statusEvent.error.message ?? "تعذر تشغيل الفيديو الآن.");
+      }
+    });
+    return () => subscription.remove();
+  }, [player]);
 
   useEffect(() => {
     player.staysActiveInBackground = backgroundEnabled;
@@ -232,14 +284,14 @@ export default function VideoPlayerScreen() {
   }, []);
 
   const handleMediaGestureEnd = useCallback((translationX: number, translationY: number, touchX: number) => {
-    if (transitionLockRef.current) return;
+    if (transitionLockRef.current || controlsLocked) return;
     const action = resolveVideoGesture(translationX, translationY, touchX, width);
     if (!action) return;
     if (action.type === "seek") player.seekBy(action.seconds);
     else if (action.type === "volume") changeVolume(action.delta);
     else changeBrightness(action.delta);
     setControlsVisible(true);
-  }, [changeBrightness, changeVolume, player, width]);
+  }, [changeBrightness, changeVolume, controlsLocked, player, width]);
 
   const mediaGesture = useMemo(() => Gesture.Exclusive(
     Gesture.Pan()
@@ -256,9 +308,9 @@ export default function VideoPlayerScreen() {
       .maxDuration(350)
       .runOnJS(true)
       .onEnd((_event, success) => {
-        if (success) setControlsVisible((visible) => !visible);
+        if (success) setControlsVisible((visible) => controlsLocked ? true : !visible);
       }),
-  ), [handleMediaGestureEnd]);
+  ), [controlsLocked, handleMediaGestureEnd]);
 
   const previousVideo = useCallback(async () => {
     if (transitionLockRef.current) return;
@@ -312,9 +364,40 @@ export default function VideoPlayerScreen() {
     player.play();
     setIsPlaying(true);
   };
-  const cycleSpeed = () => { const values = [0.5, 0.75, 1, 1.25, 1.5, 2]; const next = values[(values.indexOf(speed) + 1) % values.length]; player.playbackRate = next; setSpeed(next); };
+  const cycleSpeed = () => { const index = playbackSpeeds.indexOf(speed); const next = playbackSpeeds[(index >= 0 ? index + 1 : playbackSpeeds.indexOf(1)) % playbackSpeeds.length]; player.playbackRate = next; setSpeed(next); };
   const toggleBackground = () => { const next = !backgroundEnabled; player.staysActiveInBackground = next; setBackgroundEnabled(next); };
   const toggleMute = () => { const next = !muted; player.muted = next; setMuted(next); };
+  const resetPlaybackAdjustments = () => {
+    player.volume = 1;
+    volumeRef.current = 1;
+    setVolume(1);
+    setMuted(false);
+    player.muted = false;
+    if (Platform.OS !== "web" && brightnessOverrideRef.current) {
+      void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
+      brightnessOverrideRef.current = false;
+      brightnessReadyRef.current = false;
+    }
+    brightnessRef.current = 0.5;
+    setBrightness(0.5);
+  };
+  const explainPresentation = () => {
+    if (presentation === "360") {
+      Alert.alert("فيديو 360°", "سيشغّل REMO PLAYER ملف 360° بأفضل جودة يدعمها جهازك. العرض البانورامي التفاعلي الكامل يتطلب ملفاً وترميزاً وجهاز عرض متوافقين؛ يمكن استخدام ملء الشاشة والتدوير للمشاهدة.");
+      return;
+    }
+    if (presentation === "sbs") {
+      Alert.alert("فيديو ثلاثي الأبعاد SBS", "تم التعرف على الملف كصيغة SBS وسيعمل كفيديو عالي الدقة. التجسيم الفعلي يحتاج شاشة أو نظارة تدعم SBS؛ لا يضيف التطبيق تجسيماً مصطنعاً.");
+      return;
+    }
+    Alert.alert("فيديو ثنائي الأبعاد", "هذا هو وضع العرض القياسي. استخدم HDR أو السينمائي أو فائق الدقة عندما يدعمها الملف والشاشة.");
+  };
+  const retryVideo = () => {
+    if (!videoSource) return;
+    setVideoIssue(null);
+    setIsBuffering(true);
+    void player.replaceAsync(videoSource).then(() => { player.play(); setIsPlaying(true); setIsBuffering(false); }).catch(() => { setIsBuffering(false); setVideoIssue("تعذّر تحميل الفيديو مرة أخرى. جرّب إعادة فتحه من المكتبة."); });
+  };
   const openPip = async () => { if (!isPictureInPictureSupported()) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } try { await viewRef.current?.startPictureInPicture(); } catch { Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
   const setAbPoint = () => { if (repeatStart === null || repeatEnd !== null) { setRepeatStart(player.currentTime); setRepeatEnd(null); Alert.alert("تكرار A–B", "تم تحديد النقطة A. انتقل إلى نهاية المقطع واضغط الزر مرة أخرى لتحديد B."); } else { const end = Math.max(player.currentTime, repeatStart + 1); setRepeatEnd(end); Alert.alert("تكرار A–B", `سيُكرر المشغل المقطع بين ${formatDuration(repeatStart)} و${formatDuration(end)}.`); } };
   const resetAb = () => { setRepeatStart(null); setRepeatEnd(null); };
@@ -335,6 +418,7 @@ export default function VideoPlayerScreen() {
   const displayIcon = (mode: DisplayMode): keyof typeof MaterialIcons.glyphMap => mode === "hdr" ? "hdr-on" : mode === "cinematic" ? "movie-filter" : mode === "ultra" ? "high-quality" : "auto-awesome";
   const topActions: Array<{ icon: keyof typeof MaterialIcons.glyphMap; label: string; active?: boolean; onPress: () => void }> = [
     ...displayModes.map((mode) => ({ icon: displayIcon(mode.id), label: mode.label, active: displayMode === mode.id, onPress: () => chooseMode(mode.id) })),
+    { icon: "movie-filter", label: presentation === "360" ? "360°" : presentation === "sbs" ? "SBS" : "2D", active: presentation !== "2d", onPress: explainPresentation },
     { icon: "translate", label: "ترجمة", active: Boolean(subtitleTrack), onPress: () => setTranslationOpen(true) },
     { icon: "subtitles", label: "استيراد", onPress: () => void importSubtitleFile() },
     { icon: "content-cut", label: "تحرير", onPress: () => router.push("/player/edit-video" as never) },
@@ -347,7 +431,9 @@ export default function VideoPlayerScreen() {
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
       {!usesFullViewport ? <View style={styles.header}><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/video" as never)} style={styles.headerIcon}><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.headerTitle}>{currentItem.title}</Text><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.headerIcon}><MaterialIcons name="share" size={21} color={colors.text} /></Pressable></View> : null}
       <View style={[styles.mediaSurface, usesFullViewport && styles.fullViewportSurface, displayMode === "cinematic" && !usesFullViewport && styles.cinematicSurface]}>
-        <GestureDetector gesture={mediaGesture}><View style={[styles.videoContainer, mirrored && styles.mirrored]}><VideoView ref={viewRef} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={usesFullViewport || displayMode === "cinematic" ? "cover" : "contain"} surfaceType="textureView" /></View></GestureDetector>
+        <GestureDetector gesture={mediaGesture}><View style={[styles.videoContainer, mirrored && styles.mirrored]}><VideoView ref={viewRef} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={usesFullViewport || displayMode === "cinematic" ? "cover" : "contain"} surfaceType="textureView" onFirstFrameRender={() => setIsBuffering(false)} /></View></GestureDetector>
+        {isBuffering ? <View pointerEvents="none" style={styles.loadingHud}><ActivityIndicator color={colors.cyan} /><Text style={styles.loadingText}>جارٍ تجهيز الفيديو...</Text></View> : null}
+        {videoIssue ? <View style={styles.issueCard}><MaterialIcons name="error-outline" size={19} color="#FFD38A" /><Text numberOfLines={2} style={styles.issueText}>{videoIssue}</Text><Pressable onPress={retryVideo} style={styles.retryButton}><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View> : null}
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <View pointerEvents="none" style={styles.volumeHud}><MaterialIcons name="volume-up" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(volume * 100)}%</Text></View> : null}
@@ -356,7 +442,7 @@ export default function VideoPlayerScreen() {
           <View style={styles.overlayTop}><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/video" as never)} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>
           <View style={styles.centerControls}><Pressable onPress={() => void previousVideo()} style={styles.transport}><MaterialIcons name="skip-previous" size={32} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={40} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.transport}><MaterialIcons name="skip-next" size={32} color={colors.text} /></Pressable></View>
-          <View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><View style={styles.quickIcons}><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={toggleBackground} style={[styles.quickIcon, backgroundEnabled && styles.quickIconActive]}><MaterialIcons name="headset" size={20} color={backgroundEnabled ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={() => void openPip()} style={styles.quickIcon}><MaterialIcons name="picture-in-picture-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((value) => !value)} style={[styles.quickIcon, nightMode && styles.quickIconActive]}><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable></View></View>
+          <View style={styles.overlayBottom}><View style={styles.gestureHint}><MaterialIcons name="touch-app" size={14} color={colors.text} /><Text style={styles.gestureHintText}>سحب أفقي للتقديم والتأخير · يسار للصوت · يمين للسطوع</Text></View><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><View style={styles.quickIcons}><Pressable onPress={cycleSpeed} style={styles.quickIcon} accessibilityLabel="تغيير سرعة الفيديو"><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={toggleBackground} style={[styles.quickIcon, backgroundEnabled && styles.quickIconActive]} accessibilityLabel="تشغيل الفيديو في الخلفية"><MaterialIcons name="headset" size={20} color={backgroundEnabled ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]} accessibilityLabel="كتم الصوت"><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={resetPlaybackAdjustments} style={styles.quickIcon} accessibilityLabel="إعادة ضبط الصوت والسطوع"><MaterialIcons name="restart-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]} accessibilityLabel={controlsLocked ? "إلغاء قفل اللمس" : "قفل اللمس"}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]} accessibilityLabel="عكس الفيديو"><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={() => void openPip()} style={styles.quickIcon} accessibilityLabel="نافذة عائمة"><MaterialIcons name="picture-in-picture-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]} accessibilityLabel="تحديد تكرار A-B"><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((value) => !value)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable></View></View>
         </View> : null}
       </View>
       {!usesFullViewport && repeatEnd !== null ? <Pressable onPress={resetAb} style={styles.resetAb}><MaterialIcons name="restart-alt" size={19} color={colors.cyan} /><Text style={styles.resetAbText}>إلغاء تكرار A-B</Text></Pressable> : null}
@@ -369,10 +455,37 @@ function TranslationSheet({ visible, item, selectedLanguage, onSelectLanguage, g
   return <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}><Pressable onPress={onClose} style={sheetStyles.backdrop}><Pressable onPress={() => undefined} style={sheetStyles.sheet}><View style={sheetStyles.sheetHead}><MaterialIcons name="translate" size={24} color={colors.cyan} /><View style={sheetStyles.headCopy}><Text style={sheetStyles.title}>ترجمة ذكية للفيديو</Text><Text numberOfLines={1} style={sheetStyles.subtitle}>{item.title}</Text></View></View><View style={sheetStyles.privacy}><MaterialIcons name="privacy-tip" size={20} color={colors.cyan} /><Text style={sheetStyles.privacyText}>عند التأكيد، سترفع نسخة الفيديو المحدد إلى خدمة الذكاء الاصطناعي المدمجة لتفريغ الكلام وترجمته. تُحفظ الترجمة الناتجة على جهازك.</Text></View><Text style={sheetStyles.languageLabel}>لغة الترجمة</Text><View style={sheetStyles.languages}>{translationLanguages.map((language) => <Pressable key={language} onPress={() => onSelectLanguage(language)} style={[sheetStyles.language, selectedLanguage === language && sheetStyles.languageActive]}><Text style={[sheetStyles.languageText, selectedLanguage === language && sheetStyles.languageTextActive]}>{language}</Text></Pressable>)}</View><Text style={sheetStyles.limit}>يدعم الإصدار الحالي الفيديوهات القصيرة المتاحة محلياً حتى 6MB.</Text><Pressable disabled={generating} onPress={onGenerate} style={[sheetStyles.generate, generating && styles.dimmed]}>{generating ? <ActivityIndicator color={colors.background} /> : <><MaterialIcons name="auto-awesome" size={20} color={colors.background} /><Text style={sheetStyles.generateText}>أوافق وأنشئ الترجمة</Text></>}</Pressable><Pressable disabled={generating} onPress={onClose} style={sheetStyles.cancel}><Text style={sheetStyles.cancelText}>إلغاء</Text></Pressable></Pressable></Pressable></Modal>;
 }
 
+/*
 const styles = StyleSheet.create({
-  root: { flex: 1 }, landscapeRoot: { backgroundColor: "#02060B" }, header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" }, headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" }, headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 }, mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden" }, fullViewportSurface: { flex: 1, aspectRatio: undefined }, cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 }, videoContainer: { flex: 1 }, mirrored: { transform: [{ scaleX: -1 }] }, video: { flex: 1 }, nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" }, subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" }, subtitleText: { color: "#FFFFFF", fontSize: 15, lineHeight: 22, fontWeight: "800", textAlign: "center" }, volumeHud: { position: "absolute", top: "41%", left: 22, minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, brightnessHud: { position: "absolute", top: "41%", right: 22, minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" }, overlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", backgroundColor: "rgba(0, 8, 15, 0.28)", paddingVertical: 10 }, overlayTop: { paddingHorizontal: 14, flexDirection: "row-reverse", alignItems: "center", gap: 8 }, overlayTitle: { flex: 1, color: colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" }, overlayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.36)" }, topActions: { paddingHorizontal: 14, gap: 7, alignItems: "center" }, topAction: { minHeight: 31, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: "rgba(8,17,31,0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" }, topActionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, topActionText: { color: colors.text, fontSize: 10, fontWeight: "800" }, topActionTextActive: { color: colors.background }, centerControls: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 28 }, transport: { width: 45, height: 45, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" }, playButton: { width: 62, height: 62, borderRadius: 31, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.text, backgroundColor: "rgba(0,0,0,0.36)" }, overlayBottom: { paddingHorizontal: 15 }, progressWrap: { flexDirection: "row-reverse", alignItems: "center", gap: 8 }, time: { color: colors.text, fontSize: 10, fontVariant: ["tabular-nums"] }, progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.42)", overflow: "hidden" }, progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.cyan }, quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "space-between", gap: 5 }, quickIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)", alignItems: "center", justifyContent: "center" }, quickIconActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, quickSpeed: { color: colors.text, fontSize: 10, fontWeight: "900" }, resetAb: { alignSelf: "center", marginTop: 14, paddingHorizontal: 13, minHeight: 38, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 5 }, resetAbText: { color: colors.cyan, fontSize: 12, fontWeight: "800" }, dimmed: { opacity: 0.6 }, empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 }, emptyText: { color: colors.muted, fontSize: 15 }, backButton: { height: 42, paddingHorizontal: 16, borderRadius: 13, backgroundColor: colors.cyan, justifyContent: "center" }, backText: { color: colors.background, fontWeight: "800" },
+  root: { flex: 1 }, landscapeRoot: { backgroundColor: "#02060B" }, header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" }, headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" }, headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 }, mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden" }, fullViewportSurface: { flex: 1, aspectRatio: undefined }, cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 }, videoContainer: { flex: 1 }, mirrored: { transform: [{ scaleX: -1 }] }, video: { flex: 1 }, loadingHud: { position: "absolute", top: "43%", alignSelf: "center", paddingHorizontal: 14, minHeight: 43, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.66)", flexDirection: "row-reverse", alignItems: "center", gap: 8 }, loadingText: { color: colors.text, fontSize: 12, fontWeight: "800" }, issueCard: { position: "absolute", left: 12, right: 12, top: 12, minHeight: 46, borderRadius: 13, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: "rgba(84,49,12,0.94)", borderWidth: 1, borderColor: "rgba(255,211,138,0.58)", flexDirection: "row-reverse", alignItems: "center", gap: 7 }, issueText: { flex: 1, color: "#FFF4DC", fontSize: 10, lineHeight: 15, textAlign: "right" }, retryButton: { minHeight: 30, paddingHorizontal: 8, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.15)", justifyContent: "center" }, retryText: { color: "#FFF4DC", fontSize: 10, fontWeight: "900" }, nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" }, subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" }, subtitleText: { color: "#FFFFFF", fontSize: 15, lineHeight: 22, fontWeight: "800", textAlign: "center" }, volumeHud: { position: "absolute", top: "41%", left: 22, minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, brightnessHud: { position: "absolute", top: "41%", right: 22, minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" }, overlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", backgroundColor: "rgba(0, 8, 15, 0.28)", paddingVertical: 10 }, overlayTop: { paddingHorizontal: 14, flexDirection: "row-reverse", alignItems: "center", gap: 8 }, overlayTitle: { flex: 1, color: colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" }, overlayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.36)" }, topActions: { paddingHorizontal: 14, gap: 7, alignItems: "center" }, topAction: { minHeight: 31, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: "rgba(8,17,31,0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" }, topActionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, topActionText: { color: colors.text, fontSize: 10, fontWeight: "800" }, topActionTextActive: { color: colors.background }, centerControls: { flexDirection:
 });
 
+*/
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  landscapeRoot: { backgroundColor: "#02060B" },
+  header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
+  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 },
+  mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden" },
+  fullViewportSurface: { flex: 1, aspectRatio: undefined },
+  cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 },
+  videoContainer: { flex: 1 }, mirrored: { transform: [{ scaleX: -1 }] }, video: { flex: 1 },
+  loadingHud: { position: "absolute", top: "43%", alignSelf: "center", paddingHorizontal: 14, minHeight: 43, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.66)", flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  loadingText: { color: colors.text, fontSize: 12, fontWeight: "800" },
+  issueCard: { position: "absolute", left: 12, right: 12, top: 12, minHeight: 46, borderRadius: 13, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: "rgba(84,49,12,0.94)", borderWidth: 1, borderColor: "rgba(255,211,138,0.58)", flexDirection: "row-reverse", alignItems: "center", gap: 7 },
+  issueText: { flex: 1, color: "#FFF4DC", fontSize: 10, lineHeight: 15, textAlign: "right" }, retryButton: { minHeight: 30, paddingHorizontal: 8, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.15)", justifyContent: "center" }, retryText: { color: "#FFF4DC", fontSize: 10, fontWeight: "900" },
+  nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" },
+  subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" }, subtitleText: { color: "#FFFFFF", fontSize: 15, lineHeight: 22, fontWeight: "800", textAlign: "center" },
+  volumeHud: { position: "absolute", top: "41%", left: 22, minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, brightnessHud: { position: "absolute", top: "41%", right: 22, minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" },
+  overlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", backgroundColor: "rgba(0, 8, 15, 0.28)", paddingVertical: 10 }, overlayTop: { paddingHorizontal: 14, flexDirection: "row-reverse", alignItems: "center", gap: 8 }, overlayTitle: { flex: 1, color: colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" }, overlayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.36)" },
+  topActions: { paddingHorizontal: 14, gap: 7, alignItems: "center" }, topAction: { minHeight: 31, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: "rgba(8,17,31,0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" }, topActionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, topActionText: { color: colors.text, fontSize: 10, fontWeight: "800" }, topActionTextActive: { color: colors.background },
+  centerControls: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 28 }, transport: { width: 45, height: 45, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" }, playButton: { width: 62, height: 62, borderRadius: 31, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.text, backgroundColor: "rgba(0,0,0,0.36)" },
+  overlayBottom: { paddingHorizontal: 15 }, gestureHint: { alignSelf: "center", marginBottom: 7, paddingHorizontal: 8, minHeight: 24, borderRadius: 8, backgroundColor: "rgba(0,0,0,0.32)", flexDirection: "row-reverse", alignItems: "center", gap: 4 }, gestureHintText: { color: colors.text, fontSize: 9, fontWeight: "700" },
+  progressWrap: { flexDirection: "row-reverse", alignItems: "center", gap: 8 }, time: { color: colors.text, fontSize: 10, fontVariant: ["tabular-nums"] }, progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.42)", overflow: "hidden" }, progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.cyan },
+  quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "space-between", gap: 5 }, quickIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)", alignItems: "center", justifyContent: "center" }, quickIconActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, quickSpeed: { color: colors.text, fontSize: 10, fontWeight: "900" },
+  resetAb: { alignSelf: "center", marginTop: 14, paddingHorizontal: 13, minHeight: 38, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 5 }, resetAbText: { color: colors.cyan, fontSize: 12, fontWeight: "800" }, dimmed: { opacity: 0.6 }, empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 }, emptyText: { color: colors.muted, fontSize: 15 }, backButton: { height: 42, paddingHorizontal: 16, borderRadius: 13, backgroundColor: colors.cyan, justifyContent: "center" }, backText: { color: colors.background, fontWeight: "800" },
+});
 const sheetStyles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "flex-end" }, sheet: { padding: 20, paddingBottom: 30, borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: colors.surface, borderTopWidth: 1, borderColor: colors.border }, sheetHead: { flexDirection: "row-reverse", alignItems: "center", gap: 10 }, headCopy: { flex: 1, alignItems: "flex-end" }, title: { color: colors.text, fontSize: 18, lineHeight: 25, fontWeight: "900", textAlign: "right" }, subtitle: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: "right" }, privacy: { flexDirection: "row-reverse", alignItems: "flex-start", gap: 8, padding: 12, borderRadius: 14, backgroundColor: "#102C3C", marginTop: 16 }, privacyText: { flex: 1, color: colors.text, fontSize: 11, lineHeight: 18, textAlign: "right" }, languageLabel: { color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "right", marginTop: 17, marginBottom: 8 }, languages: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 }, language: { minHeight: 36, paddingHorizontal: 12, borderRadius: 11, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }, languageActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, languageText: { color: colors.text, fontSize: 12, fontWeight: "800" }, languageTextActive: { color: colors.background }, limit: { color: colors.muted, fontSize: 11, lineHeight: 17, textAlign: "right", marginTop: 12 }, generate: { minHeight: 49, borderRadius: 15, backgroundColor: colors.cyan, marginTop: 17, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 7 }, generateText: { color: colors.background, fontSize: 13, fontWeight: "900" }, cancel: { minHeight: 42, alignItems: "center", justifyContent: "center", marginTop: 7 }, cancelText: { color: colors.cyan, fontSize: 13, fontWeight: "900" },
 });
