@@ -43,7 +43,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [videoPlayer] = useState(() => {
     const player = createVideoPlayer(null);
     player.staysActiveInBackground = true;
-    player.showNowPlayingNotification = true;
+    player.showNowPlayingNotification = false;
     player.audioMixingMode = "duckOthers";
     player.timeUpdateEventInterval = 0.25;
     return player;
@@ -155,7 +155,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         await prepareMediaNotificationControls();
         await prepareAudioSession();
         videoPlayer.staysActiveInBackground = true;
-        videoPlayer.showNowPlayingNotification = true;
+        videoPlayer.showNowPlayingNotification = false;
         videoPlayer.audioMixingMode = "duckOthers";
         videoPlayer.timeUpdateEventInterval = 0.25;
         await videoPlayer.replaceAsync({ uri: item.uri, metadata: { title: item.title, artist: item.artist } });
