@@ -3,7 +3,7 @@ export type FrameAspect = "screen" | "16:9" | "4:3" | "1:1" | "21:9";
 
 export function resolveVideoContentFit(mode: VideoFitMode, isLandscape: boolean, cinematic: boolean) {
   if (mode !== "auto") return mode;
-  return isLandscape || cinematic ? "cover" : "contain";
+  return cinematic ? "cover" : "contain";
 }
 
 export function resolveFrameDimensions(frame: FrameAspect, viewportWidth: number, viewportHeight: number) {

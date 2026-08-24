@@ -75,7 +75,7 @@ export default function VideoPlayerScreen() {
   const [videoFit, setVideoFit] = useState<VideoFitMode>("auto");
   const [frameAspect, setFrameAspect] = useState<FrameAspect>("screen");
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(false);
   const [controlsLocked, setControlsLocked] = useState(false);
   const [autoRotateEnabled, setAutoRotateEnabled] = useState(true);
   const [repeatStart, setRepeatStart] = useState<number | null>(null);

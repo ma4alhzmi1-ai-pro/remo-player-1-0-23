@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { resolveFrameDimensions, resolveVideoContentFit } from "../lib/video-display-settings";
 
 describe("video display settings", () => {
-  it("uses containment in portrait auto mode and cover in landscape or cinematic auto mode", () => {
+  it("uses containment in auto mode on every orientation and only covers in cinematic mode", () => {
     expect(resolveVideoContentFit("auto", false, false)).toBe("contain");
-    expect(resolveVideoContentFit("auto", true, false)).toBe("cover");
+    expect(resolveVideoContentFit("auto", true, false)).toBe("contain");
     expect(resolveVideoContentFit("auto", false, true)).toBe("cover");
   });
 
