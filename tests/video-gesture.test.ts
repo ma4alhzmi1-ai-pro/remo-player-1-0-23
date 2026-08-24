@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveVideoGesture } from "../lib/video-gesture";
+import { resolveVideoGesture, shouldActivateVideoGesture } from "../lib/video-gesture";
 
 describe("video gesture resolution", () => {
   it("seeks forward and backward for deliberate horizontal swipes", () => {
@@ -23,5 +23,13 @@ describe("video gesture resolution", () => {
     expect(resolveVideoGesture(Number.NaN, 40, 50, 300)).toBeNull();
     expect(resolveVideoGesture(4, 40, Number.NaN, 300)).toBeNull();
     expect(resolveVideoGesture(4, 40, 50, 0)).toBeNull();
+  });
+
+  it("activates the responder only for a real movement when controls are unlocked", () => {
+    expect(shouldActivateVideoGesture(7, 0, false)).toBe(false);
+    expect(shouldActivateVideoGesture(9, 0, false)).toBe(true);
+    expect(shouldActivateVideoGesture(0, -9, false)).toBe(true);
+    expect(shouldActivateVideoGesture(40, 0, true)).toBe(false);
+    expect(shouldActivateVideoGesture(Number.NaN, 40, false)).toBe(false);
   });
 });
