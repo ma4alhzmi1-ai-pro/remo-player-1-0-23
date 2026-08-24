@@ -17,7 +17,7 @@ import { loadLocalSubtitles, saveLocalSubtitles, type LocalSubtitleTrack } from 
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
 import { readVideoForTranslation } from "@/lib/translation-upload";
 import { trpc } from "@/lib/trpc";
-import { resolveVideoGesture } from "@/lib/video-gesture";
+import { resolveVideoGesture, shouldActivateVideoGesture } from "@/lib/video-gesture";
 import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import type { MediaItem } from "@/types/media";
 
@@ -174,7 +174,9 @@ export default function VideoPlayerScreen() {
     }
   }, [brightness]);
   const panResponder = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gesture) => !controlsLocked && (Math.abs(gesture.dx) > 18 || Math.abs(gesture.dy) > 18),
+    onMoveShouldSetPanResponder: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
+    onMoveShouldSetPanResponderCapture: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
+    onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: (event) => { touchStartX.current = event.nativeEvent.locationX; },
     onPanResponderRelease: (_, gesture) => {
       if (controlsLocked) return;
@@ -250,7 +252,7 @@ export default function VideoPlayerScreen() {
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
       {!isLandscape ? <View style={styles.header}><Pressable onPress={exitVideo} style={styles.headerIcon}><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.headerTitle}>{currentItem.title}</Text><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.headerIcon}><MaterialIcons name="share" size={21} color={colors.text} /></Pressable></View> : null}
       <Pressable {...panResponder.panHandlers} onPress={() => { if (!controlsLocked) setControlsVisible((visible) => !visible); }} style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
-        <View style={[styles.videoContainer, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={isLandscape || displayMode === "cinematic" ? "cover" : "contain"} surfaceType="textureView" /></View>
+        <View pointerEvents="none" style={[styles.videoContainer, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={isLandscape || displayMode === "cinematic" ? "cover" : "contain"} surfaceType="textureView" /></View>
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <View pointerEvents="none" style={styles.volumeHud}><MaterialIcons name="volume-up" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(volume * 100)}%</Text></View> : null}

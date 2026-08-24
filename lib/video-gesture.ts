@@ -6,6 +6,12 @@ export type VideoGestureAction =
 
 const HORIZONTAL_SWIPE_THRESHOLD = 32;
 const VERTICAL_SWIPE_THRESHOLD = 28;
+const ACTIVATION_SWIPE_THRESHOLD = 8;
+
+export function shouldActivateVideoGesture(translationX: number, translationY: number, controlsLocked: boolean): boolean {
+  if (controlsLocked || ![translationX, translationY].every(Number.isFinite)) return false;
+  return Math.abs(translationX) >= ACTIVATION_SWIPE_THRESHOLD || Math.abs(translationY) >= ACTIVATION_SWIPE_THRESHOLD;
+}
 
 export function resolveVideoGesture(translationX: number, translationY: number, touchX: number, surfaceWidth: number): VideoGestureAction {
   if (![translationX, translationY, touchX, surfaceWidth].every(Number.isFinite) || surfaceWidth <= 0) {
