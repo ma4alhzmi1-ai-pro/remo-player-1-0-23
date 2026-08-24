@@ -141,14 +141,9 @@ export default function VideoPlayerScreen() {
   }, [backgroundEnabled, player]);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      if ((nextState === "inactive" || nextState === "background") && backgroundEnabled && player.playing) {
-        player.showNowPlayingNotification = true;
-      }
-      if (nextState === "active") player.showNowPlayingNotification = false;
-    });
+    const subscription = AppState.addEventListener("change", () => { player.showNowPlayingNotification = false; });
     return () => subscription.remove();
-  }, [backgroundEnabled, player]);
+  }, [player]);
 
   useEffect(() => { player.loop = repeatMode === "one"; }, [player, repeatMode]);
   useEffect(() => {
@@ -290,7 +285,7 @@ export default function VideoPlayerScreen() {
       try { player.pause(); } catch { /* The native player may already be unavailable during navigation. */ }
     } else {
       player.staysActiveInBackground = true;
-      player.showNowPlayingNotification = true;
+      player.showNowPlayingNotification = false;
     }
     if (router.canGoBack()) router.back(); else router.replace("/(tabs)/video" as never);
   };
