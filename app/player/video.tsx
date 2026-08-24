@@ -55,6 +55,9 @@ export default function VideoPlayerScreen() {
   const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat, videoPlayer } = usePlayer();
   const viewRef = useRef<any>(null);
   const touchStartX = useRef(0);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const temporarySpeedActiveRef = useRef(false);
+  const originalPlaybackRateRef = useRef(1);
   const progressTrackWidth = useRef(0);
   const isAutoAdvancingRef = useRef(false);
   const isNavigatingVideoRef = useRef(false);
@@ -68,6 +71,7 @@ export default function VideoPlayerScreen() {
   const [volumeHud, setVolumeHud] = useState(false);
   const [brightness, setBrightness] = useState(0.7);
   const [brightnessHud, setBrightnessHud] = useState(false);
+  const [temporarySpeedActive, setTemporarySpeedActive] = useState(false);
   const [backgroundEnabled, setBackgroundEnabled] = useState(true);
   const [muted, setMuted] = useState(false);
   const [mirrored, setMirrored] = useState(false);
@@ -199,21 +203,47 @@ export default function VideoPlayerScreen() {
       return false;
     }
   }, [player]);
+  const restoreTemporarySpeed = useCallback(() => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+    if (!temporarySpeedActiveRef.current) return false;
+    player.playbackRate = originalPlaybackRateRef.current;
+    temporarySpeedActiveRef.current = false;
+    setTemporarySpeedActive(false);
+    return true;
+  }, [player]);
+  const scheduleTemporarySpeed = useCallback(() => {
+    if (controlsLocked) return;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      originalPlaybackRateRef.current = player.playbackRate || speed;
+      player.playbackRate = 2;
+      temporarySpeedActiveRef.current = true;
+      setTemporarySpeedActive(true);
+      longPressTimerRef.current = null;
+    }, 360);
+  }, [controlsLocked, player, speed]);
+  useEffect(() => () => { restoreTemporarySpeed(); }, [restoreTemporarySpeed]);
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => !controlsLocked,
     onMoveShouldSetPanResponder: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
     onMoveShouldSetPanResponderCapture: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (event) => { touchStartX.current = event.nativeEvent.locationX; },
+    onPanResponderGrant: (event) => { touchStartX.current = event.nativeEvent.locationX; scheduleTemporarySpeed(); },
+    onPanResponderMove: (_, gesture) => {
+      if (Math.abs(gesture.dx) > 8 || Math.abs(gesture.dy) > 8) restoreTemporarySpeed();
+    },
     onPanResponderRelease: (_, gesture) => {
       if (controlsLocked) return;
       const action = resolveVideoGesture(gesture.dx, gesture.dy, touchStartX.current, width);
+      const wasTemporarySpeed = restoreTemporarySpeed();
       if (action?.type === "seek") safeSeekBy(action.seconds);
       if (action?.type === "volume") changeVolume(action.delta);
       if (action?.type === "brightness") changeBrightness(action.delta);
-      if (!action) setControlsVisible((visible) => !visible);
+      if (!action && !wasTemporarySpeed) setControlsVisible((visible) => !visible);
     },
-  }), [changeBrightness, changeVolume, controlsLocked, safeSeekBy, width]);
+    onPanResponderTerminate: restoreTemporarySpeed,
+  }), [changeBrightness, changeVolume, controlsLocked, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
   const seekFromProgress = useCallback((locationX: number) => {
     const target = resolveVideoProgressSeek(locationX, progressTrackWidth.current, player.duration);
     if (target === null) return;
@@ -345,6 +375,7 @@ export default function VideoPlayerScreen() {
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <View pointerEvents="none" style={styles.volumeHud}><MaterialIcons name="volume-up" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(volume * 100)}%</Text></View> : null}
         {brightnessHud ? <View pointerEvents="none" style={styles.brightnessHud}><MaterialIcons name="brightness-high" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(brightness * 100)}%</Text></View> : null}
+        {temporarySpeedActive ? <View pointerEvents="none" style={[styles.volumeHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none">
           <View style={styles.overlayTop}><Pressable onPress={exitVideo} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>
