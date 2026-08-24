@@ -81,7 +81,12 @@ class ExpoVideoPlaybackService : MediaSessionService() {
       sessionExtras.putBoolean(SESSION_SHOW_NOTIFICATION, showNotification)
       mediaSessions[player]?.let {
         it.sessionExtras = sessionExtras
-        onUpdateNotification(it, showNotification && player.playWhenReady)
+        if (showNotification) {
+          onUpdateNotification(it, player.playWhenReady)
+        } else {
+          hidePlayerNotification(player)
+          setMostRecentInteractionSession(findMostRecentInteractionSession())
+        }
       }
     }
   }

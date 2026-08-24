@@ -152,7 +152,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       try {
         playerRef.current?.pause();
         playerRef.current?.clearLockScreenControls();
-        await prepareMediaNotificationControls();
         await prepareAudioSession();
         videoPlayer.staysActiveInBackground = true;
         videoPlayer.showNowPlayingNotification = false;
@@ -210,10 +209,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         videoPlayer.pause();
         setIsPlaying(false);
       } else {
-        void prepareMediaNotificationControls();
         void prepareAudioSession();
         videoPlayer.staysActiveInBackground = true;
-        videoPlayer.showNowPlayingNotification = true;
+        videoPlayer.showNowPlayingNotification = false;
         videoPlayer.play();
         setIsPlaying(true);
       }
