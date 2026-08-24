@@ -8,7 +8,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import * as Sharing from "expo-sharing";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, AppState, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { isPictureInPictureSupported, VideoView } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
@@ -77,7 +77,7 @@ export default function VideoPlayerScreen() {
   const [mirrored, setMirrored] = useState(false);
   const [nightMode, setNightMode] = useState(false);
   const [videoFit, setVideoFit] = useState<VideoFitMode>("auto");
-  const [frameAspect, setFrameAspect] = useState<FrameAspect>("screen");
+  const [frameAspect, setFrameAspect] = useState<FrameAspect>("16:9");
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [controlsLocked, setControlsLocked] = useState(false);
@@ -135,7 +135,17 @@ export default function VideoPlayerScreen() {
 
   useEffect(() => {
     player.staysActiveInBackground = backgroundEnabled;
-    player.showNowPlayingNotification = true;
+    player.showNowPlayingNotification = false;
+  }, [backgroundEnabled, player]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if ((nextState === "inactive" || nextState === "background") && backgroundEnabled && player.playing) {
+        player.showNowPlayingNotification = true;
+      }
+      if (nextState === "active") player.showNowPlayingNotification = false;
+    });
+    return () => subscription.remove();
   }, [backgroundEnabled, player]);
 
   useEffect(() => { player.loop = repeatMode === "one"; }, [player, repeatMode]);
@@ -297,12 +307,12 @@ export default function VideoPlayerScreen() {
     if (player.playing) { player.pause(); setIsPlaying(false); return; }
     await prepareMediaNotificationControls();
     player.staysActiveInBackground = backgroundEnabled;
-    player.showNowPlayingNotification = true;
+    player.showNowPlayingNotification = false;
     player.play();
     setIsPlaying(true);
   };
   const cycleSpeed = () => { const next = nextVideoPlaybackSpeed(speed); player.playbackRate = next; setSpeed(next); };
-  const toggleBackground = () => { const next = !backgroundEnabled; player.staysActiveInBackground = next; setBackgroundEnabled(next); };
+  const toggleBackground = () => { const next = !backgroundEnabled; player.staysActiveInBackground = next; player.showNowPlayingNotification = false; setBackgroundEnabled(next); };
   const toggleMute = () => { const next = !muted; player.muted = next; setMuted(next); };
   const openPip = async () => { if (!isPictureInPictureSupported()) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } try { await viewRef.current?.startPictureInPicture(); } catch { Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
   const setAbPoint = () => { if (repeatStart === null || repeatEnd !== null) { setRepeatStart(player.currentTime); setRepeatEnd(null); Alert.alert("تكرار A–B", "تم تحديد النقطة A. انتقل إلى نهاية المقطع واضغط الزر مرة أخرى لتحديد B."); } else { const end = Math.max(player.currentTime, repeatStart + 1); setRepeatEnd(end); Alert.alert("تكرار A–B", `سيُكرر المشغل المقطع بين ${formatDuration(repeatStart)} و${formatDuration(end)}.`); } };
