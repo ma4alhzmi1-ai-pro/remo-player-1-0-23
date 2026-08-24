@@ -94,6 +94,7 @@ export default function VideoPlayerScreen() {
   const effectiveFit = resolveVideoContentFit(videoFit, isLandscape, displayMode === "cinematic");
   const mediaSurfaceHeight = isLandscape ? height : width / (16 / 9);
   const frameStyle = resolveFrameDimensions(frameAspect, width, mediaSurfaceHeight) ?? undefined;
+  const pipSupported = Platform.OS !== "web" && isPictureInPictureSupported();
   const translateMutation = trpc.media.translateVideo.useMutation();
   const player = videoPlayer;
 
@@ -314,7 +315,7 @@ export default function VideoPlayerScreen() {
   const cycleSpeed = () => { const next = nextVideoPlaybackSpeed(speed); player.playbackRate = next; setSpeed(next); };
   const toggleBackground = () => { const next = !backgroundEnabled; player.staysActiveInBackground = next; player.showNowPlayingNotification = false; setBackgroundEnabled(next); };
   const toggleMute = () => { const next = !muted; player.muted = next; setMuted(next); };
-  const openPip = async () => { if (!isPictureInPictureSupported()) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } try { await viewRef.current?.startPictureInPicture(); } catch { Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
+  const openPip = async () => { if (!pipSupported) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } try { await viewRef.current?.startPictureInPicture(); } catch { Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
   const setAbPoint = () => { if (repeatStart === null || repeatEnd !== null) { setRepeatStart(player.currentTime); setRepeatEnd(null); Alert.alert("تكرار A–B", "تم تحديد النقطة A. انتقل إلى نهاية المقطع واضغط الزر مرة أخرى لتحديد B."); } else { const end = Math.max(player.currentTime, repeatStart + 1); setRepeatEnd(end); Alert.alert("تكرار A–B", `سيُكرر المشغل المقطع بين ${formatDuration(repeatStart)} و${formatDuration(end)}.`); } };
   const resetAb = () => { setRepeatStart(null); setRepeatEnd(null); };
   const previousVideo = async () => {
@@ -379,13 +380,13 @@ export default function VideoPlayerScreen() {
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
       {!isLandscape ? <View style={styles.header}><Pressable onPress={exitVideo} style={styles.headerIcon}><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.headerTitle}>{currentItem.title}</Text><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.headerIcon}><MaterialIcons name="share" size={21} color={colors.text} /></Pressable></View> : null}
       <View style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
-        <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
+        <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => setControlsVisible(false)} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={backgroundEnabled && pipSupported} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
-        {volumeHud ? <View pointerEvents="none" style={styles.volumeHud}><MaterialIcons name="volume-up" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(volume * 100)}%</Text></View> : null}
-        {brightnessHud ? <View pointerEvents="none" style={styles.brightnessHud}><MaterialIcons name="brightness-high" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(brightness * 100)}%</Text></View> : null}
-        {temporarySpeedActive ? <View pointerEvents="none" style={[styles.volumeHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
+        {volumeHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.volumeMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(volume * 100)}%` }]} /></View><MaterialIcons name="volume-up" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>الصوت: {Math.round(volume * 100)}%</Text></View></> : null}
+        {brightnessHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(brightness * 100)}%` }]} /></View><MaterialIcons name="brightness-high" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>السطوع: {Math.round(brightness * 100)}%</Text></View></> : null}
+        {temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none">
           <View style={styles.overlayTop}><Pressable onPress={exitVideo} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>
@@ -406,7 +407,76 @@ function TranslationSheet({ visible, item, selectedLanguage, onSelectLanguage, g
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 }, landscapeRoot: { backgroundColor: "#02060B" }, header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" }, headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" }, headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 }, mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden", alignItems: "center", justifyContent: "center" }, landscapeSurface: { flex: 1, aspectRatio: undefined }, cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 }, videoContainer: { flex: 1, alignSelf: "center" }, gestureSurface: { ...StyleSheet.absoluteFillObject, zIndex: 1, elevation: 1 }, mirrored: { transform: [{ scaleX: -1 }] }, video: { flex: 1 }, nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" }, subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" }, subtitleText: { color: "#FFFFFF", fontSize: 15, lineHeight: 22, fontWeight: "800", textAlign: "center" }, volumeHud: { position: "absolute", top: "41%", alignSelf: "center", minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, brightnessHud: { position: "absolute", top: "41%", alignSelf: "center", minWidth: 84, minHeight: 68, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", gap: 4 }, volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" }, overlay: { ...StyleSheet.absoluteFillObject, zIndex: 2, elevation: 2, justifyContent: "space-between", backgroundColor: "rgba(0, 8, 15, 0.28)", paddingVertical: 10 }, fitPanel: { position: "absolute", zIndex: 4, elevation: 4, left: 12, right: 12, top: 44, padding: 14, borderRadius: 18, backgroundColor: "rgba(7,15,27,0.96)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" }, fitPanelHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" }, fitPanelClose: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" }, fitPanelTitle: { color: colors.text, fontSize: 17, fontWeight: "900", textAlign: "right" }, fitPanelLabel: { color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "right", marginTop: 12, marginBottom: 7 }, fitModeRow: { flexDirection: "row-reverse", justifyContent: "space-between", gap: 7 }, fitModeButton: { flex: 1, minHeight: 64, borderRadius: 13, alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.08)" }, fitModeButtonActive: { backgroundColor: colors.cyan }, fitModeText: { color: colors.text, fontSize: 10, fontWeight: "800" }, fitModeTextActive: { color: colors.background }, frameAspectRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 }, frameAspectButton: { minWidth: 55, minHeight: 36, paddingHorizontal: 9, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" }, frameAspectButtonActive: { backgroundColor: colors.cyan }, frameAspectText: { color: colors.text, fontSize: 11, fontWeight: "900" }, frameAspectTextActive: { color: colors.background }, lockOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 3, elevation: 3, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.22)" }, unlockButton: { minHeight: 58, minWidth: 132, paddingHorizontal: 16, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.76)", alignItems: "center", justifyContent: "center", gap: 4 }, unlockText: { color: colors.text, fontSize: 11, fontWeight: "800" }, overlayTop: { paddingHorizontal: 14, flexDirection: "row-reverse", alignItems: "center", gap: 8 }, overlayTitle: { flex: 1, color: colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" }, overlayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.36)" }, topActions: { paddingHorizontal: 14, gap: 7, alignItems: "center" }, topAction: { minHeight: 31, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: "rgba(8,17,31,0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" }, topActionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, topActionText: { color: colors.text, fontSize: 10, fontWeight: "800" }, topActionTextActive: { color: colors.background }, centerControls: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 28 }, transport: { width: 45, height: 45, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" }, playButton: { width: 62, height: 62, borderRadius: 31, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.text, backgroundColor: "rgba(0,0,0,0.36)" }, overlayBottom: { paddingHorizontal: 15 }, progressWrap: { flexDirection: "row-reverse", alignItems: "center", gap: 8 }, time: { color: colors.text, fontSize: 10, fontVariant: ["tabular-nums"] }, progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.42)", overflow: "hidden" }, progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.cyan }, quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "space-between", gap: 5 }, quickIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)", alignItems: "center", justifyContent: "center" }, quickIconActive: { backgroundColor: colors.cyan, borderColor: colors.cyan }, quickSpeed: { color: colors.text, fontSize: 10, fontWeight: "900" }, resetAb: { alignSelf: "center", marginTop: 14, paddingHorizontal: 13, minHeight: 38, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 5 }, resetAbText: { color: colors.cyan, fontSize: 12, fontWeight: "800" }, dimmed: { opacity: 0.6 }, empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 }, emptyText: { color: colors.muted, fontSize: 15 }, backButton: { height: 42, paddingHorizontal: 16, borderRadius: 13, backgroundColor: colors.cyan, justifyContent: "center" }, backText: { color: colors.background, fontWeight: "800" },
+  root: { flex: 1 },
+  landscapeRoot: { backgroundColor: "#02060B" },
+  header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
+  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 },
+  mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  landscapeSurface: { flex: 1, aspectRatio: undefined },
+  cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 },
+  videoContainer: { flex: 1, alignSelf: "center" },
+  gestureSurface: { ...StyleSheet.absoluteFillObject, zIndex: 1, elevation: 1 },
+  mirrored: { transform: [{ scaleX: -1 }] },
+  video: { flex: 1 },
+  nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" },
+  subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" },
+  subtitleText: { color: "#FFFFFF", fontSize: 15, lineHeight: 22, fontWeight: "800", textAlign: "center" },
+  gestureMeter: { position: "absolute", top: "30%", zIndex: 3, elevation: 3, width: 78, paddingVertical: 14, borderRadius: 16, backgroundColor: "rgba(0,0,0,0.62)", alignItems: "center", gap: 12 },
+  volumeMeter: { left: 22 },
+  brightnessMeter: { right: 22 },
+  gestureTrack: { width: 8, height: 166, borderRadius: 4, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.28)", justifyContent: "flex-end" },
+  gestureFill: { width: "100%", borderRadius: 4, backgroundColor: "#39D353" },
+  gestureReadout: { position: "absolute", top: 20, alignSelf: "center", zIndex: 3, elevation: 3, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "rgba(0,0,0,0.70)" },
+  gestureReadoutText: { color: colors.text, fontSize: 16, fontWeight: "900" },
+  temporarySpeedHud: { position: "absolute", alignSelf: "center", zIndex: 3, elevation: 3, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center" },
+  volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" },
+  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 2, elevation: 2, justifyContent: "space-between", backgroundColor: "rgba(0, 8, 15, 0.28)", paddingVertical: 10 },
+  fitPanel: { position: "absolute", zIndex: 4, elevation: 4, left: 12, right: 12, top: 44, padding: 14, borderRadius: 18, backgroundColor: "rgba(7,15,27,0.96)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
+  fitPanelHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
+  fitPanelClose: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" },
+  fitPanelTitle: { color: colors.text, fontSize: 17, fontWeight: "900", textAlign: "right" },
+  fitPanelLabel: { color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "right", marginTop: 12, marginBottom: 7 },
+  fitModeRow: { flexDirection: "row-reverse", justifyContent: "space-between", gap: 7 },
+  fitModeButton: { flex: 1, minHeight: 64, borderRadius: 13, alignItems: "center", justifyContent: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.08)" },
+  fitModeButtonActive: { backgroundColor: colors.cyan },
+  fitModeText: { color: colors.text, fontSize: 10, fontWeight: "800" },
+  fitModeTextActive: { color: colors.background },
+  frameAspectRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  frameAspectButton: { minWidth: 55, minHeight: 36, paddingHorizontal: 9, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" },
+  frameAspectButtonActive: { backgroundColor: colors.cyan },
+  frameAspectText: { color: colors.text, fontSize: 11, fontWeight: "900" },
+  frameAspectTextActive: { color: colors.background },
+  lockOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 3, elevation: 3, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.22)" },
+  unlockButton: { minHeight: 58, minWidth: 132, paddingHorizontal: 16, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.76)", alignItems: "center", justifyContent: "center", gap: 4 },
+  unlockText: { color: colors.text, fontSize: 11, fontWeight: "800" },
+  overlayTop: { paddingHorizontal: 14, flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  overlayTitle: { flex: 1, color: colors.text, fontSize: 12, fontWeight: "800", textAlign: "center" },
+  overlayCircle: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.36)" },
+  topActions: { paddingHorizontal: 14, gap: 7, alignItems: "center" },
+  topAction: { minHeight: 31, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: "rgba(8,17,31,0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.13)" },
+  topActionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
+  topActionText: { color: colors.text, fontSize: 10, fontWeight: "800" },
+  topActionTextActive: { color: colors.background },
+  centerControls: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 28 },
+  transport: { width: 45, height: 45, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" },
+  playButton: { width: 62, height: 62, borderRadius: 31, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.text, backgroundColor: "rgba(0,0,0,0.36)" },
+  overlayBottom: { paddingHorizontal: 15 },
+  progressWrap: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  time: { color: colors.text, fontSize: 10, fontVariant: ["tabular-nums"] },
+  progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.42)", overflow: "hidden" },
+  progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.cyan },
+  quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "space-between", gap: 5 },
+  quickIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)", alignItems: "center", justifyContent: "center" },
+  quickIconActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
+  quickSpeed: { color: colors.text, fontSize: 10, fontWeight: "900" },
+  resetAb: { alignSelf: "center", marginTop: 14, paddingHorizontal: 13, minHeight: 38, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 5 },
+  resetAbText: { color: colors.cyan, fontSize: 12, fontWeight: "800" },
+  dimmed: { opacity: 0.6 },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14 },
+  emptyText: { color: colors.muted, fontSize: 15 },
+  backButton: { height: 42, paddingHorizontal: 16, borderRadius: 13, backgroundColor: colors.cyan, justifyContent: "center" },
+  backText: { color: colors.background, fontWeight: "800" },
 });
 
 const playerOverlayStyles = StyleSheet.create({
