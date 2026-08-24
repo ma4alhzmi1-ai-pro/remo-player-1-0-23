@@ -22,6 +22,7 @@ import { trpc } from "@/lib/trpc";
 import { resolveVideoGesture, shouldActivateVideoGesture } from "@/lib/video-gesture";
 import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
+import { resolveSafeVideoSeek } from "@/lib/video-seek";
 import { resolveFrameDimensions, resolveVideoContentFit, type FrameAspect, type VideoFitMode } from "@/lib/video-display-settings";
 import type { MediaItem } from "@/types/media";
 
@@ -205,6 +206,17 @@ export default function VideoPlayerScreen() {
       void Brightness.setBrightnessAsync(nextBrightness).catch(() => undefined);
     }
   }, [brightness]);
+  const safeSeekBy = useCallback((seconds: number) => {
+    const target = resolveSafeVideoSeek(player.currentTime, player.duration, seconds);
+    if (target === null) return false;
+    try {
+      player.currentTime = target;
+      setSubtitleTime(target);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [player]);
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => !controlsLocked,
     onMoveShouldSetPanResponder: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
@@ -214,12 +226,12 @@ export default function VideoPlayerScreen() {
     onPanResponderRelease: (_, gesture) => {
       if (controlsLocked) return;
       const action = resolveVideoGesture(gesture.dx, gesture.dy, touchStartX.current, width);
-      if (action?.type === "seek") player.seekBy(action.seconds);
+      if (action?.type === "seek") safeSeekBy(action.seconds);
       if (action?.type === "volume") changeVolume(action.delta);
       if (action?.type === "brightness") changeBrightness(action.delta);
       if (!action) setControlsVisible((visible) => !visible);
     },
-  }), [changeBrightness, changeVolume, controlsLocked, player, width]);
+  }), [changeBrightness, changeVolume, controlsLocked, safeSeekBy, width]);
   const seekFromProgress = useCallback((locationX: number) => {
     const target = resolveVideoProgressSeek(locationX, progressTrackWidth.current, player.duration);
     if (target === null) return;
@@ -282,7 +294,7 @@ export default function VideoPlayerScreen() {
     if (isNavigatingVideoRef.current) return;
     isNavigatingVideoRef.current = true;
     try {
-      if (!(await playPrevious())) player.seekBy(-10);
+      if (!(await playPrevious())) safeSeekBy(-10);
     } catch {
       Alert.alert("تعذر تشغيل السابق", "تعذر تبديل الفيديو الآن. حاول بعد لحظة.");
     } finally {
@@ -293,7 +305,7 @@ export default function VideoPlayerScreen() {
     if (isNavigatingVideoRef.current) return;
     isNavigatingVideoRef.current = true;
     try {
-      if (!(await playNext())) player.seekBy(10);
+      if (!(await playNext())) safeSeekBy(10);
     } catch {
       Alert.alert("تعذر تشغيل التالي", "تعذر تبديل الفيديو الآن. حاول بعد لحظة.");
     } finally {
@@ -349,7 +361,7 @@ export default function VideoPlayerScreen() {
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none">
           <View style={styles.overlayTop}><Pressable onPress={exitVideo} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>
-          <View style={styles.centerControls}><Pressable onPress={() => player.seekBy(-10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="replay-10" size={28} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.transport}><MaterialIcons name="skip-previous" size={30} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={40} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.transport}><MaterialIcons name="skip-next" size={30} color={colors.text} /></Pressable><Pressable onPress={() => player.seekBy(10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="forward-10" size={28} color={colors.text} /></Pressable></View>
+          <View style={styles.centerControls}><Pressable onPress={() => safeSeekBy(-10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="replay-10" size={28} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.transport}><MaterialIcons name="skip-previous" size={30} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={40} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.transport}><MaterialIcons name="skip-next" size={30} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="forward-10" size={28} color={colors.text} /></Pressable></View>
           <View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View {...progressResponder.panHandlers} onLayout={(event) => { progressTrackWidth.current = event.nativeEvent.layout.width; }} style={playerOverlayStyles.progressTouch}><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /><View style={[playerOverlayStyles.progressThumb, { left: `${Math.max(0, Math.min(100, progress))}%` }]} /></View></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><View style={styles.quickIcons}><Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={toggleBackground} style={[styles.quickIcon, backgroundEnabled && styles.quickIconActive]}><MaterialIcons name="headset" size={20} color={backgroundEnabled ? colors.background : colors.text} /></Pressable><Pressable onPress={rotateVideo} style={styles.quickIcon}><MaterialIcons name="screen-rotation" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={() => void openPip()} style={styles.quickIcon}><MaterialIcons name="picture-in-picture-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></View></View>
         </View> : null}
         {fitPanelOpen && !controlsLocked ? <View style={styles.fitPanel}><View style={styles.fitPanelHeader}><Pressable onPress={() => setFitPanelOpen(false)} style={styles.fitPanelClose}><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>الشاشة</Text></View><Text style={styles.fitPanelLabel}>طريقة العرض</Text><View style={styles.fitModeRow}>{fitModes.map((mode) => <Pressable key={mode.id} onPress={() => setVideoFit(mode.id)} style={[styles.fitModeButton, videoFit === mode.id && styles.fitModeButtonActive]}><MaterialIcons name={mode.icon} size={24} color={videoFit === mode.id ? colors.background : colors.text} /><Text style={[styles.fitModeText, videoFit === mode.id && styles.fitModeTextActive]}>{mode.label}</Text></Pressable>)}</View><Text style={styles.fitPanelLabel}>قياسي</Text><View style={styles.frameAspectRow}>{frameAspects.map((aspect) => <Pressable key={aspect.id} onPress={() => setFrameAspect(aspect.id)} style={[styles.frameAspectButton, frameAspect === aspect.id && styles.frameAspectButtonActive]}><Text style={[styles.frameAspectText, frameAspect === aspect.id && styles.frameAspectTextActive]}>{aspect.label}</Text></Pressable>)}</View></View> : null}
