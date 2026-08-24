@@ -80,6 +80,7 @@ export default function VideoPlayerScreen() {
   const [frameAspect, setFrameAspect] = useState<FrameAspect>("16:9");
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [controlsActivity, setControlsActivity] = useState(0);
   const [controlsLocked, setControlsLocked] = useState(false);
   const [autoRotateEnabled, setAutoRotateEnabled] = useState(true);
   const [repeatStart, setRepeatStart] = useState<number | null>(null);
@@ -189,6 +190,12 @@ export default function VideoPlayerScreen() {
     return () => clearTimeout(timeout);
   }, [brightnessHud]);
 
+  useEffect(() => {
+    if (!controlsVisible || controlsLocked || fitPanelOpen) return;
+    const timeout = setTimeout(() => setControlsVisible(false), 3200);
+    return () => clearTimeout(timeout);
+  }, [controlsActivity, controlsLocked, controlsVisible, fitPanelOpen]);
+
   const changeVolume = useCallback((amount: number) => {
     const nextVolume = Math.max(0, Math.min(1, Number((volume + amount).toFixed(2))));
     player.volume = nextVolume;
@@ -214,6 +221,10 @@ export default function VideoPlayerScreen() {
       return false;
     }
   }, [player]);
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    setControlsActivity((activity) => activity + 1);
+  }, []);
   const restoreTemporarySpeed = useCallback(() => {
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = null;
@@ -251,10 +262,10 @@ export default function VideoPlayerScreen() {
       if (action?.type === "seek") safeSeekBy(action.seconds);
       if (action?.type === "volume") changeVolume(action.delta);
       if (action?.type === "brightness") changeBrightness(action.delta);
-      if (!action && !wasTemporarySpeed) setControlsVisible((visible) => !visible);
+      if (!action && !wasTemporarySpeed) revealControls();
     },
     onPanResponderTerminate: restoreTemporarySpeed,
-  }), [changeBrightness, changeVolume, controlsLocked, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
+  }), [changeBrightness, changeVolume, controlsLocked, revealControls, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
   const seekFromProgress = useCallback((locationX: number) => {
     const target = resolveVideoProgressSeek(locationX, progressTrackWidth.current, player.duration);
     if (target === null) return;
@@ -387,7 +398,7 @@ export default function VideoPlayerScreen() {
         {volumeHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.volumeMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(volume * 100)}%` }]} /></View><MaterialIcons name="volume-up" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>الصوت: {Math.round(volume * 100)}%</Text></View></> : null}
         {brightnessHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(brightness * 100)}%` }]} /></View><MaterialIcons name="brightness-high" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>السطوع: {Math.round(brightness * 100)}%</Text></View></> : null}
         {temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
-        {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none">
+        {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" onTouchStart={revealControls}>
           <View style={styles.overlayTop}><Pressable onPress={exitVideo} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>
           <View style={styles.centerControls}><Pressable onPress={() => safeSeekBy(-10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="replay-10" size={28} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.transport}><MaterialIcons name="skip-previous" size={30} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={40} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.transport}><MaterialIcons name="skip-next" size={30} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="forward-10" size={28} color={colors.text} /></Pressable></View>
