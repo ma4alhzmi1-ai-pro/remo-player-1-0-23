@@ -42,7 +42,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const statusSubscriptionRef = useRef<{ remove: () => void } | null>(null);
   const [videoPlayer] = useState(() => {
     const player = createVideoPlayer(null);
-    player.staysActiveInBackground = true;
+    player.staysActiveInBackground = false;
     player.showNowPlayingNotification = false;
     player.audioMixingMode = "duckOthers";
     player.timeUpdateEventInterval = 0.25;
@@ -86,12 +86,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => subscription.remove();
   }, [videoPlayer]);
 
-  const prepareAudioSession = useCallback(async () => {
+  const prepareAudioSession = useCallback(async (allowBackground = true) => {
     try {
       await setAudioModeAsync({
         playsInSilentMode: true,
         interruptionMode: "doNotMix",
-        shouldPlayInBackground: Platform.OS !== "web",
+        shouldPlayInBackground: Platform.OS !== "web" && allowBackground,
         shouldRouteThroughEarpiece: false,
       });
     } catch (error) {
@@ -152,8 +152,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       try {
         playerRef.current?.pause();
         playerRef.current?.clearLockScreenControls();
-        await prepareAudioSession();
-        videoPlayer.staysActiveInBackground = true;
+        await prepareAudioSession(false);
+        videoPlayer.staysActiveInBackground = false;
         videoPlayer.showNowPlayingNotification = false;
         videoPlayer.audioMixingMode = "duckOthers";
         videoPlayer.timeUpdateEventInterval = 0.25;
@@ -209,8 +209,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         videoPlayer.pause();
         setIsPlaying(false);
       } else {
-        void prepareAudioSession();
-        videoPlayer.staysActiveInBackground = true;
+        void prepareAudioSession(false);
+        videoPlayer.staysActiveInBackground = false;
         videoPlayer.showNowPlayingNotification = false;
         videoPlayer.play();
         setIsPlaying(true);
