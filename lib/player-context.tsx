@@ -1,6 +1,6 @@
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Alert, Platform } from "react-native";
+import { Alert, AppState, Platform } from "react-native";
 
 import { prepareMediaNotificationControls } from "@/lib/media-notification-permission";
 import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
@@ -71,13 +71,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const prepareAudioSession = useCallback(async () => {
     try {
       await setAudioModeAsync({
-        interruptionMode: "duckOthers",
+        playsInSilentMode: true,
+        interruptionMode: "doNotMix",
         shouldPlayInBackground: Platform.OS !== "web",
+        shouldRouteThroughEarpiece: false,
       });
     } catch (error) {
       console.warn("تعذر تهيئة جلسة الصوت", error);
     }
   }, []);
+
+  const activateAudioControls = useCallback((player: AudioPlayer, item: MediaItem) => {
+    player.setActiveForLockScreen(true, {
+      title: item.title,
+      artist: item.artist,
+      albumTitle: item.album,
+      artworkUrl: item.thumbnailUri,
+    }, {
+      showSeekBackward: true,
+      showSeekForward: true,
+    });
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const player = playerRef.current;
+      const item = currentItemRef.current;
+      if ((nextState === "inactive" || nextState === "background") && player?.playing && item?.mediaType === "audio") {
+        activateAudioControls(player, item);
+      }
+    });
+    return () => subscription.remove();
+  }, [activateAudioControls]);
 
   const attachStatusListener = useCallback((player: AudioPlayer) => {
     statusSubscriptionRef.current?.remove();
@@ -114,7 +139,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       await prepareAudioSession();
       let player = playerRef.current;
       if (!player) {
-        player = createAudioPlayer({ uri: item.uri }, { updateInterval: 300 });
+        player = createAudioPlayer({ uri: item.uri }, { updateInterval: 300, keepAudioSessionActive: true });
         playerRef.current = player;
         attachStatusListener(player);
       } else {
@@ -122,15 +147,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       player.loop = repeatMode === "one";
       player.setPlaybackRate(speed);
-      player.setActiveForLockScreen(true, {
-        title: item.title,
-        artist: item.artist,
-        albumTitle: item.album,
-        artworkUrl: item.thumbnailUri,
-      }, {
-        showSeekBackward: true,
-        showSeekForward: true,
-      });
+      activateAudioControls(player, item);
       const memory = await getPlaybackMemory(item.id);
       const resumeAt = resumePosition(memory, item.duration);
       if (resumeAt > 0) await player.seekTo(resumeAt);
@@ -144,7 +161,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
-  }, [attachStatusListener, items, prepareAudioSession, repeatMode, speed]);
+  }, [activateAudioControls, attachStatusListener, items, prepareAudioSession, repeatMode, speed]);
 
   const togglePlayback = useCallback(() => {
     const player = playerRef.current;
@@ -154,19 +171,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(false);
     } else {
       void prepareMediaNotificationControls();
-      player.setActiveForLockScreen(true, {
-        title: currentItem.title,
-        artist: currentItem.artist,
-        albumTitle: currentItem.album,
-        artworkUrl: currentItem.thumbnailUri,
-      }, {
-        showSeekBackward: true,
-        showSeekForward: true,
-      });
+      activateAudioControls(player, currentItem);
       player.play();
       setIsPlaying(true);
     }
-  }, [currentItem]);
+  }, [activateAudioControls, currentItem]);
 
   const seekTo = useCallback(async (seconds: number) => {
     const player = playerRef.current;
