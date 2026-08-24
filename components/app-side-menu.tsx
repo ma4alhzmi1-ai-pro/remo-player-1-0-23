@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
@@ -12,8 +12,10 @@ const MenuContext = createContext<MenuContextValue | null>(null);
 
 export function AppSideMenuProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);
+  const pathname = usePathname();
   const value = useMemo(() => ({ openMenu: () => setVisible(true), closeMenu: () => setVisible(false) }), []);
-  return <MenuContext.Provider value={value}>{children}<SideMenu visible={visible} onClose={() => setVisible(false)} /><Pressable onPress={() => setVisible(true)} style={({ pressed }) => [styles.floating, pressed && styles.dimmed]} accessibilityLabel="فتح القائمة الجانبية"><MaterialIcons name="menu" size={25} color={colors.text} /></Pressable></MenuContext.Provider>;
+  const hideForVideoPlayer = pathname === "/player/video";
+  return <MenuContext.Provider value={value}>{children}<SideMenu visible={visible} onClose={() => setVisible(false)} />{hideForVideoPlayer ? null : <Pressable onPress={() => setVisible(true)} style={({ pressed }) => [styles.floating, pressed && styles.dimmed]} accessibilityLabel="فتح القائمة الجانبية"><MaterialIcons name="menu" size={25} color={colors.text} /></Pressable>}</MenuContext.Provider>;
 }
 
 export function useAppSideMenu() {

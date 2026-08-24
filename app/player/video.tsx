@@ -9,7 +9,7 @@ import * as Sharing from "expo-sharing";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { isPictureInPictureSupported, VideoView, useVideoPlayer } from "expo-video";
+import { isPictureInPictureSupported, VideoView } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -52,9 +52,12 @@ const frameAspects: { id: FrameAspect; label: string; ratio?: number }[] = [
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
-  const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat } = usePlayer();
+  const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat, videoPlayer } = usePlayer();
   const viewRef = useRef<any>(null);
   const touchStartX = useRef(0);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const temporarySpeedActiveRef = useRef(false);
+  const originalPlaybackRateRef = useRef(1);
   const progressTrackWidth = useRef(0);
   const isAutoAdvancingRef = useRef(false);
   const isNavigatingVideoRef = useRef(false);
@@ -68,6 +71,7 @@ export default function VideoPlayerScreen() {
   const [volumeHud, setVolumeHud] = useState(false);
   const [brightness, setBrightness] = useState(0.7);
   const [brightnessHud, setBrightnessHud] = useState(false);
+  const [temporarySpeedActive, setTemporarySpeedActive] = useState(false);
   const [backgroundEnabled, setBackgroundEnabled] = useState(true);
   const [muted, setMuted] = useState(false);
   const [mirrored, setMirrored] = useState(false);
@@ -75,7 +79,7 @@ export default function VideoPlayerScreen() {
   const [videoFit, setVideoFit] = useState<VideoFitMode>("auto");
   const [frameAspect, setFrameAspect] = useState<FrameAspect>("screen");
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(false);
   const [controlsLocked, setControlsLocked] = useState(false);
   const [autoRotateEnabled, setAutoRotateEnabled] = useState(true);
   const [repeatStart, setRepeatStart] = useState<number | null>(null);
@@ -91,17 +95,7 @@ export default function VideoPlayerScreen() {
   const mediaSurfaceHeight = isLandscape ? height : width / (16 / 9);
   const frameStyle = resolveFrameDimensions(frameAspect, width, mediaSurfaceHeight) ?? undefined;
   const translateMutation = trpc.media.translateVideo.useMutation();
-  const videoSource = useMemo(() => currentItem?.mediaType === "video" ? {
-    uri: currentItem.uri,
-    metadata: { title: currentItem.title, artist: currentItem.artist },
-  } : null, [currentItem]);
-  const player = useVideoPlayer(null, (videoPlayer) => {
-    videoPlayer.staysActiveInBackground = true;
-    videoPlayer.showNowPlayingNotification = true;
-    videoPlayer.audioMixingMode = "duckOthers";
-    videoPlayer.timeUpdateEventInterval = 0.25;
-    videoPlayer.volume = 1;
-  });
+  const player = videoPlayer;
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -134,18 +128,10 @@ export default function VideoPlayerScreen() {
   }, []);
 
   useEffect(() => {
-    if (!videoSource) return;
-    let active = true;
-    try { player.pause(); } catch { /* The previous source may not be ready yet. */ }
-    void player.replaceAsync(videoSource).then(() => {
-      if (!active) return;
-      player.staysActiveInBackground = true;
-      player.showNowPlayingNotification = true;
-      player.play();
-      setIsPlaying(true);
-    }).catch(() => setIsPlaying(false));
-    return () => { active = false; };
-  }, [currentItem?.id, player, videoSource]);
+    setIsPlaying(player.playing);
+    const subscription = player.addListener("playingChange", ({ isPlaying: playing }) => setIsPlaying(playing));
+    return () => subscription.remove();
+  }, [player]);
 
   useEffect(() => {
     player.staysActiveInBackground = backgroundEnabled;
@@ -217,21 +203,47 @@ export default function VideoPlayerScreen() {
       return false;
     }
   }, [player]);
+  const restoreTemporarySpeed = useCallback(() => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+    if (!temporarySpeedActiveRef.current) return false;
+    player.playbackRate = originalPlaybackRateRef.current;
+    temporarySpeedActiveRef.current = false;
+    setTemporarySpeedActive(false);
+    return true;
+  }, [player]);
+  const scheduleTemporarySpeed = useCallback(() => {
+    if (controlsLocked) return;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      originalPlaybackRateRef.current = player.playbackRate || speed;
+      player.playbackRate = 2;
+      temporarySpeedActiveRef.current = true;
+      setTemporarySpeedActive(true);
+      longPressTimerRef.current = null;
+    }, 360);
+  }, [controlsLocked, player, speed]);
+  useEffect(() => () => { restoreTemporarySpeed(); }, [restoreTemporarySpeed]);
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => !controlsLocked,
     onMoveShouldSetPanResponder: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
     onMoveShouldSetPanResponderCapture: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (event) => { touchStartX.current = event.nativeEvent.locationX; },
+    onPanResponderGrant: (event) => { touchStartX.current = event.nativeEvent.locationX; scheduleTemporarySpeed(); },
+    onPanResponderMove: (_, gesture) => {
+      if (Math.abs(gesture.dx) > 8 || Math.abs(gesture.dy) > 8) restoreTemporarySpeed();
+    },
     onPanResponderRelease: (_, gesture) => {
       if (controlsLocked) return;
       const action = resolveVideoGesture(gesture.dx, gesture.dy, touchStartX.current, width);
+      const wasTemporarySpeed = restoreTemporarySpeed();
       if (action?.type === "seek") safeSeekBy(action.seconds);
       if (action?.type === "volume") changeVolume(action.delta);
       if (action?.type === "brightness") changeBrightness(action.delta);
-      if (!action) setControlsVisible((visible) => !visible);
+      if (!action && !wasTemporarySpeed) setControlsVisible((visible) => !visible);
     },
-  }), [changeBrightness, changeVolume, controlsLocked, safeSeekBy, width]);
+    onPanResponderTerminate: restoreTemporarySpeed,
+  }), [changeBrightness, changeVolume, controlsLocked, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
   const seekFromProgress = useCallback((locationX: number) => {
     const target = resolveVideoProgressSeek(locationX, progressTrackWidth.current, player.duration);
     if (target === null) return;
@@ -252,7 +264,12 @@ export default function VideoPlayerScreen() {
   const activeCue = subtitleTrack?.cues.find((cue) => subtitleTime >= cue.start && subtitleTime <= cue.end);
   const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
   const exitVideo = () => {
-    try { player.pause(); } catch { /* The player may already be released during navigation. */ }
+    if (!backgroundEnabled) {
+      try { player.pause(); } catch { /* The native player may already be unavailable during navigation. */ }
+    } else {
+      player.staysActiveInBackground = true;
+      player.showNowPlayingNotification = true;
+    }
     if (router.canGoBack()) router.back(); else router.replace("/(tabs)/video" as never);
   };
   const rotateVideo = () => {
@@ -348,7 +365,7 @@ export default function VideoPlayerScreen() {
     { icon: "ios-share", label: isSharing ? "جارٍ" : "مشاركة", onPress: () => void shareVideo() },
   ];
 
-  return <ScreenContainer edges={["top", "bottom", "left", "right"]}>
+  return <ScreenContainer edges={[]}>
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
       {!isLandscape ? <View style={styles.header}><Pressable onPress={exitVideo} style={styles.headerIcon}><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.headerTitle}>{currentItem.title}</Text><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.headerIcon}><MaterialIcons name="share" size={21} color={colors.text} /></Pressable></View> : null}
       <View style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
@@ -358,6 +375,7 @@ export default function VideoPlayerScreen() {
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <View pointerEvents="none" style={styles.volumeHud}><MaterialIcons name="volume-up" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(volume * 100)}%</Text></View> : null}
         {brightnessHud ? <View pointerEvents="none" style={styles.brightnessHud}><MaterialIcons name="brightness-high" size={23} color={colors.text} /><Text style={styles.volumeText}>{Math.round(brightness * 100)}%</Text></View> : null}
+        {temporarySpeedActive ? <View pointerEvents="none" style={[styles.volumeHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none">
           <View style={styles.overlayTop}><Pressable onPress={exitVideo} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>

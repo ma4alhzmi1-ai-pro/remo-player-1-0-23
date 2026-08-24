@@ -9,11 +9,11 @@ export function MiniPlayer() {
   const router = useRouter();
   const { currentItem, isPlaying, togglePlayback } = usePlayer();
 
-  if (!currentItem || currentItem.mediaType === "video") return null;
+  if (!currentItem) return null;
 
   return (
     <View style={styles.shell}>
-      <Pressable onPress={() => router.push("/player/audio")} style={({ pressed }) => [styles.details, pressed && styles.pressed]}>
+      <Pressable onPress={() => router.push(currentItem.mediaType === "video" ? "/player/video" : "/player/audio")} style={({ pressed }) => [styles.details, pressed && styles.pressed]}>
         <Artwork item={currentItem} size={42} />
         <View style={styles.textWrap}>
           <Text numberOfLines={1} style={styles.title}>{currentItem.title}</Text>
