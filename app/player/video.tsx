@@ -9,7 +9,7 @@ import * as Sharing from "expo-sharing";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { isPictureInPictureSupported, VideoView, useVideoPlayer } from "expo-video";
+import { isPictureInPictureSupported, VideoView } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -52,7 +52,7 @@ const frameAspects: { id: FrameAspect; label: string; ratio?: number }[] = [
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
-  const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat } = usePlayer();
+  const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat, videoPlayer } = usePlayer();
   const viewRef = useRef<any>(null);
   const touchStartX = useRef(0);
   const progressTrackWidth = useRef(0);
@@ -91,17 +91,7 @@ export default function VideoPlayerScreen() {
   const mediaSurfaceHeight = isLandscape ? height : width / (16 / 9);
   const frameStyle = resolveFrameDimensions(frameAspect, width, mediaSurfaceHeight) ?? undefined;
   const translateMutation = trpc.media.translateVideo.useMutation();
-  const videoSource = useMemo(() => currentItem?.mediaType === "video" ? {
-    uri: currentItem.uri,
-    metadata: { title: currentItem.title, artist: currentItem.artist },
-  } : null, [currentItem]);
-  const player = useVideoPlayer(null, (videoPlayer) => {
-    videoPlayer.staysActiveInBackground = true;
-    videoPlayer.showNowPlayingNotification = true;
-    videoPlayer.audioMixingMode = "duckOthers";
-    videoPlayer.timeUpdateEventInterval = 0.25;
-    videoPlayer.volume = 1;
-  });
+  const player = videoPlayer;
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -134,18 +124,10 @@ export default function VideoPlayerScreen() {
   }, []);
 
   useEffect(() => {
-    if (!videoSource) return;
-    let active = true;
-    try { player.pause(); } catch { /* The previous source may not be ready yet. */ }
-    void player.replaceAsync(videoSource).then(() => {
-      if (!active) return;
-      player.staysActiveInBackground = true;
-      player.showNowPlayingNotification = true;
-      player.play();
-      setIsPlaying(true);
-    }).catch(() => setIsPlaying(false));
-    return () => { active = false; };
-  }, [currentItem?.id, player, videoSource]);
+    setIsPlaying(player.playing);
+    const subscription = player.addListener("playingChange", ({ isPlaying: playing }) => setIsPlaying(playing));
+    return () => subscription.remove();
+  }, [player]);
 
   useEffect(() => {
     player.staysActiveInBackground = backgroundEnabled;
@@ -252,7 +234,12 @@ export default function VideoPlayerScreen() {
   const activeCue = subtitleTrack?.cues.find((cue) => subtitleTime >= cue.start && subtitleTime <= cue.end);
   const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
   const exitVideo = () => {
-    try { player.pause(); } catch { /* The player may already be released during navigation. */ }
+    if (!backgroundEnabled) {
+      try { player.pause(); } catch { /* The native player may already be unavailable during navigation. */ }
+    } else {
+      player.staysActiveInBackground = true;
+      player.showNowPlayingNotification = true;
+    }
     if (router.canGoBack()) router.back(); else router.replace("/(tabs)/video" as never);
   };
   const rotateVideo = () => {
@@ -348,7 +335,7 @@ export default function VideoPlayerScreen() {
     { icon: "ios-share", label: isSharing ? "جارٍ" : "مشاركة", onPress: () => void shareVideo() },
   ];
 
-  return <ScreenContainer edges={["top", "bottom", "left", "right"]}>
+  return <ScreenContainer edges={[]}>
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
       {!isLandscape ? <View style={styles.header}><Pressable onPress={exitVideo} style={styles.headerIcon}><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.headerTitle}>{currentItem.title}</Text><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.headerIcon}><MaterialIcons name="share" size={21} color={colors.text} /></Pressable></View> : null}
       <View style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
