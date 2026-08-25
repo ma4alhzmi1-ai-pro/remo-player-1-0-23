@@ -1,7 +1,7 @@
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { createVideoPlayer, type VideoPlayer } from "expo-video";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Alert, AppState, Platform } from "react-native";
+import { Alert, Platform } from "react-native";
 
 import { prepareMediaNotificationControls } from "@/lib/media-notification-permission";
 import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
@@ -31,6 +31,7 @@ type PlayerContextValue = {
   toggleRepeat: () => void;
   toggleShuffle: () => void;
   stop: () => void;
+  dismissMediaSession: () => void;
   videoPlayer: VideoPlayer;
 };
 
@@ -61,6 +62,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const isAutoAdvancingRef = useRef(false);
   const currentItemRef = useRef<MediaItem | null>(null);
   const lastSnapshotSecondRef = useRef(0);
+  const lockScreenItemIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     currentItemRef.current = currentItem;
@@ -100,27 +102,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const activateAudioControls = useCallback((player: AudioPlayer, item: MediaItem) => {
-    player.setActiveForLockScreen(true, {
-      title: item.title,
-      artist: item.artist,
-      albumTitle: item.album,
-      artworkUrl: item.thumbnailUri,
-    }, {
-      showSeekBackward: true,
-      showSeekForward: true,
-    });
+    if (lockScreenItemIdRef.current === item.id) return;
+    try {
+      player.setActiveForLockScreen(true, {
+        title: item.title,
+        artist: item.artist,
+        albumTitle: item.album,
+        artworkUrl: item.thumbnailUri,
+      }, {
+        showSeekBackward: true,
+        showSeekForward: true,
+      });
+      lockScreenItemIdRef.current = item.id;
+    } catch (error) {
+      console.warn("تعذر تفعيل تحكمات شاشة القفل للموسيقى", error);
+    }
   }, []);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      const player = playerRef.current;
-      const item = currentItemRef.current;
-      if ((nextState === "inactive" || nextState === "background") && player?.playing && item?.mediaType === "audio") {
-        activateAudioControls(player, item);
-      }
-    });
-    return () => subscription.remove();
-  }, [activateAudioControls]);
 
   const attachStatusListener = useCallback((player: AudioPlayer) => {
     statusSubscriptionRef.current?.remove();
@@ -151,7 +148,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (item.mediaType === "video") {
       try {
         playerRef.current?.pause();
+        playerRef.current?.setActiveForLockScreen(false);
         playerRef.current?.clearLockScreenControls();
+        lockScreenItemIdRef.current = null;
         await prepareAudioSession(false);
         videoPlayer.staysActiveInBackground = false;
         videoPlayer.showNowPlayingNotification = false;
@@ -282,10 +281,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const stop = useCallback(() => {
     playerRef.current?.pause();
     videoPlayer.pause();
+    playerRef.current?.setActiveForLockScreen(false);
     playerRef.current?.clearLockScreenControls();
+    lockScreenItemIdRef.current = null;
     setIsPlaying(false);
     setCurrentTime(0);
   }, [videoPlayer]);
+
+  const dismissMediaSession = useCallback(() => {
+    const player = playerRef.current;
+    try {
+      player?.pause();
+      player?.setActiveForLockScreen(false);
+      player?.clearLockScreenControls();
+    } catch (error) {
+      console.warn("تعذر إغلاق جلسة الوسائط", error);
+    } finally {
+      lockScreenItemIdRef.current = null;
+      setIsPlaying(false);
+    }
+  }, []);
 
   const value = useMemo<PlayerContextValue>(() => ({
     currentItem,
@@ -307,8 +322,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     toggleRepeat,
     toggleShuffle,
     stop,
+    dismissMediaSession,
     videoPlayer,
-  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, videoPlayer]);
+  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession, videoPlayer]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
