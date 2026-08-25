@@ -22,6 +22,7 @@ import { resolveLocalBrightness, resolveLocalVolume, resolveVideoGesture, should
 import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
 import { resolveSafeVideoSeek } from "@/lib/video-seek";
+import { shouldPauseVideoForBackground } from "@/lib/video-background-policy";
 import { resolveFrameDimensions, resolveSourceAspect, resolveVideoContentFit, type FrameAspect, type VideoFitMode } from "@/lib/video-display-settings";
 import type { MediaItem } from "@/types/media";
 
@@ -65,6 +66,7 @@ export default function VideoPlayerScreen() {
   const localBrightnessRef = useRef(1);
   const volumeStartRef = useRef(1);
   const volumeRef = useRef(1);
+  const pipActiveOrRequestedRef = useRef(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("auto");
   const [isSharing, setIsSharing] = useState(false);
   const [isCapturingFrame, setIsCapturingFrame] = useState(false);
@@ -129,7 +131,18 @@ export default function VideoPlayerScreen() {
   }, [player]);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", () => { player.showNowPlayingNotification = false; });
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      player.showNowPlayingNotification = false;
+      player.staysActiveInBackground = false;
+      if (shouldPauseVideoForBackground(nextAppState, pipActiveOrRequestedRef.current)) {
+        try {
+          player.pause();
+          setIsPlaying(false);
+        } catch {
+          // The native player can already be unavailable while Android closes the screen.
+        }
+      }
+    });
     return () => subscription.remove();
   }, [player]);
 
@@ -322,7 +335,7 @@ export default function VideoPlayerScreen() {
   };
   const cycleSpeed = () => { const next = nextVideoPlaybackSpeed(speed); player.playbackRate = next; setSpeed(next); };
   const toggleMute = () => { const next = !muted; player.muted = next; setMuted(next); };
-  const openPip = async () => { if (!pipSupported) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } try { await viewRef.current?.startPictureInPicture(); } catch { Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
+  const openPip = async () => { if (!pipSupported) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } pipActiveOrRequestedRef.current = true; try { await viewRef.current?.startPictureInPicture(); } catch { pipActiveOrRequestedRef.current = false; Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
   const setAbPoint = () => { if (repeatStart === null || repeatEnd !== null) { setRepeatStart(player.currentTime); setRepeatEnd(null); Alert.alert("تكرار A–B", "تم تحديد النقطة A. انتقل إلى نهاية المقطع واضغط الزر مرة أخرى لتحديد B."); } else { const end = Math.max(player.currentTime, repeatStart + 1); setRepeatEnd(end); Alert.alert("تكرار A–B", `سيُكرر المشغل المقطع بين ${formatDuration(repeatStart)} و${formatDuration(end)}.`); } };
   const resetAb = () => { setRepeatStart(null); setRepeatEnd(null); };
   const previousVideo = async () => {
@@ -387,7 +400,7 @@ export default function VideoPlayerScreen() {
     <StatusBar hidden animated />
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
       <View style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
-        <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => setControlsVisible(false)} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
+        <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {localBrightness < 1 ? <View pointerEvents="none" style={[styles.localBrightnessOverlay, { opacity: (1 - localBrightness) * 0.72 }]} /> : null}
