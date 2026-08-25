@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveFrameDimensions, resolveVideoContentFit } from "../lib/video-display-settings";
+import { resolveFrameDimensions, resolveSourceAspect, resolveVideoContentFit } from "../lib/video-display-settings";
 
 describe("video display settings", () => {
   it("uses containment in auto mode on every orientation and only covers in cinematic mode", () => {
@@ -18,5 +18,12 @@ describe("video display settings", () => {
     expect(resolveFrameDimensions("16:9", 1000, 600)).toEqual({ width: 1000, height: 562.5 });
     expect(resolveFrameDimensions("1:1", 1000, 600)).toEqual({ width: 600, height: 600 });
     expect(resolveFrameDimensions("screen", 1000, 600)).toBeNull();
+  });
+
+  it("uses the active video track ratio when source framing is selected", () => {
+    expect(resolveSourceAspect(1440, 1080)).toBeCloseTo(4 / 3);
+    expect(resolveSourceAspect(1920, 0)).toBeNull();
+    expect(resolveFrameDimensions("source", 1000, 600, 4 / 3)).toEqual({ width: 800, height: 600 });
+    expect(resolveFrameDimensions("source", 1000, 600, 16 / 9)).toEqual({ width: 1000, height: 562.5 });
   });
 });

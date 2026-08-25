@@ -6,6 +6,7 @@ import * as MediaLibrary from "expo-media-library";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Sharing from "expo-sharing";
 import * as VideoThumbnails from "expo-video-thumbnails";
+import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { isPictureInPictureSupported, VideoView } from "expo-video";
@@ -21,7 +22,7 @@ import { resolveLocalBrightness, resolveLocalVolume, resolveVideoGesture, should
 import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
 import { resolveSafeVideoSeek } from "@/lib/video-seek";
-import { resolveFrameDimensions, resolveVideoContentFit, type FrameAspect, type VideoFitMode } from "@/lib/video-display-settings";
+import { resolveFrameDimensions, resolveSourceAspect, resolveVideoContentFit, type FrameAspect, type VideoFitMode } from "@/lib/video-display-settings";
 import type { MediaItem } from "@/types/media";
 
 type DisplayMode = "auto" | "cinematic" | "hdr" | "quality";
@@ -41,6 +42,7 @@ const fitModes: { id: VideoFitMode; label: string; icon: keyof typeof MaterialIc
   { id: "fill", label: "تمدد", icon: "aspect-ratio" },
 ];
 const frameAspects: { id: FrameAspect; label: string; ratio?: number }[] = [
+  { id: "source", label: "الأصل" },
   { id: "screen", label: "الشاشة" },
   { id: "16:9", label: "16:9", ratio: 16 / 9 },
   { id: "4:3", label: "4:3", ratio: 4 / 3 },
@@ -77,7 +79,8 @@ export default function VideoPlayerScreen() {
   const [mirrored, setMirrored] = useState(false);
   const [nightMode, setNightMode] = useState(false);
   const [videoFit, setVideoFit] = useState<VideoFitMode>("auto");
-  const [frameAspect, setFrameAspect] = useState<FrameAspect>("16:9");
+  const [frameAspect, setFrameAspect] = useState<FrameAspect>("source");
+  const [sourceAspect, setSourceAspect] = useState<number | null>(null);
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [controlsActivity, setControlsActivity] = useState(0);
@@ -94,7 +97,7 @@ export default function VideoPlayerScreen() {
   const isLandscape = width > height;
   const effectiveFit = resolveVideoContentFit(videoFit, isLandscape, displayMode === "cinematic");
   const mediaSurfaceHeight = isLandscape ? height : width / (16 / 9);
-  const frameStyle = resolveFrameDimensions(frameAspect, width, mediaSurfaceHeight) ?? undefined;
+  const frameStyle = resolveFrameDimensions(frameAspect, width, mediaSurfaceHeight, sourceAspect ?? 16 / 9) ?? undefined;
   const pipSupported = Platform.OS !== "web" && isPictureInPictureSupported();
   const translateMutation = trpc.media.translateVideo.useMutation();
   const player = videoPlayer;
@@ -108,6 +111,15 @@ export default function VideoPlayerScreen() {
   useEffect(() => {
     setIsPlaying(player.playing);
     const subscription = player.addListener("playingChange", ({ isPlaying: playing }) => setIsPlaying(playing));
+    return () => subscription.remove();
+  }, [player]);
+
+  useEffect(() => {
+    const updateSourceAspect = (track = player.videoTrack) => {
+      setSourceAspect(resolveSourceAspect(track?.size?.width ?? 0, track?.size?.height ?? 0));
+    };
+    updateSourceAspect(player.videoTrack ?? player.availableVideoTracks.find((track) => track.isSupported));
+    const subscription = player.addListener("videoTrackChange", ({ videoTrack }) => updateSourceAspect(videoTrack));
     return () => subscription.remove();
   }, [player]);
 
@@ -372,8 +384,8 @@ export default function VideoPlayerScreen() {
   ];
 
   return <ScreenContainer edges={[]}>
+    <StatusBar hidden animated />
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
-      {!isLandscape ? <View style={styles.header}><Pressable onPress={exitVideo} style={styles.headerIcon}><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.headerTitle}>{currentItem.title}</Text><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.headerIcon}><MaterialIcons name="share" size={21} color={colors.text} /></Pressable></View> : null}
       <View style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
         <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => setControlsVisible(false)} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
