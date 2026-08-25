@@ -42,7 +42,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "alhzmi",
-  version: "1.0.35",
+  version: "1.0.36",
   orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -65,8 +65,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    versionCode: 37,
-    permissions: ["POST_NOTIFICATIONS"],
+    versionCode: 38,
     intentFilters: [
       {
         action: "VIEW",
@@ -91,13 +90,6 @@ const config: ExpoConfig = {
     "expo-asset",
     "expo-font",
     "expo-web-browser",
-    [
-      "expo-notifications",
-      {
-        defaultChannel: "remo-media",
-        color: "#12B8E6",
-      },
-    ],
     [
       "expo-audio",
       {

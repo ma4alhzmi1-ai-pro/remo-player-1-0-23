@@ -3,7 +3,6 @@ import { createVideoPlayer, type VideoPlayer } from "expo-video";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Platform } from "react-native";
 
-import { prepareMediaNotificationControls } from "@/lib/media-notification-permission";
 import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
 import { useLibrary } from "@/lib/library-context";
 import { buildPlaybackQueue, nextQueueItem, previousQueueItem } from "@/lib/playback-queue";
@@ -62,7 +61,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const isAutoAdvancingRef = useRef(false);
   const currentItemRef = useRef<MediaItem | null>(null);
   const lastSnapshotSecondRef = useRef(0);
-  const lockScreenItemIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     currentItemRef.current = currentItem;
@@ -75,7 +73,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return () => {
       statusSubscriptionRef.current?.remove();
-      playerRef.current?.clearLockScreenControls();
       playerRef.current?.remove();
       videoPlayer.release();
     };
@@ -101,21 +98,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const activateAudioControls = useCallback((player: AudioPlayer, item: MediaItem) => {
-    if (lockScreenItemIdRef.current === item.id) return;
+  const releaseAudioPlayer = useCallback(() => {
+    const player = playerRef.current;
+    statusSubscriptionRef.current?.remove();
+    statusSubscriptionRef.current = null;
+    playerRef.current = null;
     try {
-      player.setActiveForLockScreen(true, {
-        title: item.title,
-        artist: item.artist,
-        albumTitle: item.album,
-        artworkUrl: item.thumbnailUri,
-      }, {
-        showSeekBackward: true,
-        showSeekForward: true,
-      });
-      lockScreenItemIdRef.current = item.id;
+      player?.pause();
+      player?.remove();
     } catch (error) {
-      console.warn("تعذر تفعيل تحكمات شاشة القفل للموسيقى", error);
+      console.warn("تعذر تحرير مشغل الصوت", error);
     }
   }, []);
 
@@ -147,10 +139,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaybackQueue(queue);
     if (item.mediaType === "video") {
       try {
-        playerRef.current?.pause();
-        playerRef.current?.setActiveForLockScreen(false);
-        playerRef.current?.clearLockScreenControls();
-        lockScreenItemIdRef.current = null;
+        releaseAudioPlayer();
         await prepareAudioSession(false);
         videoPlayer.staysActiveInBackground = false;
         videoPlayer.showNowPlayingNotification = false;
@@ -172,7 +161,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     try {
       videoPlayer.pause();
-      await prepareMediaNotificationControls();
       await prepareAudioSession();
       let player = playerRef.current;
       if (!player) {
@@ -184,7 +172,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       player.loop = repeatMode === "one";
       player.setPlaybackRate(speed);
-      activateAudioControls(player, item);
       const memory = await getPlaybackMemory(item.id);
       const resumeAt = resumePosition(memory, item.duration);
       if (resumeAt > 0) await player.seekTo(resumeAt);
@@ -198,7 +185,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
-  }, [activateAudioControls, attachStatusListener, items, prepareAudioSession, repeatMode, speed, videoPlayer]);
+  }, [attachStatusListener, items, prepareAudioSession, releaseAudioPlayer, repeatMode, speed, videoPlayer]);
 
   const togglePlayback = useCallback(() => {
     const player = playerRef.current;
@@ -221,12 +208,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       player.pause();
       setIsPlaying(false);
     } else {
-      void prepareMediaNotificationControls();
-      activateAudioControls(player, currentItem);
       player.play();
       setIsPlaying(true);
     }
-  }, [activateAudioControls, currentItem, prepareAudioSession, videoPlayer]);
+  }, [currentItem, prepareAudioSession, videoPlayer]);
 
   const seekTo = useCallback(async (seconds: number) => {
     const player = playerRef.current;
@@ -281,26 +266,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const stop = useCallback(() => {
     playerRef.current?.pause();
     videoPlayer.pause();
-    playerRef.current?.setActiveForLockScreen(false);
-    playerRef.current?.clearLockScreenControls();
-    lockScreenItemIdRef.current = null;
     setIsPlaying(false);
     setCurrentTime(0);
   }, [videoPlayer]);
 
   const dismissMediaSession = useCallback(() => {
-    const player = playerRef.current;
-    try {
-      player?.pause();
-      player?.setActiveForLockScreen(false);
-      player?.clearLockScreenControls();
-    } catch (error) {
-      console.warn("تعذر إغلاق جلسة الوسائط", error);
-    } finally {
-      lockScreenItemIdRef.current = null;
-      setIsPlaying(false);
-    }
-  }, []);
+    releaseAudioPlayer();
+    currentItemRef.current = null;
+    setCurrentItem(null);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+    void prepareAudioSession(false);
+  }, [prepareAudioSession, releaseAudioPlayer]);
 
   const value = useMemo<PlayerContextValue>(() => ({
     currentItem,
