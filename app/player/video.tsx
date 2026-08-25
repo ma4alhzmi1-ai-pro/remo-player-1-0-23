@@ -1,7 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import * as Brightness from "expo-brightness";
 import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
 import * as ScreenOrientation from "expo-screen-orientation";
@@ -60,8 +59,6 @@ export default function VideoPlayerScreen() {
   const progressTrackWidth = useRef(0);
   const isAutoAdvancingRef = useRef(false);
   const isNavigatingVideoRef = useRef(false);
-  const originalBrightnessRef = useRef<number | null>(null);
-  const brightnessOverriddenRef = useRef(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("auto");
   const [isSharing, setIsSharing] = useState(false);
   const [isCapturingFrame, setIsCapturingFrame] = useState(false);
@@ -69,8 +66,6 @@ export default function VideoPlayerScreen() {
   const [speed, setSpeed] = useState(1);
   const [volume, setVolume] = useState(1);
   const [volumeHud, setVolumeHud] = useState(false);
-  const [brightness, setBrightness] = useState(0.7);
-  const [brightnessHud, setBrightnessHud] = useState(false);
   const [temporarySpeedActive, setTemporarySpeedActive] = useState(false);
   const [muted, setMuted] = useState(false);
   const [mirrored, setMirrored] = useState(false);
@@ -102,31 +97,6 @@ export default function VideoPlayerScreen() {
     if (Platform.OS === "web") return;
     void ScreenOrientation.unlockAsync();
     return () => { void ScreenOrientation.unlockAsync(); };
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const existing = await Brightness.getPermissionsAsync();
-        const permission = existing.granted ? existing : await Brightness.requestPermissionsAsync();
-        if (!permission.granted) return;
-        const original = await Brightness.getBrightnessAsync();
-        if (cancelled) return;
-        originalBrightnessRef.current = original;
-        setBrightness(original);
-      } catch {
-        // Brightness is optional. Playback continues if a device blocks the API.
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (brightnessOverriddenRef.current) {
-        brightnessOverriddenRef.current = false;
-        void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
-      }
-    };
   }, []);
 
   useEffect(() => {
@@ -180,12 +150,6 @@ export default function VideoPlayerScreen() {
   }, [volumeHud]);
 
   useEffect(() => {
-    if (!brightnessHud) return;
-    const timeout = setTimeout(() => setBrightnessHud(false), 900);
-    return () => clearTimeout(timeout);
-  }, [brightnessHud]);
-
-  useEffect(() => {
     if (!controlsVisible || controlsLocked || fitPanelOpen) return;
     const timeout = setTimeout(() => setControlsVisible(false), 3200);
     return () => clearTimeout(timeout);
@@ -197,26 +161,6 @@ export default function VideoPlayerScreen() {
     setVolume(nextVolume);
     setVolumeHud(true);
   }, [player, volume]);
-  const changeBrightness = useCallback((amount: number) => {
-    const nextBrightness = Math.max(0.05, Math.min(1, Number((brightness + amount).toFixed(2))));
-    setBrightness(nextBrightness);
-    setBrightnessHud(true);
-    brightnessOverriddenRef.current = true;
-    if (Platform.OS !== "web") {
-      void Brightness.setBrightnessAsync(nextBrightness).catch(() => undefined);
-    }
-  }, [brightness]);
-  const restoreBrightness = useCallback(async () => {
-    if (Platform.OS === "web" || !brightnessOverriddenRef.current) return;
-    brightnessOverriddenRef.current = false;
-    try {
-      await Brightness.restoreSystemBrightnessAsync();
-    } catch {
-      if (originalBrightnessRef.current !== null) {
-        await Brightness.setBrightnessAsync(originalBrightnessRef.current).catch(() => undefined);
-      }
-    }
-  }, []);
   const safeSeekBy = useCallback((seconds: number) => {
     const target = resolveSafeVideoSeek(player.currentTime, player.duration, seconds);
     if (target === null) return false;
@@ -268,11 +212,11 @@ export default function VideoPlayerScreen() {
       const wasTemporarySpeed = restoreTemporarySpeed();
       if (action?.type === "seek") safeSeekBy(action.seconds);
       if (action?.type === "volume") changeVolume(action.delta);
-      if (action?.type === "brightness") changeBrightness(action.delta);
+      if (action?.type === "brightness") revealControls();
       if (!action && !wasTemporarySpeed) revealControls();
     },
     onPanResponderTerminate: restoreTemporarySpeed,
-  }), [changeBrightness, changeVolume, controlsLocked, revealControls, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
+  }), [changeVolume, controlsLocked, revealControls, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
   const seekFromProgress = useCallback((locationX: number) => {
     const target = resolveVideoProgressSeek(locationX, progressTrackWidth.current, player.duration);
     if (target === null) return;
@@ -298,14 +242,12 @@ export default function VideoPlayerScreen() {
     restoreTemporarySpeed();
     setControlsVisible(false);
     setVolumeHud(false);
-    setBrightnessHud(false);
     try {
       player.showNowPlayingNotification = false;
       player.staysActiveInBackground = false;
       player.pause();
       setIsPlaying(false);
     } catch { /* The native player may already be unavailable during navigation. */ }
-    await restoreBrightness();
     if (router.canGoBack()) router.back(); else router.replace("/(tabs)/video" as never);
   };
   const rotateVideo = () => {
@@ -403,12 +345,11 @@ export default function VideoPlayerScreen() {
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
       {!isLandscape ? <View style={styles.header}><Pressable onPress={exitVideo} style={styles.headerIcon}><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.headerTitle}>{currentItem.title}</Text><Pressable onPress={() => void shareVideo()} disabled={isSharing} style={styles.headerIcon}><MaterialIcons name="share" size={21} color={colors.text} /></Pressable></View> : null}
       <View style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
-        <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => setControlsVisible(false)} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={pipSupported} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
+        <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => setControlsVisible(false)} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.volumeMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(volume * 100)}%` }]} /></View><MaterialIcons name="volume-up" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>الصوت: {Math.round(volume * 100)}%</Text></View></> : null}
-        {brightnessHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(brightness * 100)}%` }]} /></View><MaterialIcons name="brightness-high" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>السطوع: {Math.round(brightness * 100)}%</Text></View></> : null}
         {temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" onTouchStart={revealControls}>
           <View style={styles.overlayTop}><Pressable onPress={exitVideo} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
