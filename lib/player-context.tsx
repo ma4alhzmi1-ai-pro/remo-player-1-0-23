@@ -111,6 +111,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const clearVideoSource = useCallback(() => {
+    try {
+      videoPlayer.pause();
+      videoPlayer.staysActiveInBackground = false;
+      videoPlayer.showNowPlayingNotification = false;
+      videoPlayer.replace(null);
+    } catch (error) {
+      console.warn("تعذر تفريغ مصدر الفيديو", error);
+    }
+  }, [videoPlayer]);
+
   const attachStatusListener = useCallback((player: AudioPlayer) => {
     statusSubscriptionRef.current?.remove();
     statusSubscriptionRef.current = player.addListener("playbackStatusUpdate", (status) => {
@@ -140,6 +151,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (item.mediaType === "video") {
       try {
         releaseAudioPlayer();
+        clearVideoSource();
         await prepareAudioSession(false);
         videoPlayer.staysActiveInBackground = false;
         videoPlayer.showNowPlayingNotification = false;
@@ -160,7 +172,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      videoPlayer.pause();
+      clearVideoSource();
       await prepareAudioSession();
       let player = playerRef.current;
       if (!player) {
@@ -185,7 +197,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
-  }, [attachStatusListener, items, prepareAudioSession, releaseAudioPlayer, repeatMode, speed, videoPlayer]);
+  }, [attachStatusListener, clearVideoSource, items, prepareAudioSession, releaseAudioPlayer, repeatMode, speed, videoPlayer]);
 
   const togglePlayback = useCallback(() => {
     const player = playerRef.current;
@@ -265,10 +277,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => {
     playerRef.current?.pause();
-    videoPlayer.pause();
+    clearVideoSource();
     setIsPlaying(false);
     setCurrentTime(0);
-  }, [videoPlayer]);
+  }, [clearVideoSource]);
 
   const dismissMediaSession = useCallback(() => {
     releaseAudioPlayer();

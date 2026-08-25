@@ -26,3 +26,16 @@ export function resolveFrameDimensions(frame: FrameAspect, viewportWidth: number
     height: Math.min(viewportHeight, viewportWidth / ratio),
   };
 }
+
+export function resolveFixedFrameLayout(frame: FrameAspect, viewportWidth: number, viewportHeight: number, sourceAspect = 16 / 9) {
+  const dimensions = resolveFrameDimensions(frame, viewportWidth, viewportHeight, sourceAspect);
+  const width = dimensions?.width ?? viewportWidth;
+  const height = dimensions?.height ?? viewportHeight;
+  if (![width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+  return {
+    width,
+    height,
+    left: Math.max(0, (viewportWidth - width) / 2),
+    top: Math.max(0, (viewportHeight - height) / 2),
+  };
+}
