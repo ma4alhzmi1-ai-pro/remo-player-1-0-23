@@ -23,7 +23,7 @@ import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
 import { resolveSafeVideoSeek } from "@/lib/video-seek";
 import { shouldPauseVideoForBackground } from "@/lib/video-background-policy";
-import { resolveFrameDimensions, resolveSourceAspect, resolveVideoContentFit, type FrameAspect, type VideoFitMode } from "@/lib/video-display-settings";
+import { resolveFixedFrameLayout, resolveSourceAspect, resolveVideoContentFit, type FrameAspect, type VideoFitMode } from "@/lib/video-display-settings";
 import type { MediaItem } from "@/types/media";
 
 type DisplayMode = "auto" | "cinematic" | "hdr" | "quality";
@@ -53,7 +53,7 @@ const frameAspects: { id: FrameAspect; label: string; ratio?: number }[] = [
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
-  const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat, videoPlayer } = usePlayer();
+  const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat, videoPlayer } = usePlayer();
   const viewRef = useRef<any>(null);
   const touchStartX = useRef(0);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,8 +81,9 @@ export default function VideoPlayerScreen() {
   const [mirrored, setMirrored] = useState(false);
   const [nightMode, setNightMode] = useState(false);
   const [videoFit, setVideoFit] = useState<VideoFitMode>("auto");
-  const [frameAspect, setFrameAspect] = useState<FrameAspect>("source");
+  const [frameAspect, setFrameAspect] = useState<FrameAspect>("16:9");
   const [sourceAspect, setSourceAspect] = useState<number | null>(null);
+  const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [controlsActivity, setControlsActivity] = useState(0);
@@ -98,8 +99,9 @@ export default function VideoPlayerScreen() {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const effectiveFit = resolveVideoContentFit(videoFit, isLandscape, displayMode === "cinematic");
-  const mediaSurfaceHeight = isLandscape ? height : width / (16 / 9);
-  const frameStyle = resolveFrameDimensions(frameAspect, width, mediaSurfaceHeight, sourceAspect ?? 16 / 9) ?? undefined;
+  const mediaSurfaceWidth = surfaceSize.width || width;
+  const mediaSurfaceHeight = surfaceSize.height || (isLandscape ? height : width / (16 / 9));
+  const frameStyle = resolveFixedFrameLayout(frameAspect, mediaSurfaceWidth, mediaSurfaceHeight, sourceAspect ?? 16 / 9) ?? undefined;
   const pipSupported = Platform.OS !== "web" && isPictureInPictureSupported();
   const translateMutation = trpc.media.translateVideo.useMutation();
   const player = videoPlayer;
@@ -298,10 +300,7 @@ export default function VideoPlayerScreen() {
     setVolumeHud(false);
     setBrightnessHud(false);
     try {
-      player.showNowPlayingNotification = false;
-      player.staysActiveInBackground = false;
-      player.pause();
-      setIsPlaying(false);
+      stop();
     } catch { /* The native player may already be unavailable during navigation. */ }
     if (router.canGoBack()) router.back(); else router.replace("/(tabs)/video" as never);
   };
@@ -399,8 +398,8 @@ export default function VideoPlayerScreen() {
   return <ScreenContainer edges={[]}>
     <StatusBar hidden animated />
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
-      <View style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
-        <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
+        <View onLayout={(event) => { const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout; if (nextWidth > 0 && nextHeight > 0) setSurfaceSize({ width: nextWidth, height: nextHeight }); }} style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
+        <View style={[styles.videoContainer, { overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} contentPosition={{ dx: 0, dy: 0 }} surfaceType="textureView" useExoShutter={false} /></View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {localBrightness < 1 ? <View pointerEvents="none" style={[styles.localBrightnessOverlay, { opacity: (1 - localBrightness) * 0.72 }]} /> : null}
@@ -436,10 +435,10 @@ const styles = StyleSheet.create({
   mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden", alignItems: "center", justifyContent: "center" },
   landscapeSurface: { flex: 1, aspectRatio: undefined },
   cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 },
-  videoContainer: { flex: 1, alignSelf: "center" },
+  videoContainer: { position: "absolute" },
   gestureSurface: { ...StyleSheet.absoluteFillObject, zIndex: 1, elevation: 1 },
   mirrored: { transform: [{ scaleX: -1 }] },
-  video: { flex: 1 },
+  video: { width: "100%", height: "100%" },
   nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" },
   localBrightnessOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "#000000" },
   subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" },
