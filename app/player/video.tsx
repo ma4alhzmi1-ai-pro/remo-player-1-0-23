@@ -17,7 +17,7 @@ import { loadLocalSubtitles, saveLocalSubtitles, type LocalSubtitleTrack } from 
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
 import { readVideoForTranslation } from "@/lib/translation-upload";
 import { trpc } from "@/lib/trpc";
-import { resolveVideoGesture, shouldActivateVideoGesture } from "@/lib/video-gesture";
+import { resolveLocalBrightness, resolveLocalVolume, resolveVideoGesture, shouldActivateVideoGesture } from "@/lib/video-gesture";
 import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
 import { resolveSafeVideoSeek } from "@/lib/video-seek";
@@ -59,6 +59,10 @@ export default function VideoPlayerScreen() {
   const progressTrackWidth = useRef(0);
   const isAutoAdvancingRef = useRef(false);
   const isNavigatingVideoRef = useRef(false);
+  const brightnessStartRef = useRef(1);
+  const localBrightnessRef = useRef(1);
+  const volumeStartRef = useRef(1);
+  const volumeRef = useRef(1);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("auto");
   const [isSharing, setIsSharing] = useState(false);
   const [isCapturingFrame, setIsCapturingFrame] = useState(false);
@@ -66,6 +70,8 @@ export default function VideoPlayerScreen() {
   const [speed, setSpeed] = useState(1);
   const [volume, setVolume] = useState(1);
   const [volumeHud, setVolumeHud] = useState(false);
+  const [localBrightness, setLocalBrightness] = useState(1);
+  const [brightnessHud, setBrightnessHud] = useState(false);
   const [temporarySpeedActive, setTemporarySpeedActive] = useState(false);
   const [muted, setMuted] = useState(false);
   const [mirrored, setMirrored] = useState(false);
@@ -150,17 +156,17 @@ export default function VideoPlayerScreen() {
   }, [volumeHud]);
 
   useEffect(() => {
+    if (!brightnessHud) return;
+    const timeout = setTimeout(() => setBrightnessHud(false), 900);
+    return () => clearTimeout(timeout);
+  }, [brightnessHud]);
+
+  useEffect(() => {
     if (!controlsVisible || controlsLocked || fitPanelOpen) return;
     const timeout = setTimeout(() => setControlsVisible(false), 3200);
     return () => clearTimeout(timeout);
   }, [controlsActivity, controlsLocked, controlsVisible, fitPanelOpen]);
 
-  const changeVolume = useCallback((amount: number) => {
-    const nextVolume = Math.max(0, Math.min(1, Number((volume + amount).toFixed(2))));
-    player.volume = nextVolume;
-    setVolume(nextVolume);
-    setVolumeHud(true);
-  }, [player, volume]);
   const safeSeekBy = useCallback((seconds: number) => {
     const target = resolveSafeVideoSeek(player.currentTime, player.duration, seconds);
     if (target === null) return false;
@@ -202,21 +208,44 @@ export default function VideoPlayerScreen() {
     onMoveShouldSetPanResponder: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
     onMoveShouldSetPanResponderCapture: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (event) => { touchStartX.current = event.nativeEvent.locationX; scheduleTemporarySpeed(); },
+    onPanResponderGrant: (event) => {
+      touchStartX.current = event.nativeEvent.locationX;
+      brightnessStartRef.current = localBrightnessRef.current;
+      volumeStartRef.current = volumeRef.current;
+      scheduleTemporarySpeed();
+    },
     onPanResponderMove: (_, gesture) => {
       if (Math.abs(gesture.dx) > 8 || Math.abs(gesture.dy) > 8) restoreTemporarySpeed();
+      const action = resolveVideoGesture(gesture.dx, gesture.dy, touchStartX.current, width);
+      if (action?.type === "brightness") {
+        const nextBrightness = resolveLocalBrightness(brightnessStartRef.current, gesture.dy, mediaSurfaceHeight);
+        if (nextBrightness !== null) {
+          localBrightnessRef.current = nextBrightness;
+          setLocalBrightness(nextBrightness);
+          setBrightnessHud(true);
+        }
+      }
+      if (action?.type === "volume") {
+        const nextVolume = resolveLocalVolume(volumeStartRef.current, gesture.dy, mediaSurfaceHeight);
+        if (nextVolume !== null) {
+          player.volume = nextVolume;
+          volumeRef.current = nextVolume;
+          setVolume(nextVolume);
+          setVolumeHud(true);
+        }
+      }
     },
     onPanResponderRelease: (_, gesture) => {
       if (controlsLocked) return;
       const action = resolveVideoGesture(gesture.dx, gesture.dy, touchStartX.current, width);
       const wasTemporarySpeed = restoreTemporarySpeed();
       if (action?.type === "seek") safeSeekBy(action.seconds);
-      if (action?.type === "volume") changeVolume(action.delta);
-      if (action?.type === "brightness") revealControls();
+      if (action?.type === "volume") setVolumeHud(true);
+      if (action?.type === "brightness") setBrightnessHud(true);
       if (!action && !wasTemporarySpeed) revealControls();
     },
     onPanResponderTerminate: restoreTemporarySpeed,
-  }), [changeVolume, controlsLocked, revealControls, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
+  }), [controlsLocked, mediaSurfaceHeight, player, revealControls, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
   const seekFromProgress = useCallback((locationX: number) => {
     const target = resolveVideoProgressSeek(locationX, progressTrackWidth.current, player.duration);
     if (target === null) return;
@@ -242,6 +271,7 @@ export default function VideoPlayerScreen() {
     restoreTemporarySpeed();
     setControlsVisible(false);
     setVolumeHud(false);
+    setBrightnessHud(false);
     try {
       player.showNowPlayingNotification = false;
       player.staysActiveInBackground = false;
@@ -348,8 +378,10 @@ export default function VideoPlayerScreen() {
         <View style={[styles.videoContainer, { width: "100%", height: "100%", overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => setControlsVisible(false)} style={[styles.video, { width: "100%", height: "100%" }]} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} surfaceType="textureView" useExoShutter={false} /></View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
+        {localBrightness < 1 ? <View pointerEvents="none" style={[styles.localBrightnessOverlay, { opacity: (1 - localBrightness) * 0.72 }]} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.volumeMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(volume * 100)}%` }]} /></View><MaterialIcons name="volume-up" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>الصوت: {Math.round(volume * 100)}%</Text></View></> : null}
+        {brightnessHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(localBrightness * 100)}%` }]} /></View><MaterialIcons name="brightness-high" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>السطوع داخل المشغل: {Math.round(localBrightness * 100)}%</Text></View></> : null}
         {temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" onTouchStart={revealControls}>
           <View style={styles.overlayTop}><Pressable onPress={exitVideo} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
@@ -384,6 +416,7 @@ const styles = StyleSheet.create({
   mirrored: { transform: [{ scaleX: -1 }] },
   video: { flex: 1 },
   nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" },
+  localBrightnessOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "#000000" },
   subtitleOverlay: { position: "absolute", left: 22, right: 22, bottom: 20, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.78)", alignItems: "center" },
   subtitleText: { color: "#FFFFFF", fontSize: 15, lineHeight: 22, fontWeight: "800", textAlign: "center" },
   gestureMeter: { position: "absolute", top: "30%", zIndex: 3, elevation: 3, width: 78, paddingVertical: 14, borderRadius: 16, backgroundColor: "rgba(0,0,0,0.62)", alignItems: "center", gap: 12 },

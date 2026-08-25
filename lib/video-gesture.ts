@@ -33,3 +33,13 @@ export function resolveVideoGesture(translationX: number, translationY: number, 
 
   return null;
 }
+
+export function resolveLocalBrightness(startBrightness: number, translationY: number, surfaceHeight: number): number | null {
+  if (![startBrightness, translationY, surfaceHeight].every(Number.isFinite) || surfaceHeight <= 0) return null;
+  return Math.max(0.2, Math.min(1, startBrightness - translationY / surfaceHeight));
+}
+
+export function resolveLocalVolume(startVolume: number, translationY: number, surfaceHeight: number): number | null {
+  if (![startVolume, translationY, surfaceHeight].every(Number.isFinite) || surfaceHeight <= 0) return null;
+  return Math.max(0, Math.min(1, startVolume - translationY / surfaceHeight));
+}
