@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveVideoGesture, shouldActivateVideoGesture } from "../lib/video-gesture";
+import { resolveLocalBrightness, resolveLocalVolume, resolveVideoGesture, shouldActivateVideoGesture } from "../lib/video-gesture";
 
 describe("video gesture resolution", () => {
   it("seeks forward and backward for deliberate horizontal swipes", () => {
@@ -31,5 +31,21 @@ describe("video gesture resolution", () => {
     expect(shouldActivateVideoGesture(0, -9, false)).toBe(true);
     expect(shouldActivateVideoGesture(40, 0, true)).toBe(false);
     expect(shouldActivateVideoGesture(Number.NaN, 40, false)).toBe(false);
+  });
+
+  it("tracks the local brightness preview continuously and keeps it within a safe visual range", () => {
+    expect(resolveLocalBrightness(0.7, -80, 400)).toBeCloseTo(0.9);
+    expect(resolveLocalBrightness(0.7, 120, 400)).toBeCloseTo(0.4);
+    expect(resolveLocalBrightness(0.3, 500, 400)).toBe(0.2);
+    expect(resolveLocalBrightness(0.8, -500, 400)).toBe(1);
+    expect(resolveLocalBrightness(0.8, 20, 0)).toBeNull();
+  });
+
+  it("tracks volume continuously and clamps it to the player range", () => {
+    expect(resolveLocalVolume(0.7, -80, 400)).toBeCloseTo(0.9);
+    expect(resolveLocalVolume(0.7, 120, 400)).toBeCloseTo(0.4);
+    expect(resolveLocalVolume(0.2, 500, 400)).toBe(0);
+    expect(resolveLocalVolume(0.8, -500, 400)).toBe(1);
+    expect(resolveLocalVolume(0.8, 20, 0)).toBeNull();
   });
 });
