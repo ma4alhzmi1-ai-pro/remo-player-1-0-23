@@ -31,4 +31,8 @@ describe("video display settings", () => {
     expect(resolveFixedFrameLayout("16:9", 2400, 1080)).toEqual({ width: 1920, height: 1080, left: 240, top: 0 });
     expect(resolveFixedFrameLayout("4:3", 2400, 1080)).toEqual({ width: 1440, height: 1080, left: 480, top: 0 });
   });
+
+  it("centers a 4:3 frame vertically inside a tall portrait surface", () => {
+    expect(resolveFixedFrameLayout("4:3", 1080, 2400)).toEqual({ width: 1080, height: 810, left: 0, top: 795 });
+  });
 });

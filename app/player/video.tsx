@@ -53,7 +53,7 @@ const frameAspects: { id: FrameAspect; label: string; ratio?: number }[] = [
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
-  const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat, videoPlayer } = usePlayer();
+  const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat, videoPlayer, videoBackgroundPlaybackEnabled, setVideoBackgroundPlaybackEnabled } = usePlayer();
   const viewRef = useRef<any>(null);
   const touchStartX = useRef(0);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,7 +81,7 @@ export default function VideoPlayerScreen() {
   const [mirrored, setMirrored] = useState(false);
   const [nightMode, setNightMode] = useState(false);
   const [videoFit, setVideoFit] = useState<VideoFitMode>("auto");
-  const [frameAspect, setFrameAspect] = useState<FrameAspect>("16:9");
+  const [selectedFrameAspect, setSelectedFrameAspect] = useState<FrameAspect | null>(null);
   const [sourceAspect, setSourceAspect] = useState<number | null>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
@@ -98,6 +98,8 @@ export default function VideoPlayerScreen() {
   const [targetLanguage, setTargetLanguage] = useState<TranslationLanguage>("العربية");
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const defaultFrameAspect: FrameAspect = isLandscape ? "4:3" : "source";
+  const frameAspect = selectedFrameAspect ?? defaultFrameAspect;
   const effectiveFit = resolveVideoContentFit(videoFit, isLandscape, displayMode === "cinematic");
   const mediaSurfaceWidth = surfaceSize.width || width;
   const mediaSurfaceHeight = surfaceSize.height || (isLandscape ? height : width / (16 / 9));
@@ -128,15 +130,16 @@ export default function VideoPlayerScreen() {
   }, [player]);
 
   useEffect(() => {
-    player.staysActiveInBackground = false;
+    player.staysActiveInBackground = videoBackgroundPlaybackEnabled;
     player.showNowPlayingNotification = false;
-  }, [player]);
+  }, [player, videoBackgroundPlaybackEnabled]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
-      player.showNowPlayingNotification = false;
-      player.staysActiveInBackground = false;
-      if (shouldPauseVideoForBackground(nextAppState, pipActiveOrRequestedRef.current)) {
+      const shouldKeepVideoBackground = nextAppState === "background" && videoBackgroundPlaybackEnabled;
+      player.staysActiveInBackground = videoBackgroundPlaybackEnabled;
+      player.showNowPlayingNotification = shouldKeepVideoBackground;
+      if (shouldPauseVideoForBackground(nextAppState, pipActiveOrRequestedRef.current, videoBackgroundPlaybackEnabled)) {
         try {
           player.pause();
           setIsPlaying(false);
@@ -146,7 +149,7 @@ export default function VideoPlayerScreen() {
       }
     });
     return () => subscription.remove();
-  }, [player]);
+  }, [player, videoBackgroundPlaybackEnabled]);
 
   useEffect(() => { player.loop = repeatMode === "one"; }, [player, repeatMode]);
   useEffect(() => {
@@ -311,6 +314,9 @@ export default function VideoPlayerScreen() {
   };
   const handleFirstFrame = () => {
     if (!autoRotateEnabled || isLandscape || Platform.OS === "web") return;
+    const activeTrack = player.videoTrack ?? player.availableVideoTracks.find((track) => track.isSupported);
+    const activeAspect = resolveSourceAspect(activeTrack?.size?.width ?? 0, activeTrack?.size?.height ?? 0);
+    if (activeAspect === null || activeAspect < 1) return;
     void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
   };
   const chooseMode = (mode: DisplayMode) => {
@@ -327,10 +333,20 @@ export default function VideoPlayerScreen() {
   };
   const togglePlay = async () => {
     if (player.playing) { player.pause(); setIsPlaying(false); return; }
-    player.staysActiveInBackground = false;
+    player.staysActiveInBackground = videoBackgroundPlaybackEnabled;
     player.showNowPlayingNotification = false;
     player.play();
     setIsPlaying(true);
+  };
+  const toggleVideoBackground = async () => {
+    const next = !videoBackgroundPlaybackEnabled;
+    await setVideoBackgroundPlaybackEnabled(next);
+    Alert.alert(
+      next ? "فيديو بالخلفية مفعّل" : "فيديو بالخلفية متوقف",
+      next
+        ? "سيستمر صوت الفيديو عند خروجك من التطبيق، وسيظهر إشعار Android فقط بعد الانتقال للخلفية."
+        : "سيتوقف الفيديو عند الخروج من التطبيق كما هو الوضع الافتراضي.",
+    );
   };
   const cycleSpeed = () => { const next = nextVideoPlaybackSpeed(speed); player.playbackRate = next; setSpeed(next); };
   const toggleMute = () => { const next = !muted; player.muted = next; setMuted(next); };
@@ -398,7 +414,7 @@ export default function VideoPlayerScreen() {
   return <ScreenContainer edges={[]}>
     <StatusBar hidden animated />
     <View style={[styles.root, isLandscape && styles.landscapeRoot]}>
-        <View onLayout={(event) => { const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout; if (nextWidth > 0 && nextHeight > 0) setSurfaceSize({ width: nextWidth, height: nextHeight }); }} style={[styles.mediaSurface, isLandscape && styles.landscapeSurface, displayMode === "cinematic" && !isLandscape && styles.cinematicSurface]}>
+        <View onLayout={(event) => { const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout; if (nextWidth > 0 && nextHeight > 0) setSurfaceSize({ width: nextWidth, height: nextHeight }); }} style={[styles.mediaSurface, isLandscape && styles.landscapeSurface]}>
         <View style={[styles.videoContainer, { overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} contentPosition={{ dx: 0, dy: 0 }} surfaceType="textureView" useExoShutter={false} /></View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
@@ -409,11 +425,13 @@ export default function VideoPlayerScreen() {
         {temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" onTouchStart={revealControls}>
           <View style={styles.overlayTop}><Pressable onPress={exitVideo} style={styles.overlayCircle}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text numberOfLines={1} style={styles.overlayTitle}>{currentItem.title}</Text><Pressable onPress={() => subtitleTrack ? setSubtitleEnabled((enabled) => !enabled) : setTranslationOpen(true)} style={styles.overlayCircle}><MaterialIcons name="closed-caption" size={22} color={subtitleEnabled && subtitleTrack ? colors.cyan : colors.text} /></Pressable></View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>
-          <View style={styles.centerControls}><Pressable onPress={() => safeSeekBy(-10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="replay-10" size={28} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.transport}><MaterialIcons name="skip-previous" size={30} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={40} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.transport}><MaterialIcons name="skip-next" size={30} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="forward-10" size={28} color={colors.text} /></Pressable></View>
-          <View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View {...progressResponder.panHandlers} onLayout={(event) => { progressTrackWidth.current = event.nativeEvent.layout.width; }} style={playerOverlayStyles.progressTouch}><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /><View style={[playerOverlayStyles.progressThumb, { left: `${Math.max(0, Math.min(100, progress))}%` }]} /></View></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><View style={styles.quickIcons}><Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={rotateVideo} style={styles.quickIcon}><MaterialIcons name="screen-rotation" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={() => void openPip()} style={styles.quickIcon}><MaterialIcons name="picture-in-picture-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></View></View>
+          <View style={styles.controlDock}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topActions}>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}</ScrollView>
+            <View style={styles.centerControls}><Pressable onPress={() => safeSeekBy(-10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="replay-10" size={28} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.transport}><MaterialIcons name="skip-previous" size={30} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.playButton}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={40} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.transport}><MaterialIcons name="skip-next" size={30} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={playerOverlayStyles.tenSecondControl}><MaterialIcons name="forward-10" size={28} color={colors.text} /></Pressable></View>
+            <View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View {...progressResponder.panHandlers} onLayout={(event) => { progressTrackWidth.current = event.nativeEvent.layout.width; }} style={playerOverlayStyles.progressTouch}><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /><View style={[playerOverlayStyles.progressThumb, { left: `${Math.max(0, Math.min(100, progress))}%` }]} /></View></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickIcons}><Pressable onPress={() => void toggleVideoBackground()} style={[styles.backgroundControl, videoBackgroundPlaybackEnabled && styles.quickIconActive]} accessibilityLabel="تشغيل الفيديو بالخلفية"><MaterialIcons name="headset" size={18} color={videoBackgroundPlaybackEnabled ? colors.background : colors.text} /><Text style={[styles.backgroundControlText, videoBackgroundPlaybackEnabled && styles.backgroundControlTextActive]}>خلفية</Text></Pressable><Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={rotateVideo} style={styles.quickIcon}><MaterialIcons name="screen-rotation" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={() => void openPip()} style={styles.quickIcon}><MaterialIcons name="picture-in-picture-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></ScrollView></View>
+          </View>
         </View> : null}
-        {fitPanelOpen && !controlsLocked ? <View style={styles.fitPanel}><View style={styles.fitPanelHeader}><Pressable onPress={() => setFitPanelOpen(false)} style={styles.fitPanelClose}><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>الشاشة</Text></View><Text style={styles.fitPanelLabel}>طريقة العرض</Text><View style={styles.fitModeRow}>{fitModes.map((mode) => <Pressable key={mode.id} onPress={() => setVideoFit(mode.id)} style={[styles.fitModeButton, videoFit === mode.id && styles.fitModeButtonActive]}><MaterialIcons name={mode.icon} size={24} color={videoFit === mode.id ? colors.background : colors.text} /><Text style={[styles.fitModeText, videoFit === mode.id && styles.fitModeTextActive]}>{mode.label}</Text></Pressable>)}</View><Text style={styles.fitPanelLabel}>قياسي</Text><View style={styles.frameAspectRow}>{frameAspects.map((aspect) => <Pressable key={aspect.id} onPress={() => setFrameAspect(aspect.id)} style={[styles.frameAspectButton, frameAspect === aspect.id && styles.frameAspectButtonActive]}><Text style={[styles.frameAspectText, frameAspect === aspect.id && styles.frameAspectTextActive]}>{aspect.label}</Text></Pressable>)}</View></View> : null}
+        {fitPanelOpen && !controlsLocked ? <View style={styles.fitPanel}><View style={styles.fitPanelHeader}><Pressable onPress={() => setFitPanelOpen(false)} style={styles.fitPanelClose}><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>الشاشة</Text></View><Text style={styles.fitPanelLabel}>طريقة العرض</Text><View style={styles.fitModeRow}>{fitModes.map((mode) => <Pressable key={mode.id} onPress={() => setVideoFit(mode.id)} style={[styles.fitModeButton, videoFit === mode.id && styles.fitModeButtonActive]}><MaterialIcons name={mode.icon} size={24} color={videoFit === mode.id ? colors.background : colors.text} /><Text style={[styles.fitModeText, videoFit === mode.id && styles.fitModeTextActive]}>{mode.label}</Text></Pressable>)}</View><Text style={styles.fitPanelLabel}>قياسي</Text><View style={styles.frameAspectRow}>{frameAspects.map((aspect) => <Pressable key={aspect.id} onPress={() => setSelectedFrameAspect(aspect.id)} style={[styles.frameAspectButton, frameAspect === aspect.id && styles.frameAspectButtonActive]}><Text style={[styles.frameAspectText, frameAspect === aspect.id && styles.frameAspectTextActive]}>{aspect.label}</Text></Pressable>)}</View></View> : null}
         {controlsLocked ? <View style={styles.lockOverlay}><Pressable onPress={() => setControlsLocked(false)} style={styles.unlockButton}><MaterialIcons name="lock" size={24} color={colors.text} /><Text style={styles.unlockText}>المس لفك القفل</Text></Pressable></View> : null}
       </View>
       {!isLandscape && repeatEnd !== null ? <Pressable onPress={resetAb} style={styles.resetAb}><MaterialIcons name="restart-alt" size={19} color={colors.cyan} /><Text style={styles.resetAbText}>إلغاء تكرار A-B</Text></Pressable> : null}
@@ -432,8 +450,8 @@ const styles = StyleSheet.create({
   header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 },
-  mediaSurface: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#02060B", overflow: "hidden", alignItems: "center", justifyContent: "center" },
-  landscapeSurface: { flex: 1, aspectRatio: undefined },
+  mediaSurface: { flex: 1, width: "100%", backgroundColor: "#02060B", overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  landscapeSurface: { flex: 1 },
   cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 },
   videoContainer: { position: "absolute" },
   gestureSurface: { ...StyleSheet.absoluteFillObject, zIndex: 1, elevation: 1 },
@@ -453,6 +471,7 @@ const styles = StyleSheet.create({
   temporarySpeedHud: { position: "absolute", alignSelf: "center", zIndex: 3, elevation: 3, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center" },
   volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" },
   overlay: { ...StyleSheet.absoluteFillObject, zIndex: 2, elevation: 2, justifyContent: "space-between", backgroundColor: "rgba(0, 8, 15, 0.28)", paddingVertical: 10 },
+  controlDock: { marginHorizontal: 10, padding: 9, gap: 9, borderRadius: 18, backgroundColor: "rgba(5, 13, 24, 0.90)", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
   fitPanel: { position: "absolute", zIndex: 4, elevation: 4, left: 12, right: 12, top: 44, padding: 14, borderRadius: 18, backgroundColor: "rgba(7,15,27,0.96)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
   fitPanelHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   fitPanelClose: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" },
@@ -487,8 +506,11 @@ const styles = StyleSheet.create({
   time: { color: colors.text, fontSize: 10, fontVariant: ["tabular-nums"] },
   progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.42)", overflow: "hidden" },
   progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.cyan },
-  quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "space-between", gap: 5 },
+  quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "flex-start", gap: 6, paddingHorizontal: 1 },
   quickIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)", alignItems: "center", justifyContent: "center" },
+  backgroundControl: { minWidth: 68, height: 32, paddingHorizontal: 8, borderRadius: 10, flexDirection: "row-reverse", gap: 4, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)" },
+  backgroundControlText: { color: colors.text, fontSize: 10, fontWeight: "900" },
+  backgroundControlTextActive: { color: colors.background },
   quickIconActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
   quickSpeed: { color: colors.text, fontSize: 10, fontWeight: "900" },
   resetAb: { alignSelf: "center", marginTop: 14, paddingHorizontal: 13, minHeight: 38, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 5 },

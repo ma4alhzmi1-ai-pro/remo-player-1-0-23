@@ -42,7 +42,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "alhzmi",
-  version: "1.0.43",
+  version: "1.0.44",
   orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -65,7 +65,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    versionCode: 45,
+    versionCode: 46,
     intentFilters: [
       {
         action: "VIEW",
@@ -114,7 +114,7 @@ const config: ExpoConfig = {
     [
       "expo-video",
       {
-        supportsBackgroundPlayback: false,
+        supportsBackgroundPlayback: true,
         supportsPictureInPicture: true,
       },
     ],
