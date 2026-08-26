@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Alert, Platform } from "react-native";
 
 import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
+import { resolveMediaSessionPolicy } from "@/lib/media-session-policy";
 import { useLibrary } from "@/lib/library-context";
 import { buildPlaybackQueue, nextQueueItem, previousQueueItem } from "@/lib/playback-queue";
 import type { MediaItem } from "@/types/media";
@@ -104,6 +105,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     statusSubscriptionRef.current = null;
     playerRef.current = null;
     try {
+      // جلسة شاشة القفل تخص الموسيقى فقط. يجب إخلاؤها قبل تشغيل أي فيديو.
+      player?.clearLockScreenControls();
       player?.pause();
       player?.remove();
     } catch (error) {
@@ -150,9 +153,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaybackQueue(queue);
     if (item.mediaType === "video") {
       try {
+        const videoSession = resolveMediaSessionPolicy("video");
         releaseAudioPlayer();
         clearVideoSource();
-        await prepareAudioSession(false);
+        await prepareAudioSession(videoSession.allowBackgroundPlayback);
         videoPlayer.staysActiveInBackground = false;
         videoPlayer.showNowPlayingNotification = false;
         videoPlayer.audioMixingMode = "duckOthers";
@@ -172,8 +176,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
+      const audioSession = resolveMediaSessionPolicy("audio");
       clearVideoSource();
-      await prepareAudioSession();
+      await prepareAudioSession(audioSession.allowBackgroundPlayback);
       let player = playerRef.current;
       if (!player) {
         player = createAudioPlayer({ uri: item.uri }, { updateInterval: 300, keepAudioSessionActive: true });
@@ -181,6 +186,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         attachStatusListener(player);
       } else {
         player.replace({ uri: item.uri });
+      }
+      // لا تُفعّل هذه الجلسة للفيديو. وجودها للموسيقى فقط هو ما يبقي الصوت
+      // عاملاً في الخلفية ويعرض بيانات المسار في شاشة القفل عند الخروج من التطبيق.
+      if (audioSession.enableLockScreenControls) {
+        player.setActiveForLockScreen(true, {
+          title: item.title,
+          artist: item.artist || "REMO PLAYER",
+        }, {
+          showSeekBackward: true,
+          showSeekForward: true,
+        });
       }
       player.loop = repeatMode === "one";
       player.setPlaybackRate(speed);
