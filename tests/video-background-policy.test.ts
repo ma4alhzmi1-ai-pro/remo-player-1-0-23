@@ -12,4 +12,9 @@ describe("video background policy", () => {
     expect(shouldPauseVideoForBackground("active", false)).toBe(false);
     expect(shouldPauseVideoForBackground("inactive", false)).toBe(false);
   });
+
+  it("keeps video playing in the background only after the user explicitly enables it", () => {
+    expect(shouldPauseVideoForBackground("background", false, true)).toBe(false);
+    expect(shouldPauseVideoForBackground("background", false, false)).toBe(true);
+  });
 });

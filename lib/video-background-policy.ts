@@ -1,3 +1,7 @@
-export function shouldPauseVideoForBackground(nextAppState: string, isPictureInPictureActiveOrRequested: boolean) {
-  return nextAppState === "background" && !isPictureInPictureActiveOrRequested;
+export function shouldPauseVideoForBackground(
+  nextAppState: string,
+  isPictureInPictureActiveOrRequested: boolean,
+  isManualBackgroundPlaybackEnabled = false,
+) {
+  return nextAppState === "background" && !isPictureInPictureActiveOrRequested && !isManualBackgroundPlaybackEnabled;
 }
