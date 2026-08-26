@@ -33,8 +33,6 @@ type PlayerContextValue = {
   stop: () => void;
   dismissMediaSession: () => void;
   videoPlayer: VideoPlayer;
-  videoBackgroundPlaybackEnabled: boolean;
-  setVideoBackgroundPlaybackEnabled: (enabled: boolean) => Promise<void>;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -51,7 +49,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     player.timeUpdateEventInterval = 0.25;
     return player;
   });
-  const [videoBackgroundPlaybackEnabled, setVideoBackgroundPlaybackEnabledState] = useState(false);
   const [currentItem, setCurrentItem] = useState<MediaItem | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -123,25 +120,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       videoPlayer.staysActiveInBackground = false;
       videoPlayer.showNowPlayingNotification = false;
       videoPlayer.replace(null);
-      setVideoBackgroundPlaybackEnabledState(false);
     } catch (error) {
       console.warn("تعذر تفريغ مصدر الفيديو", error);
     }
   }, [videoPlayer]);
-
-  const setVideoBackgroundPlaybackEnabled = useCallback(async (enabled: boolean) => {
-    if (currentItemRef.current?.mediaType !== "video") return;
-    try {
-      // لا يظهر إشعار الفيديو أثناء المشاهدة؛ يُفعّل Android الإشعار فقط عند دخول
-      // التطبيق للخلفية بعد أن يختار المستخدم هذا الخيار صراحةً من أدوات الفيديو.
-      videoPlayer.staysActiveInBackground = enabled;
-      videoPlayer.showNowPlayingNotification = false;
-      await prepareAudioSession(enabled);
-      setVideoBackgroundPlaybackEnabledState(enabled);
-    } catch (error) {
-      console.warn("تعذر تبديل تشغيل الفيديو بالخلفية", error);
-    }
-  }, [prepareAudioSession, videoPlayer]);
 
   const attachStatusListener = useCallback((player: AudioPlayer) => {
     statusSubscriptionRef.current?.remove();
@@ -171,10 +153,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaybackQueue(queue);
     if (item.mediaType === "video") {
       try {
-        const videoSession = resolveMediaSessionPolicy("video");
         releaseAudioPlayer();
         clearVideoSource();
-        await prepareAudioSession(videoSession.allowBackgroundPlayback);
+        await prepareAudioSession(false);
         videoPlayer.staysActiveInBackground = false;
         videoPlayer.showNowPlayingNotification = false;
         videoPlayer.audioMixingMode = "duckOthers";
@@ -241,7 +222,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         videoPlayer.pause();
         setIsPlaying(false);
       } else {
-        videoPlayer.staysActiveInBackground = videoBackgroundPlaybackEnabled;
+        videoPlayer.staysActiveInBackground = false;
         videoPlayer.showNowPlayingNotification = false;
         videoPlayer.play();
         setIsPlaying(true);
@@ -256,7 +237,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       player.play();
       setIsPlaying(true);
     }
-  }, [currentItem, videoBackgroundPlaybackEnabled, videoPlayer]);
+  }, [currentItem, videoPlayer]);
 
   const seekTo = useCallback(async (seconds: number) => {
     const player = playerRef.current;
@@ -347,9 +328,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     stop,
     dismissMediaSession,
     videoPlayer,
-    videoBackgroundPlaybackEnabled,
-    setVideoBackgroundPlaybackEnabled,
-  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession, videoPlayer, videoBackgroundPlaybackEnabled, setVideoBackgroundPlaybackEnabled]);
+  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession, videoPlayer]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
