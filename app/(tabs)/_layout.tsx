@@ -31,8 +31,36 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: "الرئيسية",
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="keyboard-studio"
+        options={{
+          title: "المعاينة",
+          tabBarIcon: ({ color }) => <IconSymbol size={27} name="keyboard" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="studio"
+        options={{
+          title: "الاستوديو",
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="sparkles" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="themes"
+        options={{
+          title: "الثيمات",
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="paintpalette" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "الإعدادات",
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="gearshape" color={color} />,
         }}
       />
     </Tabs>
