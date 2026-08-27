@@ -9,7 +9,7 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { isPictureInPictureSupported, VideoView } from "expo-video";
+import { isPictureInPictureSupported, VideoView, useVideoPlayer } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -53,7 +53,7 @@ const frameAspects: { id: FrameAspect; label: string; ratio?: number }[] = [
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
-  const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat, videoPlayer } = usePlayer();
+  const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat } = usePlayer();
   const viewRef = useRef<any>(null);
   const touchStartX = useRef(0);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -106,7 +106,13 @@ export default function VideoPlayerScreen() {
   const frameStyle = resolveFixedFrameLayout(frameAspect, mediaSurfaceWidth, mediaSurfaceHeight, sourceAspect ?? 16 / 9) ?? undefined;
   const pipSupported = Platform.OS !== "web" && isPictureInPictureSupported();
   const translateMutation = trpc.media.translateVideo.useMutation();
-  const player = videoPlayer;
+  const currentVideoUri = currentItem?.mediaType === "video" ? currentItem.uri : null;
+  const player = useVideoPlayer(null, (videoPlayer) => {
+    videoPlayer.staysActiveInBackground = false;
+    videoPlayer.showNowPlayingNotification = false;
+    videoPlayer.audioMixingMode = "duckOthers";
+    videoPlayer.timeUpdateEventInterval = 0.25;
+  });
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -133,6 +139,36 @@ export default function VideoPlayerScreen() {
     player.staysActiveInBackground = false;
     player.showNowPlayingNotification = false;
   }, [player]);
+
+  useEffect(() => {
+    if (!currentVideoUri) return;
+    let disposed = false;
+    const loadForegroundVideo = async () => {
+      try {
+        player.pause();
+        player.staysActiveInBackground = false;
+        player.showNowPlayingNotification = false;
+        await player.replaceAsync({ uri: currentVideoUri });
+        if (disposed) return;
+        player.play();
+        setIsPlaying(true);
+      } catch {
+        if (!disposed) Alert.alert("تعذّر تشغيل الفيديو", "تحقق من أن الفيديو ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
+      }
+    };
+    void loadForegroundVideo();
+    return () => {
+      disposed = true;
+      try {
+        player.pause();
+        player.staysActiveInBackground = false;
+        player.showNowPlayingNotification = false;
+        player.replace(null);
+      } catch {
+        // The player can already be released as the native screen closes.
+      }
+    };
+  }, [currentVideoUri, player]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
