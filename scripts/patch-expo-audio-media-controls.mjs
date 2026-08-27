@@ -42,6 +42,10 @@ patchFile("AudioModule.kt", [
     `      val requestType = if (interruptionMode == InterruptionMode.DO_NOT_MIX) {\n        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT\n      } else {\n        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK\n      }\n      audioManager.requestAudioFocus(audioFocusChangeListener, AudioManager.STREAM_MUSIC, requestType)`,
     `      val requestType = if (staysActiveInBackground) {\n        AudioManager.AUDIOFOCUS_GAIN\n      } else if (interruptionMode == InterruptionMode.DO_NOT_MIX) {\n        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT\n      } else {\n        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK\n      }\n      audioManager.requestAudioFocus(audioFocusChangeListener, AudioManager.STREAM_MUSIC, requestType)`,
   ],
+  [
+    `    OnDestroy {\n      appContext.mainQueue.launch {\n        releaseAudioFocus()\n        players.values.forEach {\n          it.ref.stop()\n        }\n\n        recorders.values.forEach {\n          it.stopRecording()\n        }\n\n        AudioControlsService.clearSession()\n      }\n    }`,
+    `    OnDestroy {\n      appContext.mainQueue.launch {\n        // لا يوقف الخروج من الواجهة موسيقى نشطة تملك جلسة شاشة القفل.\n        // يستمر AudioControlsService كخدمة foreground للموسيقى فقط.\n        val hasBackgroundMusic = staysActiveInBackground && players.values.any {\n          it.isActiveForLockScreen && it.ref.isPlaying\n        }\n        if (!hasBackgroundMusic) {\n          releaseAudioFocus()\n          players.values.forEach {\n            it.ref.stop()\n          }\n          AudioControlsService.clearSession()\n        }\n\n        recorders.values.forEach {\n          it.stopRecording()\n        }\n      }\n    }`,
+  ],
 ]);
 
 patchFile("service/AudioControlsService.kt", [
