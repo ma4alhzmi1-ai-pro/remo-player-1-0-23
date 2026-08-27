@@ -7,6 +7,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.HorizontalScrollView;
 import android.widget.Button;
@@ -133,12 +134,15 @@ final class RemoKeyboardView extends LinearLayout {
     private void renderKeys() {
         rebuildPalette();
         keyArea.removeAllViews();
+        if (isDesktopClassic()) desktopFunctionRow();
         if (page == Page.ARABIC) {
-            row(new String[]{"١\nض", "٢\nص", "٣\nث", "٤\nق", "٥\nف", "٦\nغ", "٧\nع", "٨\nه", "٩\nخ", "٠\nح", "$\nج"});
-            row(new String[]{"~\nش", "@\nس", "^\nي", "•\nب", "ل", "ا", "ت", "ن", "م", "ك", "ط"});
-            row(new String[]{"⇧", "ء\nئ", "؟\nؤ", "+\nر", "−\nلا", "(\nى", ")\nة", "`\nو", "⌫"});
+            if (isDesktopClassic()) row(numberRow());
+            row(isDesktopClassic() ? new String[]{"ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"} : new String[]{"١\nض", "٢\nص", "٣\nث", "٤\nق", "٥\nف", "٦\nغ", "٧\nع", "٨\nه", "٩\nخ", "٠\nح", "$\nج"});
+            row(isDesktopClassic() ? new String[]{"ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ط"} : new String[]{"~\nش", "@\nس", "^\nي", "•\nب", "ل", "ا", "ت", "ن", "م", "ك", "ط"});
+            rowWeighted(isDesktopClassic() ? new String[]{"⇧", "ئ", "ء", "ؤ", "ر", "لا", "ى", "ة", "و", "ز", "ظ", "⌫"} : new String[]{"⇧", "ء\nئ", "؟\nؤ", "+\nر", "−\nلا", "(\nى", ")\nة", "`\nو", "⌫"}, isDesktopClassic() ? new float[]{1.45f,1f,1f,1f,1f,1f,1f,1f,1f,1f,1f,1.65f} : null);
             bottomRow("◉\n123", "☺", "/", "◀ العربية ▶", "▣", ".", "تنفيذ");
         } else if (page == Page.ENGLISH) {
+            if (isDesktopClassic()) row(numberRow());
             row(letterCase(new String[]{"1\nq", "2\nw", "3\ne", "4\nr", "5\nt", "6\ny", "7\nu", "8\ni", "9\no", "0\np"}));
             row(letterCase(new String[]{"a", "s", "d", "f", "g", "h", "j", "k", "l"}));
             row(letterCase(new String[]{"⇧", "z", "x", "c", "v", "b", "n", "m", "⌫"}));
@@ -222,6 +226,30 @@ final class RemoKeyboardView extends LinearLayout {
         for (String label : labels) addKey(row, label, 1f);
     }
 
+    private void rowWeighted(String[] labels, float[] weights) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setGravity(Gravity.CENTER);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        int height = preferences.getInt("key_height", 52);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(height));
+        rowParams.setMargins(0, dp(3), 0, dp(1));
+        keyArea.addView(row, rowParams);
+        for (int index = 0; index < labels.length; index++) addKey(row, labels[index], weights == null ? 1f : weights[index]);
+    }
+
+    private boolean isDesktopClassic() { return "desktop".equals(preferences.getString("key_style", "desktop")); }
+
+    private void desktopFunctionRow() {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setGravity(Gravity.CENTER);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(35));
+        rowParams.setMargins(0, dp(2), 0, dp(2));
+        keyArea.addView(row, rowParams);
+        String[] functions = {"Esc", "Tab", "←", "→", "↑", "↓", "⌕", "文", "▣", "⚙"};
+        for (String value : functions) addKey(row, value, 1f);
+    }
+
     private void bottomRow(String first, String emoji, String slash, String language, String clipboard, String dot, String enter) {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER);
@@ -270,6 +298,15 @@ final class RemoKeyboardView extends LinearLayout {
         if (label.equals("ALT")) { setPage(Page.SYMBOLS); return; }
         if (label.startsWith("◀")) { setPage(page == Page.ARABIC ? Page.ENGLISH : Page.ARABIC); return; }
         if (label.equals("⇧")) { englishCaps = !englishCaps; renderKeys(); return; }
+        if (label.equals("Esc")) { service.sendDesktopKey(KeyEvent.KEYCODE_ESCAPE); return; }
+        if (label.equals("Tab")) { service.sendDesktopKey(KeyEvent.KEYCODE_TAB); return; }
+        if (label.equals("←")) { service.sendDesktopKey(KeyEvent.KEYCODE_DPAD_LEFT); return; }
+        if (label.equals("→")) { service.sendDesktopKey(KeyEvent.KEYCODE_DPAD_RIGHT); return; }
+        if (label.equals("↑")) { service.sendDesktopKey(KeyEvent.KEYCODE_DPAD_UP); return; }
+        if (label.equals("↓")) { service.sendDesktopKey(KeyEvent.KEYCODE_DPAD_DOWN); return; }
+        if (label.equals("⌕")) { showEmojiExplorerPopup(); return; }
+        if (label.equals("文")) { showTranslationPopup(); return; }
+        if (label.equals("⚙")) { service.openSettings(); return; }
         service.commitText(label);
     }
 

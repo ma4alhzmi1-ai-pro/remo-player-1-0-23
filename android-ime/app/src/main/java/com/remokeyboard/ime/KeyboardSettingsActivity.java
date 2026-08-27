@@ -187,7 +187,7 @@ public class KeyboardSettingsActivity extends Activity {
             addAction(root, "استيراد نسخة احتياطية", "استعادة بيانات محفوظة", () -> Toast.makeText(this, "لا توجد نسخة احتياطية محددة", Toast.LENGTH_SHORT).show());
         } else if (panel == Panel.ABOUT) {
             addSection(root, "حول ريموكيبورد");
-            addAction(root, "إصدار التطبيق", "ريموكيبورد مزخرف 1.0.7", () -> {});
+            addAction(root, "إصدار التطبيق", "ريموكيبورد مزخرف 1.0.8", () -> {});
             addAction(root, "التحقق من التحديث", "فتح صفحة الإصدارات", () -> openExternalUrl("https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases"));
             addAction(root, "عن المطور", "محمد الحزمي", () -> openExternalUrl("https://t.me/moh_alymani1"));
             addAction(root, "سياسة الخصوصية", "خصوصية الحافظة والصوت والروابط", () -> Toast.makeText(this, "تظل بيانات الحافظة محلية على الجهاز", Toast.LENGTH_LONG).show());

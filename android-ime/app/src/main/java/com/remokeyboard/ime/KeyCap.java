@@ -34,8 +34,8 @@ final class KeyCap extends TextView {
         super.onDraw(canvas);
         if (secondary.isEmpty()) return;
         secondaryPaint.setTypeface(getTypeface());
-        secondaryPaint.setTextSize(Math.max(9f, getTextSize() * 0.47f));
+        secondaryPaint.setTextSize(Math.max(8f, getTextSize() * 0.42f));
         secondaryPaint.setTextAlign(Paint.Align.LEFT);
-        canvas.drawText(secondary, getPaddingLeft() + getTextSize() * 0.16f, getTextSize() * 0.80f, secondaryPaint);
+        canvas.drawText(secondary, getPaddingLeft() + getTextSize() * 0.15f, getPaddingTop() + getTextSize() * 0.62f, secondaryPaint);
     }
 }

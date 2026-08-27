@@ -76,6 +76,14 @@ public class RemoInputMethodService extends InputMethodService {
         vibrateIfEnabled();
     }
 
+    void sendDesktopKey(int keyCode) {
+        InputConnection connection = getCurrentInputConnection();
+        if (connection == null) return;
+        connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, keyCode));
+        connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, keyCode));
+        vibrateIfEnabled();
+    }
+
     void pasteClipboardItem(String text) { commitText(text); }
 
     ClipboardRepository getClipboard() { return clipboard; }

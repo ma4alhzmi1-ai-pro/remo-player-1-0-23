@@ -59,6 +59,11 @@ final class KeyboardPalette {
     }
 
     private KeyboardPalette withKeyStyle(String style) {
+        if ("desktop".equals(style)) return new KeyboardPalette(
+            Color.rgb(216, 234, 228), Color.rgb(184, 210, 202), Color.rgb(248, 250, 249),
+            Color.rgb(222, 233, 229), Color.rgb(43, 56, 52), Color.rgb(104, 124, 118),
+            Color.rgb(80, 137, 125), 7, 255, Color.rgb(67, 91, 84)
+        );
         if ("glass".equals(style)) return new KeyboardPalette(background, surface, key, keySpecial, text, muted, accent, 15, 164, Color.argb(116, 235, 250, 255));
         if ("neon".equals(style)) return new KeyboardPalette(background, surface, key, keySpecial, text, muted, accent, 9, 214, Color.argb(170, Color.red(accent), Color.green(accent), Color.blue(accent)));
         if ("slim".equals(style)) return new KeyboardPalette(background, surface, key, keySpecial, text, muted, accent, 4, 245, Color.argb(46, 255, 255, 255));

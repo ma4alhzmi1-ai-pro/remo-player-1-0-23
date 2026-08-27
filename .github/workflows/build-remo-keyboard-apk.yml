@@ -47,12 +47,12 @@ jobs:
 
       - name: Create compressed APK package
         working-directory: android-ime/app/build/outputs/apk/debug
-        run: zip -9 "RemoKeyboard-1.0.7-Android-APK.zip" app-debug.apk
+        run: zip -9 "RemoKeyboard-1.0.8-Android-APK.zip" app-debug.apk
 
       - name: Upload compressed APK
         uses: actions/upload-artifact@v4
         with:
-          name: RemoKeyboard-1.0.7-Android-APK
-          path: android-ime/app/build/outputs/apk/debug/RemoKeyboard-1.0.7-Android-APK.zip
+          name: RemoKeyboard-1.0.8-Android-APK
+          path: android-ime/app/build/outputs/apk/debug/RemoKeyboard-1.0.8-Android-APK.zip
           if-no-files-found: error
           retention-days: 90
