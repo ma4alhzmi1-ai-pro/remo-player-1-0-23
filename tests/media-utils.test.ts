@@ -26,9 +26,11 @@ describe("media utilities", () => {
     expect(inferMediaKind("notes.txt", "text/plain")).toBeNull();
   });
 
-  it("indexes MVR and FVL filenames as video formats", () => {
+  it("indexes MVR, FLV and MP5 filenames as video formats", () => {
     expect(inferMediaKind("sample.mvr")).toBe("video");
     expect(inferMediaKind("sample.fvl")).toBe("video");
+    expect(inferMediaKind("sample.flv")).toBe("video");
+    expect(inferMediaKind("sample.mp5")).toBe("video");
   });
 
   it("extracts an artist and title from a common local media filename", () => {
