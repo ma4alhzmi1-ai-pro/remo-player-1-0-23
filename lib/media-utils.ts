@@ -1,6 +1,6 @@
 import type { MediaItem } from "@/types/media";
 
-export const videoExtensions = ["mvr", "dvd", "avi", "mov", "mp4", "wmv", "rmvb", "3gp", "m4v", "mkv", "ts", "mpg", "mpeg", "flv", "fvl", "amv", "bik", "bin", "iso", "crf", "evo", "gvi", "gxf", "mp2", "mtv", "mxf", "mxg", "nsv", "nuv", "ogm", "ogx", "ps", "rec", "rm", "rpl", "thp", "tod", "tts", "txd", "vlc", "vob", "vro", "wtv", "xesc", "webm"] as const;
+export const videoExtensions = ["mvr", "dvd", "avi", "mov", "mp4", "mp5", "wmv", "rmvb", "3gp", "m4v", "mkv", "ts", "mpg", "mpeg", "flv", "fvl", "amv", "bik", "bin", "iso", "crf", "evo", "gvi", "gxf", "mp2", "mtv", "mxf", "mxg", "nsv", "nuv", "ogm", "ogx", "ps", "rec", "rm", "rpl", "thp", "tod", "tts", "txd", "vlc", "vob", "vro", "wtv", "xesc", "webm"] as const;
 export const audioExtensions = ["mp3", "wav", "aac", "flac", "669", "amb", "aob", "caf", "it", "m4a", "m5p", "mlp", "mod", "mpc", "mus", "oga", "ogg", "oma", "opus", "rmi", "s3m", "tak", "thd", "tta", "voc", "vpf", "w64", "wma", "wv", "xa", "xm"] as const;
 
 export function extensionOf(name: string) {
