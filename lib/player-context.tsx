@@ -1,6 +1,6 @@
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Alert, Platform } from "react-native";
+import { Alert, AppState, Platform } from "react-native";
 
 import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
 import { resolveMediaSessionPolicy } from "@/lib/media-session-policy";
@@ -35,6 +35,21 @@ type PlayerContextValue = {
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
+const lockScreenOptions = {
+  showSeekBackward: true,
+  showSeekForward: true,
+  showSkipPrevious: true,
+  showSkipNext: true,
+};
+
+function getLockScreenMetadata(item: MediaItem) {
+  return {
+    title: item.title,
+    artist: item.artist || "REMO PLAYER",
+    albumTitle: item.album || "REMO PLAYER",
+  };
+}
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const { items } = useLibrary();
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -49,6 +64,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playbackQueue, setPlaybackQueue] = useState<MediaItem[]>([]);
   const repeatModeRef = useRef<RepeatMode>("off");
   const autoAdvanceRef = useRef<(wrap: boolean) => Promise<boolean>>(async () => false);
+  const remoteQueueActionRef = useRef<(action: "next" | "previous") => void>(() => undefined);
   const isAutoAdvancingRef = useRef(false);
   const currentItemRef = useRef<MediaItem | null>(null);
   const lastSnapshotSecondRef = useRef(0);
@@ -98,7 +114,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const attachStatusListener = useCallback((player: AudioPlayer) => {
     statusSubscriptionRef.current?.remove();
-    statusSubscriptionRef.current = player.addListener("playbackStatusUpdate", (status) => {
+    const statusSubscription = player.addListener("playbackStatusUpdate", (status) => {
       setIsPlaying(status.playing);
       setCurrentTime(status.currentTime || 0);
       setDuration(status.duration || 0);
@@ -117,6 +133,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }).finally(() => { isAutoAdvancingRef.current = false; });
       }
     });
+    const nativeControlPlayer = player as unknown as {
+      addListener: (event: string, listener: (event: { action?: string }) => void) => { remove: () => void };
+    };
+    const controlSubscription = nativeControlPlayer.addListener("mediaControlAction", ({ action }) => {
+      if (action === "next" || action === "previous") remoteQueueActionRef.current(action);
+    });
+    statusSubscriptionRef.current = {
+      remove: () => {
+        statusSubscription.remove();
+        controlSubscription.remove();
+      },
+    };
   }, []);
 
   const playItem = useCallback(async (item: MediaItem, sourceQueue?: MediaItem[]) => {
@@ -150,13 +178,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // لا تُفعّل هذه الجلسة للفيديو. وجودها للموسيقى فقط هو ما يبقي الصوت
       // عاملاً في الخلفية ويعرض بيانات المسار في شاشة القفل عند الخروج من التطبيق.
       if (audioSession.enableLockScreenControls) {
-        player.setActiveForLockScreen(true, {
-          title: item.title,
-          artist: item.artist || "REMO PLAYER",
-        }, {
-          showSeekBackward: true,
-          showSeekForward: true,
-        });
+        player.setActiveForLockScreen(true, getLockScreenMetadata(item), lockScreenOptions);
       }
       player.loop = repeatMode === "one";
       player.setPlaybackRate(speed);
@@ -224,6 +246,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     await playItem(previousItem, queue);
     return true;
   }, [currentItem, items, playbackQueue, playItem]);
+
+  useEffect(() => {
+    remoteQueueActionRef.current = (action) => {
+      if (action === "next") {
+        void playNext(repeatModeRef.current === "all");
+      } else {
+        void playPrevious();
+      }
+    };
+  }, [playNext, playPrevious]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      const item = currentItemRef.current;
+      const player = playerRef.current;
+      const isLeavingForeground = nextAppState === "background" || nextAppState === "inactive";
+      if (!isLeavingForeground || item?.mediaType !== "audio" || !player?.playing) return;
+      void prepareAudioSession(true).then(() => {
+        // لا يعاد تفعيل فيديو الخلفية أو إشعاره؛ هذا المسار للموسيقى فقط.
+        player.setActiveForLockScreen(true, getLockScreenMetadata(item), lockScreenOptions);
+      });
+    });
+    return () => subscription.remove();
+  }, [prepareAudioSession]);
 
   const setSpeed = useCallback((nextSpeed: number) => {
     const safeSpeed = Math.max(0.5, Math.min(nextSpeed, 2));

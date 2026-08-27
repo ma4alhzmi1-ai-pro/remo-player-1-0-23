@@ -1,5 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
@@ -53,6 +53,7 @@ const frameAspects: { id: FrameAspect; label: string; ratio?: number }[] = [
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
+  const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
   const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat } = usePlayer();
   const viewRef = useRef<any>(null);
   const touchStartX = useRef(0);
@@ -324,8 +325,9 @@ export default function VideoPlayerScreen() {
     onPanResponderMove: (event) => seekFromProgress(event.nativeEvent.locationX),
   }), [seekFromProgress]);
 
+  const videoLibraryRoute = folderPath ? `/(tabs)/video?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/video";
   if (!currentItem || currentItem.mediaType !== "video") {
-    return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر فيديو من مكتبتك أولاً.</Text><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/video" as never)} style={styles.backButton}><Text style={styles.backText}>العودة للفيديوهات</Text></Pressable></View></ScreenContainer>;
+    return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر فيديو من مكتبتك أولاً.</Text><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace(videoLibraryRoute as never)} style={styles.backButton}><Text style={styles.backText}>العودة للفيديوهات</Text></Pressable></View></ScreenContainer>;
   }
 
   const activeCue = subtitleTrack?.cues.find((cue) => subtitleTime >= cue.start && subtitleTime <= cue.end);
@@ -340,7 +342,7 @@ export default function VideoPlayerScreen() {
     try {
       stop();
     } catch { /* The native player may already be unavailable during navigation. */ }
-    if (router.canGoBack()) router.back(); else router.replace("/(tabs)/video" as never);
+    if (router.canGoBack()) router.back(); else router.replace(videoLibraryRoute as never);
   };
   const rotateVideo = () => {
     setAutoRotateEnabled(false);

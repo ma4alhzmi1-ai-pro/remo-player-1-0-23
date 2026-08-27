@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Artwork, colors, EmptyState, formatDuration, MediaRow } from "@/components/remo-ui";
@@ -23,6 +23,7 @@ const views: { id: VideoView; label: string; icon: keyof typeof MaterialIcons.gl
 
 export default function VideoScreen() {
   const router = useRouter();
+  const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
   const { items, playlists, importFiles, isRefreshing, refreshDeviceLibrary, addItemToPlaylist, createPlaylist } = useLibrary();
   const { playItem } = usePlayer();
   const [view, setView] = useState<VideoView>("grid");
@@ -41,9 +42,18 @@ export default function VideoScreen() {
     items: playlist.itemIds.map((id) => items.find((item) => item.id === id)).filter((item): item is MediaItem => item?.mediaType === "video"),
   })).filter((playlist) => playlist.items.length > 0), [items, playlists]);
 
-  const openVideo = async (item: MediaItem, source = matchingVideos) => {
+  useEffect(() => {
+    if (!folderPath) return;
+    const folder = folders.find((candidate) => candidate.path === folderPath);
+    if (!folder) return;
+    setView("folders");
+    setSelectedPlaylist(null);
+    setSelectedFolder(folder);
+  }, [folderPath, folders]);
+  const openVideo = async (item: MediaItem, source = matchingVideos, originFolderPath?: string) => {
     await playItem(item, source);
-    router.push("/player/video" as never);
+    const route = originFolderPath ? `/player/video?folderPath=${encodeURIComponent(originFolderPath)}` : "/player/video";
+    router.push(route as never);
   };
   const goBack = () => router.canGoBack() ? router.back() : router.replace("/" as never);
   const addToPlaylist = async (playlistId: string) => {
@@ -64,7 +74,7 @@ export default function VideoScreen() {
     setPlaylistTarget(null);
   };
 
-  if (selectedFolder) return <FolderDetail folder={selectedFolder} onBack={() => setSelectedFolder(null)} onOpenVideo={(item) => openVideo(item, selectedFolder.items)} />;
+  if (selectedFolder) return <FolderDetail folder={selectedFolder} onBack={() => setSelectedFolder(null)} onOpenVideo={(item) => openVideo(item, selectedFolder.items, selectedFolder.path)} />;
   if (selectedPlaylist) return <PlaylistDetail playlist={selectedPlaylist} onBack={() => setSelectedPlaylist(null)} onOpenVideo={(item) => openVideo(item, selectedPlaylist.items)} />;
 
   return <ScreenContainer className="px-0">
