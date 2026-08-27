@@ -24,5 +24,7 @@ expect(keyboard.includes("new String[]{\"ة\", \"َ\"") && keyboard.includes("ne
 expect(keyboard.includes("Page.ARABIC") && keyboard.includes("Page.ENGLISH") && keyboard.includes("Page.NUMBERS"), "توجد صفحات عربية وإنجليزية وأرقام ورموز");
 expect(settings.includes("ACTION_INPUT_METHOD_SETTINGS") && settings.includes("showInputMethodPicker"), "توجد خطوات تفعيل واختيار لوحة المفاتيح");
 expect(existsSync(join(root, "app/src/main/java/com/remokeyboard/ime/ClipboardRepository.java")), "توجد طبقة تخزين محلية للحافظة");
+expect(settings.includes("الزخرفة والخطوط") && settings.includes("إعدادات الترجمة") && settings.includes("مظهر لوحة المفاتيح"), "توجد صفحات إعدادات مفصلة شبيهة بالمركز المرجعي");
+expect(keyboard.includes("إعدادات الكيبورد") && keyboard.includes("تنفيذ") && settings.includes("ستايل المفاتيح"), "توجد أدوات الكيبورد وزر التنفيذ والمفاتيح بأسلوب الكمبيوتر");
 
 console.log("اكتمل فحص البنية الثابتة لنواة ريموكيبورد.");
