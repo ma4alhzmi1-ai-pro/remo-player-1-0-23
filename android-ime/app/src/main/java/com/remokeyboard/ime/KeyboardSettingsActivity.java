@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.net.Uri;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
@@ -72,6 +73,16 @@ public class KeyboardSettingsActivity extends Activity {
         addThemeButton(root, "ثيم المناسبات الإسلامية", "ramadan");
         addThemeButton(root, "الثيم الفاتح", "light");
 
+        section(root, "حول التطبيق");
+        TextView version = button("إصدار التطبيق: ريموكيبورد مزخرف 1.0.1", surface, Color.WHITE);
+        root.addView(version, margins(LayoutParams.MATCH_PARENT, dp(44), 0, 0, 0, 7));
+        TextView update = button("التحقق من التحديث", surface, Color.WHITE);
+        update.setOnClickListener(v -> openExternalUrl("https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases"));
+        root.addView(update, margins(LayoutParams.MATCH_PARENT, dp(44), 0, 0, 0, 7));
+        TextView about = button("عن المطور: محمد الحزمي", surface, Color.WHITE);
+        about.setOnClickListener(v -> openExternalUrl("https://t.me/moh_alymani1"));
+        root.addView(about, margins(LayoutParams.MATCH_PARENT, dp(44), 0, 0, 0, 7));
+
         TextView note = label("يمكنك تعديل الزخرفة والحافظة والملصقات من مركز ريموكيبورد المرافق. تبقى النصوص محفوظة على جهازك.", 14, Color.rgb(169, 188, 207));
         note.setGravity(Gravity.RIGHT);
         root.addView(note, margins(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, 0, 24, 0, 0));
@@ -114,6 +125,11 @@ public class KeyboardSettingsActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 1001);
         }
+    }
+
+    private void openExternalUrl(String value) {
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(value));
+        startActivity(intent);
     }
 
     private TextView label(String text, int size, int color) {
