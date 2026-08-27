@@ -1,5 +1,4 @@
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from "expo-audio";
-import { createVideoPlayer, type VideoPlayer } from "expo-video";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Platform } from "react-native";
 
@@ -32,7 +31,6 @@ type PlayerContextValue = {
   toggleShuffle: () => void;
   stop: () => void;
   dismissMediaSession: () => void;
-  videoPlayer: VideoPlayer;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -41,14 +39,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const { items } = useLibrary();
   const playerRef = useRef<AudioPlayer | null>(null);
   const statusSubscriptionRef = useRef<{ remove: () => void } | null>(null);
-  const [videoPlayer] = useState(() => {
-    const player = createVideoPlayer(null);
-    player.staysActiveInBackground = false;
-    player.showNowPlayingNotification = false;
-    player.audioMixingMode = "duckOthers";
-    player.timeUpdateEventInterval = 0.25;
-    return player;
-  });
   const [currentItem, setCurrentItem] = useState<MediaItem | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -75,16 +65,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       statusSubscriptionRef.current?.remove();
       playerRef.current?.remove();
-      videoPlayer.release();
     };
-  }, [videoPlayer]);
-
-  useEffect(() => {
-    const subscription = videoPlayer.addListener("playingChange", ({ isPlaying: playing }) => {
-      if (currentItemRef.current?.mediaType === "video") setIsPlaying(playing);
-    });
-    return () => subscription.remove();
-  }, [videoPlayer]);
+  }, []);
 
   const prepareAudioSession = useCallback(async (allowBackground = true) => {
     try {
@@ -113,17 +95,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       console.warn("تعذر تحرير مشغل الصوت", error);
     }
   }, []);
-
-  const clearVideoSource = useCallback(() => {
-    try {
-      videoPlayer.pause();
-      videoPlayer.staysActiveInBackground = false;
-      videoPlayer.showNowPlayingNotification = false;
-      videoPlayer.replace(null);
-    } catch (error) {
-      console.warn("تعذر تفريغ مصدر الفيديو", error);
-    }
-  }, [videoPlayer]);
 
   const attachStatusListener = useCallback((player: AudioPlayer) => {
     statusSubscriptionRef.current?.remove();
@@ -154,21 +125,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (item.mediaType === "video") {
       try {
         releaseAudioPlayer();
-        clearVideoSource();
         await prepareAudioSession(false);
-        videoPlayer.staysActiveInBackground = false;
-        videoPlayer.showNowPlayingNotification = false;
-        videoPlayer.audioMixingMode = "duckOthers";
-        videoPlayer.timeUpdateEventInterval = 0.25;
-        await videoPlayer.replaceAsync({ uri: item.uri, metadata: { title: item.title, artist: item.artist } });
-        videoPlayer.loop = repeatMode === "one";
-        videoPlayer.playbackRate = speed;
         currentItemRef.current = item;
         setCurrentItem(item);
         setCurrentTime(0);
         setDuration(item.duration);
-        videoPlayer.play();
-        setIsPlaying(true);
+        setIsPlaying(false);
       } catch {
         Alert.alert("تعذّر تشغيل الفيديو", "تحقق من أن الفيديو ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
       }
@@ -176,7 +138,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     try {
       const audioSession = resolveMediaSessionPolicy("audio");
-      clearVideoSource();
       await prepareAudioSession(audioSession.allowBackgroundPlayback);
       let player = playerRef.current;
       if (!player) {
@@ -212,21 +173,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
-  }, [attachStatusListener, clearVideoSource, items, prepareAudioSession, releaseAudioPlayer, repeatMode, speed, videoPlayer]);
+  }, [attachStatusListener, items, prepareAudioSession, releaseAudioPlayer, repeatMode, speed]);
 
   const togglePlayback = useCallback(() => {
     const player = playerRef.current;
     if (!currentItem) return;
     if (currentItem.mediaType === "video") {
-      if (videoPlayer.playing) {
-        videoPlayer.pause();
-        setIsPlaying(false);
-      } else {
-        videoPlayer.staysActiveInBackground = false;
-        videoPlayer.showNowPlayingNotification = false;
-        videoPlayer.play();
-        setIsPlaying(true);
-      }
       return;
     }
     if (!player) return;
@@ -237,7 +189,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       player.play();
       setIsPlaying(true);
     }
-  }, [currentItem, videoPlayer]);
+  }, [currentItem]);
 
   const seekTo = useCallback(async (seconds: number) => {
     const player = playerRef.current;
@@ -291,10 +243,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => {
     playerRef.current?.pause();
-    clearVideoSource();
     setIsPlaying(false);
     setCurrentTime(0);
-  }, [clearVideoSource]);
+  }, []);
 
   const dismissMediaSession = useCallback(() => {
     releaseAudioPlayer();
@@ -327,8 +278,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     toggleShuffle,
     stop,
     dismissMediaSession,
-    videoPlayer,
-  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession, videoPlayer]);
+  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
