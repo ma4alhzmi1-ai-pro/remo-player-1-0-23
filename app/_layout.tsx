@@ -10,7 +10,6 @@ import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { LibraryProvider } from "@/lib/library-context";
 import { PlayerProvider } from "@/lib/player-context";
-import { MiniPlayer } from "@/components/mini-player";
 import { DeveloperCreditToast } from "@/components/developer-credit-toast";
 import { AppSideMenuProvider } from "@/components/app-side-menu";
 import { IntroScreen } from "@/components/intro-screen";
@@ -109,7 +108,6 @@ export default function RootLayout() {
                   <Stack.Screen name="support-developer" />
                   <Stack.Screen name="oauth/callback" />
                 </Stack>
-                <MiniPlayer />
                 <DeveloperCreditToast />
               </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}
               <StatusBar style="light" hidden={pathname === "/player/video"} />

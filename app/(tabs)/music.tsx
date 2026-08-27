@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, EmptyState, MediaRow } from "@/components/remo-ui";
@@ -24,6 +24,7 @@ const views: { id: MusicView; label: string }[] = [
 
 export default function MusicScreen() {
   const router = useRouter();
+  const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
   const { items, importFiles, isRefreshing, refreshDeviceLibrary } = useLibrary();
   const { playItem } = usePlayer();
   const [activeView, setActiveView] = useState<MusicView>("tracks");
@@ -39,15 +40,27 @@ export default function MusicScreen() {
   const visibleFolders = useMemo(() => folders.filter((folder) => !query.trim() || `${folder.title} ${folder.path}`.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [folders, query]);
   const visibleAlbums = useMemo(() => albums.filter((album) => !query.trim() || album.name.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [albums, query]);
   const visibleArtists = useMemo(() => artists.filter((artist) => !query.trim() || artist.name.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [artists, query]);
-  const openTrack = async (item: MediaItem) => { await playItem(item, tracks); router.push("/player/audio" as never); };
+  useEffect(() => {
+    if (!folderPath) return;
+    const folder = folders.find((candidate) => candidate.path === folderPath);
+    if (!folder) return;
+    setActiveView("folders");
+    setSelectedCollection(null);
+    setSelectedFolder(folder);
+  }, [folderPath, folders]);
+  const openTrack = async (item: MediaItem, sourceQueue: MediaItem[] = tracks, originFolderPath?: string) => {
+    await playItem(item, sourceQueue);
+    const route = originFolderPath ? `/player/audio?folderPath=${encodeURIComponent(originFolderPath)}` : "/player/audio";
+    router.push(route as never);
+  };
 
-  if (selectedCollection) return <CollectionDetail title={selectedCollection.name} subtitle={`${selectedCollection.count} أغنيات`} items={selectedCollection.items} onBack={() => setSelectedCollection(null)} onOpenTrack={openTrack} />;
-  if (selectedFolder) return <CollectionDetail title={selectedFolder.title} subtitle={`${selectedFolder.items.length} أغنيات · ${selectedFolder.path}`} items={selectedFolder.items} backLabel="العودة إلى المجلدات" onBack={() => setSelectedFolder(null)} onOpenTrack={openTrack} />;
+  if (selectedCollection) return <CollectionDetail title={selectedCollection.name} subtitle={`${selectedCollection.count} أغنيات`} items={selectedCollection.items} onBack={() => setSelectedCollection(null)} onOpenTrack={(item) => openTrack(item, selectedCollection.items)} />;
+  if (selectedFolder) return <CollectionDetail title={selectedFolder.title} subtitle={`${selectedFolder.items.length} أغنيات · ${selectedFolder.path}`} items={selectedFolder.items} backLabel="العودة إلى المجلدات" onBack={() => setSelectedFolder(null)} onOpenTrack={(item) => openTrack(item, selectedFolder.items, selectedFolder.path)} />;
 
   return <ScreenContainer className="px-0"><FlatList data={activeView === "tracks" ? visibleTracks : activeView === "folders" ? visibleFolders : activeView === "albums" ? visibleAlbums : visibleArtists} keyExtractor={(item) => "items" in item ? (item as unknown as Folder | Collection).name : (item as MediaItem).id} renderItem={({ item }) => {
     if ("items" in item && activeView === "folders") return <FolderRow folder={item as unknown as Folder} onPress={() => setSelectedFolder(item as unknown as Folder)} />;
     if ("items" in item) return <CollectionRow collection={item as unknown as Collection} onPress={() => setSelectedCollection(item as unknown as Collection)} />;
-    return <MediaRow item={item as MediaItem} onPress={() => void openTrack(item as MediaItem)} trailing={<MaterialIcons name="more-vert" size={22} color={colors.muted} />} />;
+    return <MediaRow item={item as MediaItem} onPress={() => void openTrack(item as MediaItem, visibleTracks)} trailing={<MaterialIcons name="more-vert" size={22} color={colors.muted} />} />;
   }} ListHeaderComponent={<><View style={styles.header}><View style={styles.headerActions}><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/" as never)} style={styles.headerButton} accessibilityLabel="رجوع"><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Pressable onPress={() => router.push("/settings" as never)} style={styles.headerButton}><MaterialIcons name="more-vert" size={25} color={colors.text} /></Pressable></View><View style={styles.headerActions}><Pressable onPress={() => router.push("/playlists" as never)} style={styles.headerButton}><MaterialIcons name="queue-music" size={24} color={colors.text} /></Pressable><Pressable onPress={() => void importFiles()} style={styles.headerButton}><MaterialIcons name="add-circle-outline" size={26} color={colors.text} /></Pressable></View></View><View style={styles.search}><MaterialIcons name="search" size={23} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="ابحث في الموسيقى والمجلدات" placeholderTextColor={colors.muted} style={styles.searchInput} textAlign="right" returnKeyType="search" /></View><View style={styles.tabs}>{views.map((view) => <Pressable key={view.id} onPress={() => setActiveView(view.id)} style={styles.tab}><Text style={[styles.tabText, activeView === view.id && styles.tabTextActive]}>{view.label}</Text>{activeView === view.id ? <View style={styles.tabLine} /> : null}</Pressable>)}</View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{activeView === "folders" ? `المجلدات · ${visibleFolders.length}` : activeView === "artists" ? `الفنانون · ${visibleArtists.length}` : activeView === "albums" ? `الألبومات · ${visibleAlbums.length}` : `الأغاني · ${visibleTracks.length}`}</Text><Pressable onPress={() => setSort((current) => nextMediaSort(current))} style={styles.sortButton} accessibilityLabel="تغيير ترتيب الموسيقى"><MaterialIcons name="sort" size={17} color={colors.cyan} /><Text style={styles.sortText}>{sort === "recent" ? "الأحدث" : sort === "title" ? "العنوان" : "المدة"}</Text></Pressable><Text style={styles.sectionHint}>مكتبتك المحلية</Text></View></>} ListEmptyComponent={<EmptyState icon="library-music" title={query ? "لا توجد نتائج مطابقة" : "لا توجد موسيقى هنا"} description={query ? "جرّب كلمة أخرى أو امسح البحث للعودة إلى مكتبتك كاملة." : activeView === "folders" ? "افحص مكتبة جهازك أو استورد ملفات لإظهار المجلدات الموسيقية." : "استورد ملفات صوتية أو افحص موسيقى جهازك لإظهارها هنا."} actionLabel={query ? undefined : isRefreshing ? "جارِ الفهرسة..." : "فهرسة الموسيقى"} onAction={query ? undefined : () => void refreshDeviceLibrary()} />} ItemSeparatorComponent={() => <View style={styles.separator} />} contentContainerStyle={styles.list} /></ScreenContainer>;
 }
 

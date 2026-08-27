@@ -25,4 +25,13 @@ describe("playback queue", () => {
     expect(nextQueueItem(queue, "b", false, Math.random, false)).toBeNull();
     expect(nextQueueItem(queue, "b", false, Math.random, true)?.id).toBe("a");
   });
+
+  it("does not advance out of the folder queue supplied by the library screen", () => {
+    const folderQueue = [audio("folder-a/one"), audio("folder-a/two")];
+    const allLibraryTracks = [...folderQueue, audio("folder-b/three")];
+    const queue = buildPlaybackQueue(folderQueue[0], folderQueue, allLibraryTracks);
+    expect(queue.map((item) => item.id)).toEqual(["folder-a/one", "folder-a/two"]);
+    expect(nextQueueItem(queue, "folder-a/one", false, Math.random, false)?.id).toBe("folder-a/two");
+    expect(nextQueueItem(queue, "folder-a/two", false, Math.random, false)).toBeNull();
+  });
 });
