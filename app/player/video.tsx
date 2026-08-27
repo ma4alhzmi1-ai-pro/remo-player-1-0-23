@@ -619,6 +619,7 @@ export default function VideoPlayerScreen() {
     setSubtitleEnabled(trackId !== -1 || Boolean(subtitleTrack));
   };
   const handleCompatibilityFirstPlay = (info: LibVlcMediaInfo) => {
+    compatibilityErrorRef.current = false;
     setVlcDuration(Math.max(0, info.length / 1000));
     setSourceAspect(resolveSourceAspect(info.width, info.height));
     setPlaybackError(null);
