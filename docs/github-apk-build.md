@@ -1,6 +1,6 @@
 # بناء ملف APK عبر GitHub
 
-يستعمل المسار `.github/workflows/build-remo-keyboard-apk.yml` مشروع `android-ime` الأصلي فقط، وهو المشروع الذي يحتوي خدمة لوحة المفاتيح (`InputMethodService`) ويستهدف API 21. عند الدفع إلى فرع يبدأ بـ `remo-keyboard-v` أو عند تشغيل المسار يدويًا، يفحص GitHub عناصر الخدمة ثم يبني `app-debug.apk` ويضعه داخل الملف المضغوط `RemoKeyboard-1.0.3-Android-APK.zip`.
+يستعمل المسار `.github/workflows/build-remo-keyboard-apk.yml` مشروع `android-ime` الأصلي فقط، وهو المشروع الذي يحتوي خدمة لوحة المفاتيح (`InputMethodService`) ويستهدف API 21. عند الدفع إلى فرع يبدأ بـ `remo-keyboard-v` أو عند تشغيل المسار يدويًا، يفحص GitHub عناصر الخدمة ثم يبني `app-debug.apk` ويضعه داخل الملف المضغوط `RemoKeyboard-1.0.4-Android-APK.zip`.
 
 | العنصر | القيمة |
 | --- | --- |

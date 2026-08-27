@@ -163,9 +163,9 @@ public class KeyboardSettingsActivity extends Activity {
             addToggle(root, "صوت المفاتيح", "صوت نقر اختياري", "key_sound", false);
         } else if (panel == Panel.HEIGHT) {
             addSection(root, "ارتفاع الكيبورد");
-            addChoice(root, "مدمج", "مساحة أكبر للتطبيق", "compact".equals(preferences.getString("height", "standard")), () -> chooseHeight("compact", 54));
-            addChoice(root, "قياسي", "الموصى به", "standard".equals(preferences.getString("height", "standard")), () -> chooseHeight("standard", 61));
-            addChoice(root, "مريح", "مفاتيح أعلى ولمس أسهل", "comfortable".equals(preferences.getString("height", "standard")), () -> chooseHeight("comfortable", 70));
+            addChoice(root, "مدمج", "مساحة أكبر للتطبيق", "compact".equals(preferences.getString("height", "standard")), () -> chooseHeight("compact", 46));
+            addChoice(root, "قياسي", "الموصى به", "standard".equals(preferences.getString("height", "standard")), () -> chooseHeight("standard", 52));
+            addChoice(root, "مريح", "مفاتيح أعلى ولمس أسهل", "comfortable".equals(preferences.getString("height", "standard")), () -> chooseHeight("comfortable", 59));
             addSection(root, "حجم الأحرف");
             addChoice(root, "قياسي", "توازن بين الرموز والحروف", true);
             addChoice(root, "كبير", "وضوح أعلى", false);

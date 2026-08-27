@@ -4,20 +4,36 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
-import java.util.List;
-import java.io.InputStream;
 
-/** لوحة إدخال بأسلوب مفاتيح الكمبيوتر مع رموز ثانوية وصف أدوات ووظائف إدخال فعلية. */
+import java.io.InputStream;
+import java.util.List;
+
+/** لوحة إدخال عربية بأسلوب مفاتيح الحاسوب، تدعم شريط أدوات وإيموجي وملصقات محلية. */
 final class RemoKeyboardView extends LinearLayout {
-    private enum Page { ARABIC, ENGLISH, NUMBERS, SYMBOLS }
+    private enum Page { ARABIC, ENGLISH, NUMBERS, SYMBOLS, EMOJI }
+
+    private static final String[][][] EMOJI_GROUPS = {
+        {{"emoji_1f600", "😀"}, {"emoji_1f97a", "🥺"}, {"emoji_1fae0", "🫠"}, {"emoji_1f60d", "😍"}, {"emoji_1f60e", "😎"}, {"emoji_1f602", "😂"}, {"emoji_1f914", "🤔"}, {"emoji_1f603", "😃"}},
+        {{"emoji_2764", "❤️"}, {"emoji_1f90d", "🤍"}, {"emoji_1f496", "💖"}, {"emoji_1f525", "🔥"}, {"emoji_2728", "✨"}, {"emoji_2b50", "⭐"}, {"emoji_2705", "✅"}, {"emoji_1f4a1", "💡"}},
+        {{"emoji_1f319", "🌙"}, {"emoji_1f31f", "🌟"}, {"emoji_1f338", "🌸"}, {"emoji_1f339", "🌹"}, {"emoji_1f33a", "🌺"}, {"emoji_1f33f", "🌿"}, {"emoji_1f984", "🦄"}, {"emoji_1f98b", "🦋"}},
+        {{"emoji_2615", "☕"}, {"emoji_1f370", "🍰"}, {"emoji_1f389", "🎉"}, {"emoji_1f381", "🎁"}, {"emoji_1f680", "🚀"}, {"emoji_1f3ae", "🎮"}, {"emoji_1f4f8", "📸"}, {"emoji_1f4aa", "💪"}}
+    };
+
+    private static final String[][] STICKERS = {
+        {"emoji_1f44b", "👋 مرحبًا"}, {"emoji_1f44d", "👍 رائع"}, {"emoji_1f64f", "🙏 شكرًا"},
+        {"emoji_1f389", "🎉 مبروك"}, {"emoji_1f90d", "🤍 محبة"}, {"emoji_1f319", "🌙 مساء الخير"}
+    };
+
     private final RemoInputMethodService service;
     private final SharedPreferences preferences;
     private final SuggestionEngine suggestionEngine = new SuggestionEngine();
@@ -26,6 +42,7 @@ final class RemoKeyboardView extends LinearLayout {
     private Page page = Page.ARABIC;
     private KeyboardPalette palette;
     private boolean englishCaps = false;
+    private int emojiGroup = 0;
 
     RemoKeyboardView(Context context, RemoInputMethodService service, SharedPreferences preferences) {
         super(context);
@@ -38,8 +55,9 @@ final class RemoKeyboardView extends LinearLayout {
         suggestions = new LinearLayout(context);
         suggestions.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
         suggestions.setPadding(dp(3), 0, dp(3), 0);
-        addView(suggestions, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(30)));
-        addView(buildToolbar(), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(42)));
+        addView(suggestions, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(28)));
+        addView(buildToolbar(), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(40)));
+
         keyArea = new LinearLayout(context);
         keyArea.setOrientation(VERTICAL);
         addView(keyArea, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
@@ -78,20 +96,18 @@ final class RemoKeyboardView extends LinearLayout {
         row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         row.setPadding(dp(4), 0, dp(4), dp(3));
         addTool(row, "⌁", "الزخرفة", this::showDecorationPopup);
+        addTool(row, "☺", "الإيموجي الحديث", () -> setPage(Page.EMOJI));
+        addTool(row, "✦", "الملصقات", this::showStickerPopup);
         addTool(row, "文", "الترجمة", () -> showMessage("افتح إعدادات الترجمة لتفعيلها"));
-        addTool(row, "▤", "الحاسبة", () -> setPage(Page.NUMBERS));
-        addTool(row, "↕", "ارتفاع المفاتيح", () -> showMessage("غيّر الارتفاع من الإعدادات"));
+        addTool(row, "▦", "الأرقام", () -> setPage(Page.NUMBERS));
+        addTool(row, "⌂", "مظهر الكيبورد", () -> showMessage("غيّر المظهر من إعدادات الكيبورد"));
         addTool(row, "⚙", "إعدادات الكيبورد", service::openSettings);
-        return scrollWith(row, scroll);
-    }
-
-    private View scrollWith(LinearLayout row, HorizontalScrollView scroll) {
         scroll.addView(row);
         return scroll;
     }
 
     private void addTool(LinearLayout row, String symbol, String description, Runnable action) {
-        TextView tool = textButton(symbol, 25, palette.text, palette.surface, dp(3));
+        TextView tool = textButton(symbol, 21, palette.text, palette.surface, dp(14));
         tool.setContentDescription(description);
         tool.setOnClickListener(v -> action.run());
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(55), LayoutParams.MATCH_PARENT);
@@ -103,7 +119,7 @@ final class RemoKeyboardView extends LinearLayout {
         suggestions.removeAllViews();
         List<String> values = suggestionEngine.forPrefix(service.getCurrentWordBeforeCursor(), page == Page.ARABIC);
         for (String value : values) {
-            TextView chip = textButton(value, 14, palette.muted, palette.surface, dp(3));
+            TextView chip = textButton(value, 14, palette.muted, palette.surface, dp(14));
             chip.setOnClickListener(v -> service.commitText(value + " "));
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f);
             params.setMargins(dp(2), 0, dp(2), dp(2));
@@ -116,25 +132,30 @@ final class RemoKeyboardView extends LinearLayout {
         keyArea.removeAllViews();
         if (page == Page.ARABIC) {
             row(new String[]{"١\nض", "٢\nص", "٣\nث", "٤\nق", "٥\nف", "٦\nغ", "٧\nع", "٨\nه", "٩\nخ", "٠\nح", "$\nج"});
-            row(new String[]{"ش", "ي\nس", "ب\nي", "أ\nب", "ل", "ا", "ت", "ن", "م", "ك", "ط"});
-            row(new String[]{"ء\nئ", "؟\nؤ", "ظ", "ذ", "د", "ز", "ر", "و", "ة", "⌫"});
-            bottomRow("123\n◉", "◎", "/", "◀ العربية ▶", "▣", ".", "تنفيذ");
+            row(new String[]{"~\nش", "@\nس", "^\nي", "•\nب", "ل", "ا", "ت", "ن", "م", "ك", "ط"});
+            row(new String[]{"⇧", "ء\nئ", "؟\nؤ", "+\nر", "−\nلا", "(\nى", ")\nة", "`\nو", "⌫"});
+            bottomRow("◉\n123", "☺", "/", "◀ العربية ▶", "▣", ".", "تنفيذ");
         } else if (page == Page.ENGLISH) {
             row(letterCase(new String[]{"1\nq", "2\nw", "3\ne", "4\nr", "5\nt", "6\ny", "7\nu", "8\ni", "9\no", "0\np"}));
             row(letterCase(new String[]{"a", "s", "d", "f", "g", "h", "j", "k", "l"}));
             row(letterCase(new String[]{"⇧", "z", "x", "c", "v", "b", "n", "m", "⌫"}));
-            bottomRow("123\n◉", "◎", "/", "◀ English ▶", "▣", ".", "تنفيذ");
+            bottomRow("◉\n123", "☺", "/", "◀ English ▶", "▣", ".", "تنفيذ");
         } else if (page == Page.NUMBERS) {
-            String[] digits = numberRow();
-            row(digits);
+            row(numberRow());
             row(new String[]{"@", "#", "$", "%", "&", "*", "−", "+", "(", ")"});
             row(new String[]{"ALT", "!", "\"", "'", "؛", "،", "/", "؟", "⌫"});
-            bottomRow("#+=", "◎", "=", "◀ العربية ▶", "▣", ".", "تنفيذ");
+            bottomRow("#+=", "☺", "=", "◀ العربية ▶", "▣", ".", "تنفيذ");
+        } else if (page == Page.SYMBOLS) {
+            row(new String[]{"~", "`", "|", "•", "√", "Π", "÷", "×", "{", "}"});
+            row(new String[]{"£", "¢", "€", "¥", "°", "^", "=", "_", "[", "]"});
+            row(new String[]{"ALT", "!", "\"", "'", ":", ";", "/", "?", "⌫"});
+            bottomRow("123", "☺", "ABC", "◀ العربية ▶", "▣", ".", "تنفيذ");
         } else {
-            row(new String[]{"😀", "🥹", "😍", "🫶", "🔥", "✨", "❤️", "🙏"});
-            row(new String[]{"😂", "😊", "😎", "🤍", "🌙", "⭐", "🎉", "💡"});
+            emojiCategoryRow();
+            emojiRow(EMOJI_GROUPS[emojiGroup]);
+            emojiRow(EMOJI_GROUPS[(emojiGroup + 1) % EMOJI_GROUPS.length]);
             row(new String[]{"،", "؛", "؟", "!", ".", "…", "«", "»", "⌫"});
-            bottomRow("123", "◎", "/", "◀ العربية ▶", "▣", ".", "تنفيذ");
+            bottomRow("123", "☺", "ABC", "◀ العربية ▶", "▣", ".", "تنفيذ");
         }
     }
 
@@ -145,11 +166,53 @@ final class RemoKeyboardView extends LinearLayout {
         return new String[]{"١","٢","٣","٤","٥","٦","٧","٨","٩","٠"};
     }
 
+    private void emojiCategoryRow() {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setGravity(Gravity.CENTER);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(36));
+        rowParams.setMargins(0, dp(3), 0, 0);
+        keyArea.addView(row, rowParams);
+        String[] labels = {"◷ الأحدث", "☺ الوجوه", "♥ الرموز", "✿ الطبيعة"};
+        for (int index = 0; index < labels.length; index++) {
+            final int group = index;
+            TextView tab = textButton(labels[index], 12, index == emojiGroup ? palette.text : palette.muted, index == emojiGroup ? palette.keySpecial : palette.surface, dp(12));
+            tab.setOnClickListener(v -> { emojiGroup = group; renderKeys(); });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f);
+            params.setMargins(dp(2), 0, dp(2), 0);
+            row.addView(tab, params);
+        }
+    }
+
+    private void emojiRow(String[][] values) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setGravity(Gravity.CENTER);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(52));
+        rowParams.setMargins(0, dp(3), 0, dp(1));
+        keyArea.addView(row, rowParams);
+        for (String[] value : values) addEmojiKey(row, value[0], value[1]);
+    }
+
+    private void addEmojiKey(LinearLayout row, String imageName, String emoji) {
+        ImageButton key = new ImageButton(getContext());
+        key.setContentDescription(emoji);
+        key.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        key.setPadding(dp(7), dp(7), dp(7), dp(7));
+        int resource = getResources().getIdentifier(imageName, "drawable", getContext().getPackageName());
+        if (resource != 0) key.setImageResource(resource);
+        key.setBackground(rounded(Color.argb(232, Color.red(palette.key), Color.green(palette.key), Color.blue(palette.key)), dp(9), true));
+        key.setOnClickListener(v -> service.commitText(emoji));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f);
+        params.setMargins(dp(1), 0, dp(1), 0);
+        row.addView(key, params);
+    }
+
     private void row(String[] labels) {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        int height = preferences.getInt("key_height", 61);
+        int height = preferences.getInt("key_height", 52);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(height));
         rowParams.setMargins(0, dp(3), 0, dp(1));
         keyArea.addView(row, rowParams);
@@ -160,7 +223,7 @@ final class RemoKeyboardView extends LinearLayout {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(61));
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(53));
         rowParams.setMargins(0, dp(3), 0, dp(1));
         keyArea.addView(row, rowParams);
         addKey(row, first, 1.08f);
@@ -174,18 +237,16 @@ final class RemoKeyboardView extends LinearLayout {
 
     private void addKey(LinearLayout row, String label, float weight) {
         String primary = primaryKey(label);
-        boolean special = primary.equals("⌫") || primary.equals("تنفيذ") || primary.startsWith("◀") || primary.equals("⇧") || primary.equals("▣") || primary.equals("123") || primary.equals("#+=");
-        TextView key = textButton(label, label.contains("\n") ? 15 : (label.length() > 8 ? 14 : 22), palette.text, special ? palette.keySpecial : palette.key, dp(2));
+        boolean special = primary.equals("⌫") || primary.equals("تنفيذ") || primary.startsWith("◀") || primary.equals("⇧") || primary.equals("▣") || primary.equals("123") || primary.equals("#+=") || primary.equals("ABC");
+        TextView key = textButton(label, label.contains("\n") ? 21 : (label.length() > 8 ? 13 : 20), palette.text, special ? palette.keySpecial : palette.key, dp(8));
         key.setTypeface(Typeface.create("sans", special ? Typeface.BOLD : Typeface.NORMAL));
         key.setGravity(Gravity.CENTER);
-        key.setLines(label.contains("\n") ? 2 : 1);
-        key.setLineSpacing(0, .87f);
         key.setOnClickListener(v -> handleKey(primary));
         if (primary.equals("ة")) key.setOnLongClickListener(v -> { showAlternatives(key, new String[]{"ة", "َ", "ً", "ُ", "ٌ", "ِ", "ٍ", "ْ", "ّ", "ٰ"}); return true; });
         if (primary.equals("ت")) key.setOnLongClickListener(v -> { showAlternatives(key, new String[]{"ت", "ـ", "تـ", "ـت", "ۃ"}); return true; });
         if (primary.equals("123")) key.setOnLongClickListener(v -> { service.beginVoiceInput(); return true; });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, weight);
-        params.setMargins(dp(3), 0, dp(3), 0);
+        params.setMargins(dp(1), 0, dp(1), 0);
         row.addView(key, params);
     }
 
@@ -198,6 +259,8 @@ final class RemoKeyboardView extends LinearLayout {
         if (label.equals("⌫")) { service.deleteBeforeCursor(); return; }
         if (label.equals("تنفيذ")) { service.sendEnterOrNext(); return; }
         if (label.equals("▣")) { showClipboardPopup(); return; }
+        if (label.equals("☺")) { setPage(Page.EMOJI); return; }
+        if (label.equals("ABC")) { setPage(Page.ARABIC); return; }
         if (label.equals("◎")) { setPage(page == Page.SYMBOLS ? Page.ARABIC : Page.SYMBOLS); return; }
         if (label.equals("123")) { setPage(Page.NUMBERS); return; }
         if (label.equals("#+=")) { setPage(Page.SYMBOLS); return; }
@@ -230,7 +293,7 @@ final class RemoKeyboardView extends LinearLayout {
         menu.setBackground(rounded(palette.surface, dp(4), false));
         PopupWindow popup = new PopupWindow(menu, LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, true);
         for (String alternative : alternatives) {
-            TextView candidate = textButton(alternative, 20, palette.text, palette.key, dp(2));
+            TextView candidate = textButton(alternative, 20, palette.text, palette.key, dp(8));
             candidate.setOnClickListener(v -> { service.commitText(alternative); popup.dismiss(); });
             menu.addView(candidate, new LinearLayout.LayoutParams(dp(42), dp(48)));
         }
@@ -251,7 +314,7 @@ final class RemoKeyboardView extends LinearLayout {
         for (int index = 0; index < count; index++) {
             String entry = entries.get(index);
             String preview = entry.length() > 90 ? entry.substring(0, 90) + "…" : entry;
-            TextView item = textButton(preview, 15, palette.text, palette.key, dp(2));
+            TextView item = textButton(preview, 15, palette.text, palette.key, dp(9));
             item.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
             item.setOnClickListener(v -> { service.pasteClipboardItem(entry); popup.dismiss(); });
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(47));
@@ -270,7 +333,7 @@ final class RemoKeyboardView extends LinearLayout {
         String[] examples = {"✦ ريموكيبورد ✦", "༺ ريمو ༻", "⌁ مرحبًا بك ⌁", "𓆩 ريموكيبورد 𓆪"};
         PopupWindow popup = new PopupWindow(list, dp(270), LayoutParams.WRAP_CONTENT, true);
         for (String example : examples) {
-            TextView item = textButton(example, 17, palette.text, palette.key, dp(2));
+            TextView item = textButton(example, 17, palette.text, palette.key, dp(9));
             item.setOnClickListener(v -> { service.commitText(example); popup.dismiss(); });
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(45));
             params.setMargins(0, dp(2), 0, dp(2));
@@ -280,18 +343,50 @@ final class RemoKeyboardView extends LinearLayout {
         popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(248));
     }
 
+    private void showStickerPopup() {
+        LinearLayout list = new LinearLayout(getContext());
+        list.setOrientation(VERTICAL);
+        list.setPadding(dp(8), dp(8), dp(8), dp(8));
+        list.setBackground(rounded(palette.surface, dp(10), false));
+        PopupWindow popup = new PopupWindow(list, dp(312), LayoutParams.WRAP_CONTENT, true);
+        TextView title = textButton("ملصقات ريمو المدمجة", 14, palette.text, palette.surface, dp(8));
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        list.addView(title, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(35)));
+        LinearLayout row = new LinearLayout(getContext());
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        for (String[] sticker : STICKERS) {
+            ImageButton item = new ImageButton(getContext());
+            item.setContentDescription(sticker[1]);
+            item.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            int resource = getResources().getIdentifier(sticker[0], "drawable", getContext().getPackageName());
+            if (resource != 0) item.setImageResource(resource);
+            item.setBackground(rounded(palette.key, dp(10), true));
+            item.setOnClickListener(v -> { service.commitText(sticker[1]); popup.dismiss(); });
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(0, dp(54), 1f);
+            itemParams.setMargins(dp(2), 0, dp(2), 0);
+            row.addView(item, itemParams);
+        }
+        list.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(56)));
+        popup.setElevation(dp(10));
+        popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(248));
+    }
+
     private void showMessage(String value) {
         android.widget.Toast.makeText(getContext(), value, android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private TextView textButton(String value, int size, int foreground, int background, int radius) {
-        TextView view = new TextView(getContext());
-        view.setText(value);
+        TextView view = value.contains("\n") ? new KeyCap(getContext()) : new TextView(getContext());
+        if (view instanceof KeyCap) {
+            ((KeyCap) view).setKeyLabel(value);
+            ((KeyCap) view).setSecondaryColor(palette.muted);
+        } else view.setText(value);
         view.setTextSize(size);
         view.setTextColor(foreground);
         view.setGravity(Gravity.CENTER);
         view.setPadding(dp(3), 0, dp(3), 0);
-        view.setBackground(rounded(background, radius, background == palette.key));
+        int alphaBackground = background == palette.key ? Color.argb(232, Color.red(background), Color.green(background), Color.blue(background)) : background;
+        view.setBackground(rounded(alphaBackground, radius, background == palette.key));
         view.setClickable(true);
         return view;
     }
@@ -300,7 +395,7 @@ final class RemoKeyboardView extends LinearLayout {
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(color);
         shape.setCornerRadius(radius);
-        shape.setStroke(dp(1), lightEdge ? Color.argb(110, 240, 240, 240) : Color.argb(80, 130, 130, 130));
+        shape.setStroke(dp(1), lightEdge ? Color.argb(72, 255, 255, 255) : Color.argb(50, 180, 190, 200));
         return shape;
     }
 

@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(process.cwd(), "android-ime");
@@ -28,8 +28,14 @@ expect(settings.includes("الزخرفة والخطوط") && settings.includes("
 expect(keyboard.includes("إعدادات الكيبورد") && keyboard.includes("تنفيذ") && settings.includes("ستايل المفاتيح"), "توجد أدوات الكيبورد وزر التنفيذ والمفاتيح بأسلوب الكمبيوتر");
 expect(settings.includes("اختيار صورة من الاستوديو") && settings.includes("لوحات ألوان جاهزة"), "توجد أدوات تخصيص الخلفيات والألوان من الاستوديو");
 expect(keyboard.includes("background_uri") && keyboard.includes("background_asset"), "تطبق لوحة الإدخال الخلفية المختارة أو صور الثيمات المحلية");
+expect(keyboard.includes("Page.EMOJI") && keyboard.includes("EMOJI_GROUPS") && keyboard.includes("emojiCategoryRow"), "توجد لوحة إيموجي حديثة بفئات مستقلة داخل الكيبورد");
+expect(keyboard.includes("ImageButton") && keyboard.includes("showStickerPopup") && keyboard.includes("STICKERS"), "توجد أزرار إيموجي مصورة ونافذة ملصقات مرئية مدمجة");
+expect(existsSync(join(root, "app/src/main/java/com/remokeyboard/ime/KeyCap.java")), "توجد طبقة رسم مستقلة للمفاتيح ذات الرموز الثانوية");
 const themeDirectory = join(root, "app/src/main/res/drawable-nodpi");
 const expectedThemes = ["remo_feminine_rose_silk.webp", "remo_feminine_lilac_butterflies.webp", "remo_feminine_pearl_bloom.webp", "remo_feminine_violet_marble.webp", "remo_masculine_neon_grid.webp", "remo_masculine_ember_steel.webp", "remo_masculine_blue_flame.webp", "remo_masculine_forest_camo.webp", "remo_islamic_lanterns.webp", "remo_islamic_mosque_dusk.webp"];
 expect(expectedThemes.every((theme) => existsSync(join(themeDirectory, theme))), "توجد مكتبة من 10 خلفيات محلية مضغوطة للثيمات");
+const bundledEmoji = readdirSync(themeDirectory).filter((asset) => /^emoji_[0-9a-f_]+\.png$/.test(asset));
+expect(bundledEmoji.length >= 40, "توجد مكتبة مرئية من 40 صورة إيموجي داخل الحزمة الأساسية");
+expect(existsSync(join(root, "app/src/main/res/raw/noto_emoji_attribution.txt")), "توجد وثيقة مصدر وترخيص أصول الإيموجي المدمجة");
 
 console.log("اكتمل فحص البنية الثابتة لنواة ريموكيبورد.");
