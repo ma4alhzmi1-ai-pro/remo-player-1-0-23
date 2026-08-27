@@ -47,12 +47,25 @@ final class EmojiCatalog {
     }
 
     static List<Item> find(Context context, String term, int maxResults) {
+        List<Item> allMatches = filter(context, "", term);
+        if (maxResults <= 0 || allMatches.size() <= maxResults) return allMatches;
+        return new ArrayList<>(allMatches.subList(0, maxResults));
+    }
+
+    /** يعيد جميع الرموز المطابقة من الفهرس المحلي دون حد اصطناعي للنتائج. */
+    static List<Item> filter(Context context, String group, String term) {
+        String requestedGroup = group == null ? "" : group.trim();
         String query = term == null ? "" : term.trim().toLowerCase(Locale.ROOT);
+        if (requestedGroup.isEmpty() && query.isEmpty()) return all(context);
         List<Item> matches = new ArrayList<>();
         for (Item item : all(context)) {
-            if (query.isEmpty() || item.name.toLowerCase(Locale.ROOT).contains(query) || item.group.toLowerCase(Locale.ROOT).contains(query)) {
+            boolean inRequestedGroup = requestedGroup.isEmpty() || requestedGroup.equals(item.group);
+            boolean matchesQuery = query.isEmpty()
+                    || item.name.toLowerCase(Locale.ROOT).contains(query)
+                    || item.group.toLowerCase(Locale.ROOT).contains(query)
+                    || item.subgroup.toLowerCase(Locale.ROOT).contains(query);
+            if (inRequestedGroup && matchesQuery) {
                 matches.add(item);
-                if (matches.size() >= maxResults) break;
             }
         }
         return matches;

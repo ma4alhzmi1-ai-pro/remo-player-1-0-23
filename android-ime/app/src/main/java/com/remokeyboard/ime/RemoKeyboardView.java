@@ -9,9 +9,13 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.AbsListView;
+import android.widget.BaseAdapter;
 import android.widget.HorizontalScrollView;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.GridView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -25,11 +29,10 @@ import java.util.List;
 final class RemoKeyboardView extends LinearLayout {
     private enum Page { ARABIC, ENGLISH, NUMBERS, SYMBOLS, EMOJI }
 
-    private static final String[][][] EMOJI_GROUPS = {
-        {{"emoji_1f600", "😀"}, {"emoji_1f97a", "🥺"}, {"emoji_1fae0", "🫠"}, {"emoji_1f60d", "😍"}, {"emoji_1f60e", "😎"}, {"emoji_1f602", "😂"}, {"emoji_1f914", "🤔"}, {"emoji_1f603", "😃"}},
-        {{"emoji_2764", "❤️"}, {"emoji_1f90d", "🤍"}, {"emoji_1f496", "💖"}, {"emoji_1f525", "🔥"}, {"emoji_2728", "✨"}, {"emoji_2b50", "⭐"}, {"emoji_2705", "✅"}, {"emoji_1f4a1", "💡"}},
-        {{"emoji_1f319", "🌙"}, {"emoji_1f31f", "🌟"}, {"emoji_1f338", "🌸"}, {"emoji_1f339", "🌹"}, {"emoji_1f33a", "🌺"}, {"emoji_1f33f", "🌿"}, {"emoji_1f984", "🦄"}, {"emoji_1f98b", "🦋"}},
-        {{"emoji_2615", "☕"}, {"emoji_1f370", "🍰"}, {"emoji_1f389", "🎉"}, {"emoji_1f381", "🎁"}, {"emoji_1f680", "🚀"}, {"emoji_1f3ae", "🎮"}, {"emoji_1f4f8", "📸"}, {"emoji_1f4aa", "💪"}}
+    private static final String[][] EMOJI_CATEGORIES = {
+        {"الكل", ""}, {"☺ الوجوه", "Smileys & Emotion"}, {"👋 الأشخاص", "People & Body"},
+        {"🦊 الطبيعة", "Animals & Nature"}, {"🍔 طعام", "Food & Drink"}, {"✈ سفر", "Travel & Places"},
+        {"⚽ نشاط", "Activities"}, {"💡 أدوات", "Objects"}, {"♥ رموز", "Symbols"}, {"⚑ أعلام", "Flags"}
     };
 
     private static final String[][] STICKERS = {
@@ -45,7 +48,7 @@ final class RemoKeyboardView extends LinearLayout {
     private Page page = Page.ARABIC;
     private KeyboardPalette palette;
     private boolean englishCaps = false;
-    private int emojiGroup = 0;
+    private String emojiGroupFilter = "";
 
     RemoKeyboardView(Context context, RemoInputMethodService service, SharedPreferences preferences) {
         super(context);
@@ -159,9 +162,7 @@ final class RemoKeyboardView extends LinearLayout {
             bottomRow("123", "☺", "ABC", "◀ العربية ▶", "▣", ".", "تنفيذ");
         } else {
             emojiCategoryRow();
-            emojiRow(EMOJI_GROUPS[emojiGroup]);
-            emojiRow(EMOJI_GROUPS[(emojiGroup + 1) % EMOJI_GROUPS.length]);
-            row(new String[]{"،", "؛", "؟", "!", ".", "…", "«", "»", "⌫"});
+            emojiCatalogGrid();
             bottomRow("123", "☺", "ABC", "◀ العربية ▶", "▣", ".", "تنفيذ");
         }
     }
@@ -174,51 +175,74 @@ final class RemoKeyboardView extends LinearLayout {
     }
 
     private void emojiCategoryRow() {
+        HorizontalScrollView scroll = new HorizontalScrollView(getContext());
+        scroll.setHorizontalScrollBarEnabled(false);
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(36));
         rowParams.setMargins(0, dp(3), 0, 0);
-        keyArea.addView(row, rowParams);
-        String[] labels = {"◷ الأحدث", "☺ الوجوه", "♥ الرموز", "✿ الطبيعة"};
-        for (int index = 0; index < labels.length; index++) {
-            final int group = index;
-            TextView tab = textButton(labels[index], 12, index == emojiGroup ? palette.text : palette.muted, index == emojiGroup ? palette.keySpecial : palette.surface, dp(12));
-            tab.setOnClickListener(v -> { emojiGroup = group; renderKeys(); });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f);
+        keyArea.addView(scroll, rowParams);
+        for (String[] category : EMOJI_CATEGORIES) {
+            String label = category[0];
+            String group = category[1];
+            boolean active = group.equals(emojiGroupFilter);
+            TextView tab = textButton(label, 12, active ? palette.text : palette.muted, active ? palette.keySpecial : palette.surface, dp(12));
+            tab.setOnClickListener(v -> { emojiGroupFilter = group; renderKeys(); });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(84), LayoutParams.MATCH_PARENT);
             params.setMargins(dp(2), 0, dp(2), 0);
             row.addView(tab, params);
         }
+        scroll.addView(row, new HorizontalScrollView.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
     }
 
-    private void emojiRow(String[][] values) {
-        LinearLayout row = new LinearLayout(getContext());
-        row.setGravity(Gravity.CENTER);
-        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(52));
-        rowParams.setMargins(0, dp(3), 0, dp(1));
-        keyArea.addView(row, rowParams);
-        for (String[] value : values) addEmojiKey(row, value[0], value[1]);
+    private void emojiCatalogGrid() {
+        GridView grid = new GridView(getContext());
+        grid.setNumColumns(7);
+        grid.setGravity(Gravity.CENTER);
+        grid.setHorizontalSpacing(dp(3));
+        grid.setVerticalSpacing(dp(3));
+        grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        grid.setPadding(dp(2), dp(3), dp(2), dp(3));
+        List<EmojiCatalog.Item> items = EmojiCatalog.filter(getContext(), emojiGroupFilter, "");
+        grid.setAdapter(new EmojiGridAdapter(items));
+        grid.setOnItemClickListener((parent, view, position, id) -> service.commitText(items.get(position).emoji));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(isDesktopClassic() ? 148 : 160));
+        params.setMargins(0, dp(2), 0, dp(1));
+        keyArea.addView(grid, params);
     }
 
-    private void addEmojiKey(LinearLayout row, String imageName, String emoji) {
-        ImageButton key = new ImageButton(getContext());
-        key.setContentDescription(emoji);
-        key.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        key.setPadding(dp(7), dp(7), dp(7), dp(7));
-        int resource = getResources().getIdentifier(imageName, "drawable", getContext().getPackageName());
-        if (resource != 0) key.setImageResource(resource);
-        key.setBackground(rounded(Color.argb(232, Color.red(palette.key), Color.green(palette.key), Color.blue(palette.key)), dp(9), true));
-        key.setOnClickListener(v -> service.commitText(emoji));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f);
-        params.setMargins(dp(1), 0, dp(1), 0);
-        row.addView(key, params);
+    private final class EmojiGridAdapter extends BaseAdapter {
+        private final List<EmojiCatalog.Item> items;
+
+        EmojiGridAdapter(List<EmojiCatalog.Item> items) { this.items = items; }
+
+        @Override public int getCount() { return items.size(); }
+        @Override public EmojiCatalog.Item getItem(int position) { return items.get(position); }
+        @Override public long getItemId(int position) { return position; }
+
+        @Override public View getView(int position, View convertView, ViewGroup parent) {
+            TextView tile = convertView instanceof TextView ? (TextView) convertView : new TextView(getContext());
+            EmojiCatalog.Item item = getItem(position);
+            tile.setText(item.emoji);
+            tile.setTextSize(27);
+            tile.setTypeface(EmojiCatalog.typeface(getContext()));
+            tile.setTextColor(palette.text);
+            tile.setGravity(Gravity.CENTER);
+            tile.setPadding(dp(1), 0, dp(1), 0);
+            tile.setContentDescription(item.name);
+            tile.setBackground(rounded(Color.argb(palette.keyAlpha, Color.red(palette.key), Color.green(palette.key), Color.blue(palette.key)), dp(8), true));
+            tile.setLayoutParams(new AbsListView.LayoutParams(LayoutParams.MATCH_PARENT, dp(44)));
+            return tile;
+        }
     }
 
     private void row(String[] labels) {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER);
-        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        // صفوف اللوحة العادية معرفة بترتيب بصري من اليسار إلى اليمين كما في المرجع.
+        // يبقى نمط الكمبيوتر الكلاسيكي على اتجاهه السابق دون إعادة ترتيب.
+        row.setLayoutDirection(isDesktopClassic() ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         int height = preferences.getInt("key_height", 52);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(height));
         rowParams.setMargins(0, dp(3), 0, dp(1));
@@ -229,7 +253,7 @@ final class RemoKeyboardView extends LinearLayout {
     private void rowWeighted(String[] labels, float[] weights) {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER);
-        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        row.setLayoutDirection(isDesktopClassic() ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         int height = preferences.getInt("key_height", 52);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(height));
         rowParams.setMargins(0, dp(3), 0, dp(1));
@@ -469,39 +493,27 @@ final class RemoKeyboardView extends LinearLayout {
         find.setTextSize(13);
         find.setBackground(rounded(palette.keySpecial, dp(8), false));
         panel.addView(find, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(40)));
-        LinearLayout results = new LinearLayout(getContext());
-        results.setOrientation(VERTICAL);
+        GridView results = new GridView(getContext());
+        results.setNumColumns(6);
+        results.setGravity(Gravity.CENTER);
+        results.setHorizontalSpacing(dp(3));
+        results.setVerticalSpacing(dp(3));
+        results.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        results.setPadding(dp(2), dp(3), dp(2), dp(3));
         panel.addView(results, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(250)));
         PopupWindow popup = new PopupWindow(panel, dp(335), dp(390), true);
-        find.setOnClickListener(v -> renderEmojiSearchResults(results, EmojiCatalog.find(getContext(), search.getText().toString(), 30), popup));
-        renderEmojiSearchResults(results, EmojiCatalog.find(getContext(), "", 30), popup);
+        find.setOnClickListener(v -> renderEmojiSearchResults(results, EmojiCatalog.filter(getContext(), "", search.getText().toString()), popup));
+        renderEmojiSearchResults(results, EmojiCatalog.all(getContext()), popup);
         popup.setElevation(dp(12));
         popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(226));
     }
 
-    private void renderEmojiSearchResults(LinearLayout container, List<EmojiCatalog.Item> items, PopupWindow popup) {
-        container.removeAllViews();
-        if (items.isEmpty()) {
-            TextView empty = textButton("لا توجد نتيجة. جرّب كلمة إنجليزية مختلفة.", 13, palette.muted, palette.surface, dp(7));
-            container.addView(empty, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(45)));
-            return;
-        }
-        LinearLayout row = null;
-        for (int index = 0; index < items.size(); index++) {
-            if (index % 6 == 0) {
-                row = new LinearLayout(getContext());
-                row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-                container.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(48)));
-            }
-            EmojiCatalog.Item item = items.get(index);
-            TextView emoji = textButton(item.emoji, 23, palette.text, palette.key, dp(8));
-            emoji.setTypeface(EmojiCatalog.typeface(getContext()));
-            emoji.setContentDescription(item.name);
-            emoji.setOnClickListener(v -> { service.commitText(item.emoji); popup.dismiss(); });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(44), 1f);
-            params.setMargins(dp(1), dp(2), dp(1), dp(2));
-            row.addView(emoji, params);
-        }
+    private void renderEmojiSearchResults(GridView container, List<EmojiCatalog.Item> items, PopupWindow popup) {
+        container.setAdapter(new EmojiGridAdapter(items));
+        container.setOnItemClickListener((parent, view, position, id) -> {
+            service.commitText(items.get(position).emoji);
+            popup.dismiss();
+        });
     }
 
     private void showMessage(String value) {
