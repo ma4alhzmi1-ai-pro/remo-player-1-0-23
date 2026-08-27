@@ -677,7 +677,7 @@ export default function VideoPlayerScreen() {
               options={["--file-caching=1000", "--network-caching=1000", "--avcodec-hw=any"]}
               contentFit={effectiveFit}
               rate={Math.max(1, speed)}
-              volume={Math.round(volume * 100)}
+              volume={100}
               mute={muted}
               repeat={repeatMode === "one"}
               autoplay
