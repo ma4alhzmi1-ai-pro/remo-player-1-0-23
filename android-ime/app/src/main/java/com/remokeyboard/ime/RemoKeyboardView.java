@@ -62,7 +62,7 @@ final class RemoKeyboardView extends LinearLayout {
         addTool(row, "✧", "زخرفة", () -> showDecorationPopup());
         addTool(row, "▣", "الحافظة", () -> showClipboardPopup());
         addTool(row, "◉", "الصوت", service::beginVoiceInput);
-        addTool(row, "⚙", "الإعدادات", service::openSettings);
+        addTool(row, "⚙", "إعدادات الكيبورد", service::openSettings);
         scroll.addView(row);
         return scroll;
     }

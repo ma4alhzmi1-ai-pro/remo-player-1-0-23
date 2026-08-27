@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 type Page = "arabic" | "numbers" | "emoji";
 
-type KeyboardPreviewProps = { onInput: (value: string) => void; onDelete: () => void; theme?: "navy" | "rose" | "ramadan" | "light" };
+type KeyboardPreviewProps = { onInput: (value: string) => void; onDelete: () => void; onOpenSettings?: () => void; theme?: "navy" | "rose" | "ramadan" | "light" };
 
 const arabicRows = [
   ["ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"],
@@ -27,7 +27,7 @@ const palettes = {
   light: { base: "#EAF3FA", key: "#FFFFFF", special: "#BFDCF2", text: "#162330", accent: "#0077BE" },
 };
 
-export function KeyboardPreview({ onInput, onDelete, theme = "navy" }: KeyboardPreviewProps) {
+export function KeyboardPreview({ onInput, onDelete, onOpenSettings, theme = "navy" }: KeyboardPreviewProps) {
   const [page, setPage] = useState<Page>("arabic");
   const [longPress, setLongPress] = useState<"ة" | "ت" | null>(null);
   const palette = palettes[theme];
@@ -43,7 +43,7 @@ export function KeyboardPreview({ onInput, onDelete, theme = "navy" }: KeyboardP
   return (
     <View style={[styles.wrap, { backgroundColor: palette.base }]}> 
       <View style={styles.suggestions}><Text style={[styles.suggestion, { color: palette.text }]}>ريمو</Text><Text style={[styles.suggestion, { color: palette.text }]}>مرحبا</Text><Text style={[styles.suggestion, { color: palette.text }]}>شكراً</Text></View>
-      <View style={styles.tools}><Text style={[styles.tool, { color: palette.accent }]}>◎ إيموجي</Text><Text style={[styles.tool, { color: palette.accent }]}>✧ زخرفة</Text><Text style={[styles.tool, { color: palette.accent }]}>▣ الحافظة</Text><Text style={[styles.tool, { color: palette.accent }]}>◉ صوت</Text></View>
+      <View style={styles.tools}><Text style={[styles.tool, { color: palette.accent }]}>◎ إيموجي</Text><Text style={[styles.tool, { color: palette.accent }]}>✧ زخرفة</Text><Text style={[styles.tool, { color: palette.accent }]}>▣ الحافظة</Text><Text style={[styles.tool, { color: palette.accent }]}>◉ صوت</Text><Pressable onPress={onOpenSettings} style={({ pressed }) => [styles.settingsTool, pressed && { opacity: 0.65 }]} accessibilityLabel="فتح إعدادات لوحة المفاتيح"><Text style={[styles.tool, { color: palette.accent }]}>⚙ إعدادات</Text></Pressable></View>
       {longPress ? <View style={[styles.alternatives, { backgroundColor: palette.special }]}>{alternatives.map((value) => <Pressable key={value} onPress={() => { onInput(value); setLongPress(null); }} style={[styles.alt, { backgroundColor: palette.key }]}><Text style={[styles.keyText, { color: palette.text }]}>{value}</Text></Pressable>)}</View> : null}
       {rows.map((row, rowIndex) => <View key={`${page}-${rowIndex}`} style={styles.keyRow}>{row.map((key) => <Pressable key={key} onLongPress={() => (key === "ة" || key === "ت") && setLongPress(key)} onPress={() => action(key)} style={({ pressed }) => [styles.key, { backgroundColor: ["⌫", "⇧"].includes(key) ? palette.special : palette.key }, pressed && { opacity: 0.7 }]}><Text style={[styles.keyText, { color: palette.text }]}>{key}</Text></Pressable>)}</View>)}
       <View style={styles.keyRow}>
@@ -62,6 +62,7 @@ const styles = StyleSheet.create({
   suggestion: { fontSize: 13, fontWeight: "700" },
   tools: { height: 32, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-around", borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: "#ffffff26" },
   tool: { fontSize: 11, fontWeight: "700" },
+  settingsTool: { paddingHorizontal: 2, paddingVertical: 4 },
   keyRow: { flexDirection: "row-reverse", gap: 4, marginTop: 5 },
   key: { flex: 1, minHeight: 41, alignItems: "center", justifyContent: "center", borderRadius: 7 },
   keyText: { fontSize: 18, fontWeight: "800" },

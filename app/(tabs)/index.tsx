@@ -11,6 +11,12 @@ export default function HomeScreen() {
   const [settings, setSettings] = useState<RemoSettings | null>(null);
   const refresh = useCallback(() => { loadSettings().then(setSettings); }, []);
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      Alert.alert("ريموكيبورد مزخرف", "هذا التطبيق برمجة وتطوير المطور محمد الحزمي 2026", [{ text: "حسنًا" }]);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <ScreenContainer className="px-5" containerClassName="bg-background">

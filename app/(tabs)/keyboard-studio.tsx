@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { KeyboardPreview } from "@/components/keyboard-preview";
 import { colors, PrimaryButton, SectionTitle, Surface } from "@/components/remo-ui";
 import { loadSettings, rememberClipboardText, type RemoSettings } from "@/lib/remo-storage";
 
 export default function KeyboardStudioScreen() {
+  const router = useRouter();
   const [text, setText] = useState("");
   const [settings, setSettings] = useState<RemoSettings | null>(null);
   const refresh = useCallback(() => { loadSettings().then(setSettings); }, []);
@@ -28,7 +30,7 @@ export default function KeyboardStudioScreen() {
     <Surface style={styles.writer}><TextInput multiline value={text} onChangeText={setText} placeholder="اكتب أو جرّب مفاتيح ريمو…" placeholderTextColor={colors.muted} style={styles.input} textAlign="right" textAlignVertical="top" /></Surface>
     <View style={styles.copy}><PrimaryButton label="نسخ النص إلى الحافظة" icon="content-copy" quiet onPress={copyText} /></View>
     <SectionTitle title="نمط المفاتيح: كمبيوتر" action="اضغط مطولًا على ة أو ت" />
-    <KeyboardPreview onInput={append} onDelete={remove} theme={settings?.theme ?? "navy"} />
+    <KeyboardPreview onInput={append} onDelete={remove} onOpenSettings={() => router.push("/settings" as never)} theme={settings?.theme ?? "navy"} />
     <View style={styles.tip}><Text style={styles.tipTitle}>عن الإدخال الصوتي</Text><Text style={styles.tipText}>زر الصوت في لوحة المفاتيح الأصلية يطلب إذن الميكروفون ثم يستخدم محرك التعرف الصوتي المتوفر في جهازك. تعتمد الدقة على المحرك واللهجة وجودة الصوت.</Text></View>
   </ScrollView></ScreenContainer>;
 }
