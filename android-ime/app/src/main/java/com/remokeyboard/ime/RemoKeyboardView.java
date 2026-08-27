@@ -9,6 +9,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.HorizontalScrollView;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -97,6 +99,7 @@ final class RemoKeyboardView extends LinearLayout {
         row.setPadding(dp(4), 0, dp(4), dp(3));
         addTool(row, "⌁", "الزخرفة", this::showDecorationPopup);
         addTool(row, "☺", "الإيموجي الحديث", () -> setPage(Page.EMOJI));
+        addTool(row, "⌕", "بحث في مكتبة الإيموجي", this::showEmojiExplorerPopup);
         addTool(row, "✦", "الملصقات", this::showStickerPopup);
         addTool(row, "文", "الترجمة", () -> showMessage("افتح إعدادات الترجمة لتفعيلها"));
         addTool(row, "▦", "الأرقام", () -> setPage(Page.NUMBERS));
@@ -371,6 +374,63 @@ final class RemoKeyboardView extends LinearLayout {
         popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(248));
     }
 
+    private void showEmojiExplorerPopup() {
+        LinearLayout panel = new LinearLayout(getContext());
+        panel.setOrientation(VERTICAL);
+        panel.setPadding(dp(9), dp(9), dp(9), dp(9));
+        panel.setBackground(rounded(palette.surface, dp(12), false));
+        TextView heading = textButton("مكتبة Unicode — " + EmojiCatalog.all(getContext()).size() + " إيموجي", 14, palette.text, palette.surface, dp(8));
+        heading.setTypeface(Typeface.DEFAULT_BOLD);
+        panel.addView(heading, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(34)));
+        EditText search = new EditText(getContext());
+        search.setSingleLine(true);
+        search.setHint("ابحث بالإنجليزية: heart, face, moon…");
+        search.setTextColor(palette.text);
+        search.setHintTextColor(palette.muted);
+        search.setTextSize(13);
+        search.setBackground(rounded(palette.key, dp(8), true));
+        search.setPadding(dp(11), 0, dp(11), 0);
+        panel.addView(search, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(42)));
+        Button find = new Button(getContext());
+        find.setText("بحث");
+        find.setTextColor(palette.text);
+        find.setTextSize(13);
+        find.setBackground(rounded(palette.keySpecial, dp(8), false));
+        panel.addView(find, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(40)));
+        LinearLayout results = new LinearLayout(getContext());
+        results.setOrientation(VERTICAL);
+        panel.addView(results, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(250)));
+        PopupWindow popup = new PopupWindow(panel, dp(335), dp(390), true);
+        find.setOnClickListener(v -> renderEmojiSearchResults(results, EmojiCatalog.find(getContext(), search.getText().toString(), 30), popup));
+        renderEmojiSearchResults(results, EmojiCatalog.find(getContext(), "", 30), popup);
+        popup.setElevation(dp(12));
+        popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(226));
+    }
+
+    private void renderEmojiSearchResults(LinearLayout container, List<EmojiCatalog.Item> items, PopupWindow popup) {
+        container.removeAllViews();
+        if (items.isEmpty()) {
+            TextView empty = textButton("لا توجد نتيجة. جرّب كلمة إنجليزية مختلفة.", 13, palette.muted, palette.surface, dp(7));
+            container.addView(empty, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(45)));
+            return;
+        }
+        LinearLayout row = null;
+        for (int index = 0; index < items.size(); index++) {
+            if (index % 6 == 0) {
+                row = new LinearLayout(getContext());
+                row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+                container.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(48)));
+            }
+            EmojiCatalog.Item item = items.get(index);
+            TextView emoji = textButton(item.emoji, 23, palette.text, palette.key, dp(8));
+            emoji.setContentDescription(item.name);
+            emoji.setOnClickListener(v -> { service.commitText(item.emoji); popup.dismiss(); });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(44), 1f);
+            params.setMargins(dp(1), dp(2), dp(1), dp(2));
+            row.addView(emoji, params);
+        }
+    }
+
     private void showMessage(String value) {
         android.widget.Toast.makeText(getContext(), value, android.widget.Toast.LENGTH_SHORT).show();
     }
@@ -385,7 +445,7 @@ final class RemoKeyboardView extends LinearLayout {
         view.setTextColor(foreground);
         view.setGravity(Gravity.CENTER);
         view.setPadding(dp(3), 0, dp(3), 0);
-        int alphaBackground = background == palette.key ? Color.argb(232, Color.red(background), Color.green(background), Color.blue(background)) : background;
+        int alphaBackground = background == palette.key ? Color.argb(palette.keyAlpha, Color.red(background), Color.green(background), Color.blue(background)) : background;
         view.setBackground(rounded(alphaBackground, radius, background == palette.key));
         view.setClickable(true);
         return view;
@@ -394,8 +454,8 @@ final class RemoKeyboardView extends LinearLayout {
     private GradientDrawable rounded(int color, int radius, boolean lightEdge) {
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(color);
-        shape.setCornerRadius(radius);
-        shape.setStroke(dp(1), lightEdge ? Color.argb(72, 255, 255, 255) : Color.argb(50, 180, 190, 200));
+        shape.setCornerRadius(lightEdge ? dp(palette.keyRadius) : radius);
+        shape.setStroke(dp(1), lightEdge ? palette.keyStroke : Color.argb(50, 180, 190, 200));
         return shape;
     }
 

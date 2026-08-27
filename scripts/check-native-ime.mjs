@@ -13,6 +13,7 @@ const build = read("app/build.gradle");
 const service = read("app/src/main/java/com/remokeyboard/ime/RemoInputMethodService.java");
 const keyboard = read("app/src/main/java/com/remokeyboard/ime/RemoKeyboardView.java");
 const settings = read("app/src/main/java/com/remokeyboard/ime/KeyboardSettingsActivity.java");
+const emojiCatalog = read("app/src/main/assets/emoji_catalog.tsv");
 
 expect(build.includes("minSdk 21"), "الحد الأدنى للبناء هو Android 5.0 (API 21)");
 expect(manifest.includes("android.permission.BIND_INPUT_METHOD"), "الخدمة محمية بصلاحية لوحة المفاتيح النظامية");
@@ -37,5 +38,8 @@ expect(expectedThemes.every((theme) => existsSync(join(themeDirectory, theme))),
 const bundledEmoji = readdirSync(themeDirectory).filter((asset) => /^emoji_[0-9a-f_]+\.png$/.test(asset));
 expect(bundledEmoji.length >= 40, "توجد مكتبة مرئية من 40 صورة إيموجي داخل الحزمة الأساسية");
 expect(existsSync(join(root, "app/src/main/res/raw/noto_emoji_attribution.txt")), "توجد وثيقة مصدر وترخيص أصول الإيموجي المدمجة");
+expect(emojiCatalog.split("\n").length >= 3500, "يتضمن فهرس Unicode المدمج أكثر من 3500 رمز إيموجي");
+expect(keyboard.includes("showEmojiExplorerPopup") && keyboard.includes("EmojiCatalog.find"), "يوجد بحث محلي في مكتبة الإيموجي الشاملة");
+expect(settings.includes("كمبيوتر كلاسيكي") && settings.includes("زجاجي") && settings.includes("نيون") && settings.includes("داكن احترافي"), "توجد خمسة استايلات مفاتيح مدمجة قابلة للاختيار");
 
 console.log("اكتمل فحص البنية الثابتة لنواة ريموكيبورد.");

@@ -141,6 +141,7 @@ public class KeyboardSettingsActivity extends Activity {
         } else if (panel == Panel.EMOJI) {
             addSection(root, "الإيموجي");
             addChoice(root, "ستايل الإيموجي الحديث", "😀 🥹 🫶 ✨", true);
+            addAction(root, "مكتبة الإيموجي الشاملة", "نحو 3944 رمز Unicode مدمج؛ استخدم زر البحث ⌕ داخل الكيبورد", () -> Toast.makeText(this, "افتح الكيبورد ثم اضغط ⌕ للبحث في مكتبة الإيموجي", Toast.LENGTH_LONG).show());
             addChoice(root, "ستايل إيموجي بسيط", "🙂 ♥ ★", false);
             addAction(root, "صناعة ملصق", "أنشئ ملصقًا نصيًا من مركز ريموكيبورد", () -> Toast.makeText(this, "افتح مركز ريموكيبورد لإنشاء ملصق نصي", Toast.LENGTH_LONG).show());
         } else if (panel == Panel.CLIPBOARD) {
@@ -154,8 +155,12 @@ public class KeyboardSettingsActivity extends Activity {
             addAction(root, "إدارة الاختصارات", "أضف نصوصًا متكررة لاحقًا من مركز التطبيق", () -> Toast.makeText(this, "لا توجد اختصارات محفوظة", Toast.LENGTH_SHORT).show());
         } else if (panel == Panel.KEY_STYLE) {
             addSection(root, "ستايل المفاتيح");
-            addChoice(root, "ستايل الكمبيوتر", "مفاتيح مستطيلة رمادية ورموز ثانوية", true);
-            addChoice(root, "ستايل ناعم", "حواف أكثر استدارة", false);
+            String activeStyle = preferences.getString("key_style", "desktop");
+            addChoice(root, "كمبيوتر كلاسيكي", "مفاتيح رمادية مستقيمة ورموز ثانوية", "desktop".equals(activeStyle), () -> chooseKeyStyle("desktop", "كمبيوتر كلاسيكي"));
+            addChoice(root, "زجاجي", "شفافية خفيفة وحواف واسعة", "glass".equals(activeStyle), () -> chooseKeyStyle("glass", "زجاجي"));
+            addChoice(root, "نيون", "حدود مضيئة بلون التمييز", "neon".equals(activeStyle), () -> chooseKeyStyle("neon", "نيون"));
+            addChoice(root, "رقيق", "زوايا محددة ومسافة مركزة", "slim".equals(activeStyle), () -> chooseKeyStyle("slim", "رقيق"));
+            addChoice(root, "داكن احترافي", "بطاقات متوازنة للاستخدام الطويل", "pro".equals(activeStyle), () -> chooseKeyStyle("pro", "داكن احترافي"));
             addAction(root, "تخصيص مساحة المفاتيح", "الافتراضي", () -> showPanel(Panel.HEIGHT));
         } else if (panel == Panel.SOUND) {
             addSection(root, "إعدادات الصوت والاهتزاز");
@@ -181,7 +186,7 @@ public class KeyboardSettingsActivity extends Activity {
             addAction(root, "استيراد نسخة احتياطية", "استعادة بيانات محفوظة", () -> Toast.makeText(this, "لا توجد نسخة احتياطية محددة", Toast.LENGTH_SHORT).show());
         } else if (panel == Panel.ABOUT) {
             addSection(root, "حول ريموكيبورد");
-            addAction(root, "إصدار التطبيق", "ريموكيبورد مزخرف 1.0.3", () -> {});
+            addAction(root, "إصدار التطبيق", "ريموكيبورد مزخرف 1.0.5", () -> {});
             addAction(root, "التحقق من التحديث", "فتح صفحة الإصدارات", () -> openExternalUrl("https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases"));
             addAction(root, "عن المطور", "محمد الحزمي", () -> openExternalUrl("https://t.me/moh_alymani1"));
             addAction(root, "سياسة الخصوصية", "خصوصية الحافظة والصوت والروابط", () -> Toast.makeText(this, "تظل بيانات الحافظة محلية على الجهاز", Toast.LENGTH_LONG).show());
@@ -422,6 +427,12 @@ public class KeyboardSettingsActivity extends Activity {
     private void chooseHeight(String value, int height) {
         preferences.edit().putString("height", value).putInt("key_height", height).apply();
         showPanel(Panel.HEIGHT);
+    }
+
+    private void chooseKeyStyle(String value, String title) {
+        preferences.edit().putString("key_style", value).apply();
+        Toast.makeText(this, "تم اختيار ستايل " + title, Toast.LENGTH_SHORT).show();
+        showPanel(Panel.KEY_STYLE);
     }
 
     private void chooseBackgroundFromStudio() {
