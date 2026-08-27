@@ -1,5 +1,4 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PanResponder, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
@@ -7,11 +6,10 @@ import { PanResponder, Platform, Pressable, ScrollView, StyleSheet, Switch, Text
 import { colors } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { EQUALIZER_FREQUENCIES, EQUALIZER_PRESETS, clampEqualizerBand, isEqualizerPresetId, normalizeEqualizerBands, presetBands, type EqualizerPresetId } from "@/lib/equalizer-settings";
+import { loadEqualizerSettings, saveEqualizerSettings, type RoomEffect, type StoredEqualizer } from "@/lib/equalizer-storage";
 import { openBluetoothAudioSettings, openNativeEqualizer } from "@/lib/native-equalizer";
+import { applyNativeAudioEffects } from "@/lib/native-audio-controls";
 
-const EQUALIZER_STORAGE_KEY = "remo-player.equalizer.v1";
-type RoomEffect = "none" | "small" | "medium" | "large";
-type StoredEqualizer = { enabled: boolean; preset: EqualizerPresetId; bands: number[]; room: RoomEffect; bass: number; virtualizer: number };
 
 const roomOptions: { id: RoomEffect; label: string }[] = [
   { id: "none", label: "لا شيء" },
@@ -30,28 +28,26 @@ export default function EqualizerScreen() {
   const [virtualizer, setVirtualizer] = useState(4);
   const [nativeStatus, setNativeStatus] = useState<"idle" | "panel" | "fallback" | "unsupported">("idle");
   const [bluetoothStatus, setBluetoothStatus] = useState<"idle" | "settings" | "pairing" | "unsupported">("idle");
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    void AsyncStorage.getItem(EQUALIZER_STORAGE_KEY).then((raw) => {
-      if (!raw) return;
-      try {
-        const saved = JSON.parse(raw) as StoredEqualizer;
+    void loadEqualizerSettings().then((saved) => {
         setEnabled(Boolean(saved.enabled));
         setPreset(isEqualizerPresetId(saved.preset) ? saved.preset : "custom");
         setBands(normalizeEqualizerBands(saved.bands ?? []));
         setRoom(saved.room ?? "none");
         setBass(Math.max(0, Math.min(100, saved.bass ?? 0)));
         setVirtualizer(Math.max(0, Math.min(100, saved.virtualizer ?? 4)));
-      } catch {
-        // Keep the default curve if local settings are malformed.
-      }
-    });
+    }).finally(() => setIsHydrated(true));
   }, []);
 
   useEffect(() => {
+    if (!isHydrated) return;
     const value: StoredEqualizer = { enabled, preset, bands: normalizeEqualizerBands(bands), room, bass, virtualizer };
-    void AsyncStorage.setItem(EQUALIZER_STORAGE_KEY, JSON.stringify(value));
-  }, [enabled, preset, bands, room, bass, virtualizer]);
+    void saveEqualizerSettings(value);
+    const timeout = setTimeout(() => { void applyNativeAudioEffects(value); }, 140);
+    return () => clearTimeout(timeout);
+  }, [bands, bass, enabled, isHydrated, preset, room, virtualizer]);
 
   const applyPreset = (id: EqualizerPresetId) => {
     setPreset(id);
@@ -73,7 +69,7 @@ export default function EqualizerScreen() {
     if (nativeStatus === "panel") return "تم فتح معادل Android. عدّل النطاقات هناك لتطبيق التأثير الفعلي على الصوت.";
     if (nativeStatus === "fallback") return "فُتحت إعدادات الصوت لأن جهازك لا يوفّر لوحة معادل مستقلة.";
     if (nativeStatus === "unsupported") return "لم يوفّر جهازك لوحة مؤثرات صوتية. استخدم معادل سماعتك أو معادل Android عند توفره.";
-    return "احفظ إعداداتك هنا، ثم افتح معادل Android لتطبيق التأثير الفعلي على جهازك.";
+    return "يُطبَّق المنحنى المحفوظ على موسيقى REMO PLAYER عندما يكون مسار صوتي نشطاً ويدعم الجهاز مؤثرات Android.";
   }, [nativeStatus]);
   const bluetoothMessage = useMemo(() => {
     if (bluetoothStatus === "settings" || bluetoothStatus === "pairing") return "أكمل الاقتران أو اختر السماعة أو مكبر الصوت من إعدادات Bluetooth، ثم سيستخدم REMO PLAYER مخرج الصوت المتصل.";

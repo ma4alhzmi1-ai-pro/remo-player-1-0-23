@@ -80,3 +80,72 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
+
+  publish-public-update:
+    name: Publish public update feed
+    needs: build-apk
+    if: ${{ github.ref == 'refs/heads/main' && secrets.REMO_PLAYER_RELEASES_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.REMO_PLAYER_RELEASES_TOKEN }}
+      RELEASE_REPOSITORY: ma4alhzmi1-ai-pro/remo-player-releases
+    steps:
+      - name: Check out source for version metadata
+        uses: actions/checkout@v4
+
+      - name: Download verified APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: REMO-PLAYER-Android-Standalone-APK
+          path: release
+
+      - name: Publish GitHub release and update feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -e "const s=require('fs').readFileSync('app.config.ts','utf8'); const m=s.match(/version:\s*\"([^\"]+)\"/); if(!m) process.exit(1); process.stdout.write(m[1])")
+          version_code=$(node -e "const s=require('fs').readFileSync('app.config.ts','utf8'); const m=s.match(/versionCode:\s*(\d+)/); if(!m) process.exit(1); process.stdout.write(m[1])")
+          tag="v${version}"
+          apk="$(find release -type f -name '*.apk' | head -n 1)"
+          test -n "$apk"
+          asset_name="REMO-PLAYER-${version}.apk"
+          digest=$(sha256sum "$apk" | awk '{print $1}')
+          release_url="https://github.com/${RELEASE_REPOSITORY}/releases/tag/${tag}"
+          apk_url="https://github.com/${RELEASE_REPOSITORY}/releases/download/${tag}/${asset_name}"
+          export VERSION="$version"
+          export VERSION_CODE="$version_code"
+          export RELEASE_URL="$release_url"
+          export APK_URL="$apk_url"
+          export DIGEST="$digest"
+
+          if gh release view "$tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk#$asset_name" --repo "$RELEASE_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$apk#$asset_name" --repo "$RELEASE_REPOSITORY" --title "REMO PLAYER ${version}" --notes "إصدار مستقل مبني ومتحقق منه عبر GitHub Actions."
+          fi
+
+          node - <<'NODE'
+          const fs = require('fs');
+          const data = {
+            schemaVersion: 1,
+            appName: 'REMO PLAYER',
+            version: process.env.VERSION,
+            versionCode: Number(process.env.VERSION_CODE),
+            publishedAt: new Date().toISOString(),
+            releaseUrl: process.env.RELEASE_URL,
+            apkUrl: process.env.APK_URL,
+            sha256: process.env.DIGEST,
+            notes: 'إصدار مستقل مبني ومتحقق منه عبر GitHub Actions.'
+          };
+          fs.writeFileSync('latest.json', `${JSON.stringify(data, null, 2)}\n`);
+          NODE
+
+          content=$(base64 -w 0 latest.json)
+          existing_sha=$(gh api "repos/${RELEASE_REPOSITORY}/contents/latest.json" --jq .sha 2>/dev/null || true)
+          if [ -n "$existing_sha" ]; then
+            gh api --method PUT "repos/${RELEASE_REPOSITORY}/contents/latest.json" -f message="Publish REMO PLAYER ${version} update feed" -f content="$content" -f sha="$existing_sha"
+          else
+            gh api --method PUT "repos/${RELEASE_REPOSITORY}/contents/latest.json" -f message="Publish REMO PLAYER ${version} update feed" -f content="$content"
+          fi

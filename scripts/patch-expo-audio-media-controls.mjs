@@ -10,6 +10,7 @@ function patchFile(relativePath, replacements) {
   for (const [before, after] of replacements) {
     if (source.includes(after)) continue;
     if (!source.includes(before)) {
+      if (relativePath === "AudioModule.kt" && before.includes("OnDestroy") && source.includes("releaseAudioEffects()")) continue;
       throw new Error(`لم يُعثر على موضع التصحيح المتوقع: ${relativePath}`);
     }
     source = source.replace(before, after);
@@ -45,6 +46,29 @@ patchFile("AudioModule.kt", [
   [
     `    OnDestroy {\n      appContext.mainQueue.launch {\n        releaseAudioFocus()\n        players.values.forEach {\n          it.ref.stop()\n        }\n\n        recorders.values.forEach {\n          it.stopRecording()\n        }\n\n        AudioControlsService.clearSession()\n      }\n    }`,
     `    OnDestroy {\n      appContext.mainQueue.launch {\n        // لا يوقف الخروج من الواجهة موسيقى نشطة تملك جلسة شاشة القفل.\n        // يستمر AudioControlsService كخدمة foreground للموسيقى فقط.\n        val hasBackgroundMusic = staysActiveInBackground && players.values.any {\n          it.isActiveForLockScreen && it.ref.isPlaying\n        }\n        if (!hasBackgroundMusic) {\n          releaseAudioFocus()\n          players.values.forEach {\n            it.ref.stop()\n          }\n          AudioControlsService.clearSession()\n        }\n\n        recorders.values.forEach {\n          it.stopRecording()\n        }\n      }\n    }`,
+  ],
+]);
+
+patchFile("AudioModule.kt", [
+  [
+    `import android.media.AudioManager\n`,
+    `import android.media.AudioManager\nimport android.media.audiofx.BassBoost\nimport android.media.audiofx.Equalizer\nimport android.media.audiofx.Virtualizer\n`,
+  ],
+  [
+    `  private var allowsBackgroundRecording = false\n`,
+    `  private var allowsBackgroundRecording = false\n  private var audioEffectsSessionId = -1\n  private var equalizer: Equalizer? = null\n  private var bassBoost: BassBoost? = null\n  private var virtualizer: Virtualizer? = null\n`,
+  ],
+  [
+    `  private fun shouldReleaseFocus(): Boolean {`,
+    `  private fun releaseAudioEffects() {\n    try { equalizer?.release() } catch (_: Exception) {}\n    try { bassBoost?.release() } catch (_: Exception) {}\n    try { virtualizer?.release() } catch (_: Exception) {}\n    equalizer = null\n    bassBoost = null\n    virtualizer = null\n    audioEffectsSessionId = -1\n  }\n\n  private fun applyAudioEffects(enabled: Boolean, bands: List<Double>, bass: Double, virtualizerAmount: Double): Boolean {\n    val activePlayer = players.values.firstOrNull { it.ref.isPlaying } ?: players.values.firstOrNull() ?: return false\n    val sessionId = activePlayer.ref.audioSessionId\n    if (sessionId <= 0) return false\n    try {\n      if (audioEffectsSessionId != sessionId || equalizer == null) {\n        releaseAudioEffects()\n        equalizer = Equalizer(0, sessionId)\n        bassBoost = BassBoost(0, sessionId)\n        virtualizer = Virtualizer(0, sessionId)\n        audioEffectsSessionId = sessionId\n      }\n      val eq = equalizer ?: return false\n      if (!enabled) {\n        eq.enabled = false\n        bassBoost?.enabled = false\n        virtualizer?.enabled = false\n        return true\n      }\n      val range = eq.bandLevelRange\n      val lower = range[0].toInt()\n      val upper = range[1].toInt()\n      for (index in 0 until eq.numberOfBands.toInt()) {\n        val value = bands.getOrElse(index) { 0.0 }.coerceIn(-12.0, 12.0)\n        val target = (lower + ((value + 12.0) / 24.0) * (upper - lower)).toInt().coerceIn(lower, upper)\n        eq.setBandLevel(index.toShort(), target.toShort())\n      }\n      eq.enabled = true\n      bassBoost?.let { effect ->\n        if (effect.strengthSupported) effect.setStrength((bass.coerceIn(0.0, 100.0) * 10.0).toInt().toShort())\n        effect.enabled = true\n      }\n      virtualizer?.let { effect ->\n        if (effect.strengthSupported) effect.setStrength((virtualizerAmount.coerceIn(0.0, 100.0) * 10.0).toInt().toShort())\n        effect.enabled = true\n      }\n      return true\n    } catch (_: Exception) {\n      releaseAudioEffects()\n      return false\n    }\n  }\n\n  private fun shouldReleaseFocus(): Boolean {`,
+  ],
+  [
+    `          AudioControlsService.clearSession()\n        }\n\n        recorders.values.forEach {`,
+    `          AudioControlsService.clearSession()\n          releaseAudioEffects()\n        }\n\n        recorders.values.forEach {`,
+  ],
+  [
+    `    AsyncFunction("setIsAudioActiveAsync") { enabled: Boolean ->\n      audioEnabled = enabled`,
+    `    AsyncFunction<Double>("getSystemMusicVolumeAsync") {\n      val maximum = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)\n      return@AsyncFunction audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / maximum.toDouble()\n    }\n\n    AsyncFunction<Double>("setSystemMusicVolumeAsync") { value: Double ->\n      val maximum = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)\n      val target = (value.coerceIn(0.0, 1.0) * maximum.toDouble()).toInt().coerceIn(0, maximum)\n      audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)\n      return@AsyncFunction audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / maximum.toDouble()\n    }\n\n    AsyncFunction<Boolean>("applyAudioEffectsAsync") { enabled: Boolean, bands: List<Double>, bass: Double, virtualizerAmount: Double ->\n      return@AsyncFunction applyAudioEffects(enabled, bands, bass, virtualizerAmount)\n    }\n\n    AsyncFunction("setIsAudioActiveAsync") { enabled: Boolean ->\n      audioEnabled = enabled`,
   ],
 ]);
 
