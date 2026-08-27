@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(process.cwd(), "android-ime");
@@ -41,5 +41,8 @@ expect(existsSync(join(root, "app/src/main/res/raw/noto_emoji_attribution.txt"))
 expect(emojiCatalog.split("\n").length >= 3500, "يتضمن فهرس Unicode المدمج أكثر من 3500 رمز إيموجي");
 expect(keyboard.includes("showEmojiExplorerPopup") && keyboard.includes("EmojiCatalog.find"), "يوجد بحث محلي في مكتبة الإيموجي الشاملة");
 expect(settings.includes("كمبيوتر كلاسيكي") && settings.includes("زجاجي") && settings.includes("نيون") && settings.includes("داكن احترافي"), "توجد خمسة استايلات مفاتيح مدمجة قابلة للاختيار");
+const emojiFont = join(root, "app/src/main/assets/NotoColorEmoji.ttf");
+expect(existsSync(emojiFont), "يوجد خط إيموجي حديث مدمج للأجهزة القديمة");
+expect(statSync(emojiFont).size > 10_000_000, "يتضمن الخط الملون المدمج نطاق الإيموجي الحديث كاملًا");
 
 console.log("اكتمل فحص البنية الثابتة لنواة ريموكيبورد.");

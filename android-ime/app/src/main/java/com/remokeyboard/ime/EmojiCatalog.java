@@ -1,6 +1,7 @@
 package com.remokeyboard.ime;
 
 import android.content.Context;
+import android.graphics.Typeface;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -26,6 +27,7 @@ final class EmojiCatalog {
     }
 
     private static List<Item> cached;
+    private static Typeface emojiTypeface;
 
     private EmojiCatalog() { }
 
@@ -54,5 +56,12 @@ final class EmojiCatalog {
             }
         }
         return matches;
+    }
+
+    static synchronized Typeface typeface(Context context) {
+        if (emojiTypeface != null) return emojiTypeface;
+        try { emojiTypeface = Typeface.createFromAsset(context.getAssets(), "NotoColorEmoji.ttf"); }
+        catch (Exception ignored) { emojiTypeface = Typeface.DEFAULT; }
+        return emojiTypeface;
     }
 }

@@ -423,6 +423,7 @@ final class RemoKeyboardView extends LinearLayout {
             }
             EmojiCatalog.Item item = items.get(index);
             TextView emoji = textButton(item.emoji, 23, palette.text, palette.key, dp(8));
+            emoji.setTypeface(EmojiCatalog.typeface(getContext()));
             emoji.setContentDescription(item.name);
             emoji.setOnClickListener(v -> { service.commitText(item.emoji); popup.dismiss(); });
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(44), 1f);
