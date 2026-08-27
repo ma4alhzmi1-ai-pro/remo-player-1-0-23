@@ -26,5 +26,10 @@ expect(settings.includes("ACTION_INPUT_METHOD_SETTINGS") && settings.includes("s
 expect(existsSync(join(root, "app/src/main/java/com/remokeyboard/ime/ClipboardRepository.java")), "توجد طبقة تخزين محلية للحافظة");
 expect(settings.includes("الزخرفة والخطوط") && settings.includes("إعدادات الترجمة") && settings.includes("مظهر لوحة المفاتيح"), "توجد صفحات إعدادات مفصلة شبيهة بالمركز المرجعي");
 expect(keyboard.includes("إعدادات الكيبورد") && keyboard.includes("تنفيذ") && settings.includes("ستايل المفاتيح"), "توجد أدوات الكيبورد وزر التنفيذ والمفاتيح بأسلوب الكمبيوتر");
+expect(settings.includes("اختيار صورة من الاستوديو") && settings.includes("لوحات ألوان جاهزة"), "توجد أدوات تخصيص الخلفيات والألوان من الاستوديو");
+expect(keyboard.includes("background_uri") && keyboard.includes("background_asset"), "تطبق لوحة الإدخال الخلفية المختارة أو صور الثيمات المحلية");
+const themeDirectory = join(root, "app/src/main/res/drawable-nodpi");
+const expectedThemes = ["remo_feminine_rose_silk.webp", "remo_feminine_lilac_butterflies.webp", "remo_feminine_pearl_bloom.webp", "remo_feminine_violet_marble.webp", "remo_masculine_neon_grid.webp", "remo_masculine_ember_steel.webp", "remo_masculine_blue_flame.webp", "remo_masculine_forest_camo.webp", "remo_islamic_lanterns.webp", "remo_islamic_mosque_dusk.webp"];
+expect(expectedThemes.every((theme) => existsSync(join(themeDirectory, theme))), "توجد مكتبة من 10 خلفيات محلية مضغوطة للثيمات");
 
 console.log("اكتمل فحص البنية الثابتة لنواة ريموكيبورد.");

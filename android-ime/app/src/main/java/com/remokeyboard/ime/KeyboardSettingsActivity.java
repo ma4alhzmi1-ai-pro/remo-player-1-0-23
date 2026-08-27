@@ -2,6 +2,7 @@ package com.remokeyboard.ime;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -17,6 +18,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup.LayoutParams;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -25,6 +27,7 @@ import android.widget.Toast;
 /** مركز إعدادات RTL أصلي، مستلهم من تنظيم لقطات الكيبورد المرجعية. */
 public class KeyboardSettingsActivity extends Activity {
     private enum Panel { MAIN, LANGUAGES, PREFERENCES, DECORATION, TRANSLATION, APPEARANCE, WRITING, EMOJI, CLIPBOARD, SHORTCUTS, KEY_STYLE, SOUND, HEIGHT, BOTTOM_ROW, BACKUP, ABOUT }
+    private static final int PICK_BACKGROUND_FROM_STUDIO = 3402;
     private SharedPreferences preferences;
     private Panel currentPanel = Panel.MAIN;
     private final int background = Color.rgb(30, 32, 34);
@@ -46,6 +49,17 @@ public class KeyboardSettingsActivity extends Activity {
     @Override public void onBackPressed() {
         if (currentPanel != Panel.MAIN) showPanel(Panel.MAIN);
         else super.onBackPressed();
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_BACKGROUND_FROM_STUDIO || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        try { getContentResolver().takePersistableUriPermission(uri, flags); } catch (SecurityException ignored) { }
+        preferences.edit().putString("background_uri", uri.toString()).remove("background_asset").apply();
+        Toast.makeText(this, "تم اختيار الخلفية من الاستوديو", Toast.LENGTH_SHORT).show();
+        showPanel(Panel.APPEARANCE);
     }
 
     private void showPanel(Panel panel) {
@@ -167,7 +181,7 @@ public class KeyboardSettingsActivity extends Activity {
             addAction(root, "استيراد نسخة احتياطية", "استعادة بيانات محفوظة", () -> Toast.makeText(this, "لا توجد نسخة احتياطية محددة", Toast.LENGTH_SHORT).show());
         } else if (panel == Panel.ABOUT) {
             addSection(root, "حول ريموكيبورد");
-            addAction(root, "إصدار التطبيق", "ريموكيبورد مزخرف 1.0.2", () -> {});
+            addAction(root, "إصدار التطبيق", "ريموكيبورد مزخرف 1.0.3", () -> {});
             addAction(root, "التحقق من التحديث", "فتح صفحة الإصدارات", () -> openExternalUrl("https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases"));
             addAction(root, "عن المطور", "محمد الحزمي", () -> openExternalUrl("https://t.me/moh_alymani1"));
             addAction(root, "سياسة الخصوصية", "خصوصية الحافظة والصوت والروابط", () -> Toast.makeText(this, "تظل بيانات الحافظة محلية على الجهاز", Toast.LENGTH_LONG).show());
@@ -312,14 +326,30 @@ public class KeyboardSettingsActivity extends Activity {
             tabs.addView(tab, new LinearLayout.LayoutParams(0, dp(45), 1f));
         }
         root.addView(tabs);
-        addSection(root, "الثيمات الافتراضية");
-        addThemeCard(root, "شبابي داكن", "مفاتيح كمبيوتر رمادية", "navy", Color.rgb(28, 28, 28), Color.rgb(130, 130, 130));
-        addThemeCard(root, "نسائي وردي", "وردي هادئ", "rose", Color.rgb(54, 28, 44), Color.rgb(130, 77, 108));
-        addThemeCard(root, "إسلامي ذهبي", "أخضر داكن ولمسة ذهبية", "ramadan", Color.rgb(21, 43, 39), Color.rgb(107, 81, 38));
-        addThemeCard(root, "فاتح", "تباين مريح للنهار", "light", Color.rgb(235, 241, 246), Color.WHITE);
+        addSection(root, "خلفيات نسائية");
+        addThemeCard(root, "حرير وردي", "وردي ساتان ولمسة ذهبية", "rose", "remo_feminine_rose_silk", Color.rgb(68, 35, 55), Color.rgb(160, 103, 132));
+        addThemeCard(root, "فراشات ليلكية", "ليلكي داكن وبريق ناعم", "rose", "remo_feminine_lilac_butterflies", Color.rgb(62, 40, 75), Color.rgb(136, 99, 157));
+        addThemeCard(root, "زهر اللؤلؤ", "ورد فاتح وأناقة هادئة", "light", "remo_feminine_pearl_bloom", Color.rgb(242, 223, 228), Color.WHITE);
+        addThemeCard(root, "رخام بنفسجي", "بنفسجي فاخر وعروق ذهبية", "rose", "remo_feminine_violet_marble", Color.rgb(54, 33, 68), Color.rgb(112, 79, 130));
+        addSection(root, "خلفيات شبابية");
+        addThemeCard(root, "شبكة نيون", "سيان وبنفسجي فوق جرافيت", "navy", "remo_masculine_neon_grid", Color.rgb(14, 24, 38), Color.rgb(57, 83, 108));
+        addThemeCard(root, "فولاذ الجمر", "فولاذ أسود ووهج كهرماني", "navy", "remo_masculine_ember_steel", Color.rgb(24, 22, 21), Color.rgb(100, 75, 54));
+        addThemeCard(root, "لهب أزرق", "كحلي داكن وتأثير تقني", "navy", "remo_masculine_blue_flame", Color.rgb(12, 24, 43), Color.rgb(48, 73, 108));
+        addThemeCard(root, "كامو الغابة", "أخضر زيتوني وجرافيت", "navy", "remo_masculine_forest_camo", Color.rgb(29, 40, 30), Color.rgb(72, 90, 70));
+        addSection(root, "خلفيات إسلامية");
+        addThemeCard(root, "فوانيس رمضانية", "هلال وفوانيس ذهبية", "ramadan", "remo_islamic_lanterns", Color.rgb(16, 41, 36), Color.rgb(78, 89, 66));
+        addThemeCard(root, "مسجد الغروب", "كحلي، هلال، ونجوم هادئة", "ramadan", "remo_islamic_mosque_dusk", Color.rgb(18, 27, 61), Color.rgb(61, 72, 106));
+        addSection(root, "تخصيص الخلفية والألوان");
+        addAction(root, "اختيار صورة من الاستوديو", "استخدم صورة من معرض الجهاز كخلفية للكيبورد", this::chooseBackgroundFromStudio);
+        addAction(root, "إزالة صورة الخلفية", "العودة إلى الخلفية اللونية للثيم", () -> { preferences.edit().remove("background_uri").remove("background_asset").apply(); Toast.makeText(this, "تمت إزالة الخلفية", Toast.LENGTH_SHORT).show(); });
+        addAction(root, "لوحات ألوان جاهزة", "ليلي، وردي، زمردي، أو أزرق تقني", this::showColorPresets);
+        addAction(root, "لون الخلفية", currentColor("custom_background_color", "#101010"), () -> editColor("custom_background_color", "لون الخلفية", "#101010"));
+        addAction(root, "لون المفاتيح", currentColor("custom_key_color", "#777777"), () -> editColor("custom_key_color", "لون المفاتيح", "#777777"));
+        addAction(root, "لون النص", currentColor("custom_text_color", "#FFFFFF"), () -> editColor("custom_text_color", "لون النص", "#FFFFFF"));
+        addAction(root, "لون التمييز", currentColor("custom_accent_color", "#8CCCFF"), () -> editColor("custom_accent_color", "لون التمييز", "#8CCCFF"));
     }
 
-    private void addThemeCard(LinearLayout root, String title, String subtitle, String value, int base, int keyColor) {
+    private void addThemeCard(LinearLayout root, String title, String subtitle, String value, String asset, int base, int keyColor) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(10), dp(10), dp(10), dp(10));
@@ -327,7 +357,9 @@ public class KeyboardSettingsActivity extends Activity {
         LinearLayout preview = new LinearLayout(this);
         preview.setOrientation(LinearLayout.VERTICAL);
         preview.setPadding(dp(8), dp(8), dp(8), dp(8));
-        preview.setBackground(round(base, dp(10)));
+        int previewImage = getResources().getIdentifier(asset, "drawable", getPackageName());
+        if (previewImage != 0) preview.setBackgroundResource(previewImage);
+        else preview.setBackground(round(base, dp(10)));
         for (int row = 0; row < 3; row++) {
             LinearLayout keys = new LinearLayout(this);
             keys.setPadding(0, dp(2), 0, dp(2));
@@ -347,7 +379,7 @@ public class KeyboardSettingsActivity extends Activity {
         card.addView(preview, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(80)));
         card.addView(label, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         card.addView(detail, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        card.setOnClickListener(v -> { preferences.edit().putString("theme", value).apply(); Toast.makeText(this, "تم اختيار ثيم " + title, Toast.LENGTH_SHORT).show(); });
+        card.setOnClickListener(v -> selectTheme(value, asset, title));
         root.addView(card, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(145)));
         addDivider(root);
     }
@@ -390,6 +422,77 @@ public class KeyboardSettingsActivity extends Activity {
     private void chooseHeight(String value, int height) {
         preferences.edit().putString("height", value).putInt("key_height", height).apply();
         showPanel(Panel.HEIGHT);
+    }
+
+    private void chooseBackgroundFromStudio() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.setType("image/*");
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(pick, PICK_BACKGROUND_FROM_STUDIO);
+    }
+
+    private void selectTheme(String theme, String asset, String title) {
+        preferences.edit().putString("theme", theme).putString("background_asset", asset).remove("background_uri").apply();
+        Toast.makeText(this, "تم اختيار ثيم " + title, Toast.LENGTH_SHORT).show();
+    }
+
+    private String currentColor(String key, String fallback) {
+        return preferences.getString(key, fallback);
+    }
+
+    private void editColor(String key, String title, String fallback) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("مثال: #5CC8FF");
+        input.setText(currentColor(key, fallback));
+        input.setTextColor(text);
+        input.setHintTextColor(secondary);
+        input.setSelectAllOnFocus(true);
+        input.setPadding(dp(24), dp(8), dp(24), dp(8));
+        new AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage("أدخل رمز اللون بصيغة HEX مثل #5CC8FF")
+            .setView(input)
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("تطبيق", (dialog, which) -> {
+                String value = input.getText().toString().trim();
+                try {
+                    Color.parseColor(value);
+                    preferences.edit()
+                        .putString("theme", "custom")
+                        .putString(key, value)
+                        .putString("custom_surface_color", currentColor("custom_surface_color", "#161616"))
+                        .putString("custom_special_key_color", currentColor("custom_special_key_color", "#343434"))
+                        .apply();
+                    Toast.makeText(this, "تم تطبيق اللون على لوحة المفاتيح", Toast.LENGTH_SHORT).show();
+                } catch (IllegalArgumentException error) {
+                    Toast.makeText(this, "صيغة اللون غير صحيحة", Toast.LENGTH_SHORT).show();
+                }
+            }).show();
+    }
+
+    private void showColorPresets() {
+        String[] names = {"ليلي فضي", "وردي أنيق", "زمردي ذهبي", "أزرق تقني"};
+        new AlertDialog.Builder(this).setTitle("لوحات ألوان جاهزة").setItems(names, (dialog, index) -> {
+            String[][] palettes = {
+                {"#0C1018", "#777B85", "#FFFFFF", "#9BCBFF", "#202633", "#333B4A"},
+                {"#351A30", "#B56C92", "#FFF7FB", "#F9ACD4", "#4A283F", "#6D3A59"},
+                {"#102A27", "#53766B", "#FCF6DF", "#D5AE55", "#1B3A35", "#344C46"},
+                {"#0E1B34", "#365B8A", "#F4F8FF", "#5CC8FF", "#142A4C", "#28446B"}
+            };
+            String[] colors = palettes[index];
+            preferences.edit()
+                .putString("theme", "custom")
+                .putString("custom_background_color", colors[0])
+                .putString("custom_key_color", colors[1])
+                .putString("custom_text_color", colors[2])
+                .putString("custom_accent_color", colors[3])
+                .putString("custom_surface_color", colors[4])
+                .putString("custom_special_key_color", colors[5])
+                .apply();
+            Toast.makeText(this, "تم تطبيق " + names[index], Toast.LENGTH_SHORT).show();
+        }).show();
     }
 
     private void openExternalUrl(String value) {

@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.HorizontalScrollView;
@@ -12,6 +13,7 @@ import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
 import java.util.List;
+import java.io.InputStream;
 
 /** لوحة إدخال بأسلوب مفاتيح الكمبيوتر مع رموز ثانوية وصف أدوات ووظائف إدخال فعلية. */
 final class RemoKeyboardView extends LinearLayout {
@@ -47,6 +49,24 @@ final class RemoKeyboardView extends LinearLayout {
 
     private void rebuildPalette() {
         palette = KeyboardPalette.from(preferences);
+        applyKeyboardBackground();
+    }
+
+    private void applyKeyboardBackground() {
+        String studioUri = preferences.getString("background_uri", "");
+        if (studioUri != null && !studioUri.isEmpty()) {
+            try {
+                InputStream stream = getContext().getContentResolver().openInputStream(android.net.Uri.parse(studioUri));
+                Drawable drawable = Drawable.createFromStream(stream, "remo_studio_background");
+                if (stream != null) stream.close();
+                if (drawable != null) { setBackground(drawable); return; }
+            } catch (Exception ignored) { }
+        }
+        String asset = preferences.getString("background_asset", "");
+        if (asset != null && !asset.isEmpty()) {
+            int resource = getResources().getIdentifier(asset, "drawable", getContext().getPackageName());
+            if (resource != 0) { setBackgroundResource(resource); return; }
+        }
         setBackgroundColor(palette.background);
     }
 
