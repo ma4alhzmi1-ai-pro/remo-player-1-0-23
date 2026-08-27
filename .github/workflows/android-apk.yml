@@ -84,7 +84,7 @@ jobs:
   publish-public-update:
     name: Publish public update feed
     needs: build-apk
-    if: ${{ github.ref == 'refs/heads/main' && secrets.REMO_PLAYER_RELEASES_TOKEN != '' }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -105,6 +105,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::notice::Public release publishing is skipped until REMO_PLAYER_RELEASES_TOKEN is configured."
+            exit 0
+          fi
           version=$(node -e "const s=require('fs').readFileSync('app.config.ts','utf8'); const m=s.match(/version:\s*\"([^\"]+)\"/); if(!m) process.exit(1); process.stdout.write(m[1])")
           version_code=$(node -e "const s=require('fs').readFileSync('app.config.ts','utf8'); const m=s.match(/versionCode:\s*(\d+)/); if(!m) process.exit(1); process.stdout.write(m[1])")
           tag="v${version}"
