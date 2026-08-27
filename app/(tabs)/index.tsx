@@ -1,9 +1,11 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Artwork, colors, EmptyState, formatDuration, MediaRow } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
+import { checkGithubForUpdate, openOfficialUpdate } from "@/lib/github-update-checker";
 import { useLibrary } from "@/lib/library-context";
 import { usePlayer } from "@/lib/player-context";
 
@@ -11,6 +13,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { items, isReady, importFiles, isRefreshing, refreshDeviceLibrary } = useLibrary();
   const { currentItem, playItem } = usePlayer();
+  const updateCheckStarted = useRef(false);
   const latest = items.slice(0, 4);
   const audioCount = items.filter((item) => item.mediaType === "audio").length;
   const videoCount = items.filter((item) => item.mediaType === "video").length;
@@ -19,6 +22,18 @@ export default function HomeScreen() {
     await playItem(item, items.filter((candidate) => candidate.mediaType === item.mediaType));
     router.push(item.mediaType === "video" ? "/player/video" as never : "/player/audio" as never);
   };
+
+  useEffect(() => {
+    if (updateCheckStarted.current) return;
+    updateCheckStarted.current = true;
+    void checkGithubForUpdate().then((result) => {
+      if (result.status !== "available") return;
+      Alert.alert(`يتوفر REMO PLAYER ${result.release.version}`, result.release.notes, [
+        { text: "لاحقاً", style: "cancel" },
+        { text: "فتح صفحة الإصدار", onPress: () => { void openOfficialUpdate(result.release.releaseUrl); } },
+      ]);
+    });
+  }, []);
 
   if (isReady && items.length === 0) {
     return (

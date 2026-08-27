@@ -42,7 +42,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "alhzmi",
-  version: "1.0.49",
+  version: "1.0.50",
   orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -65,7 +65,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    versionCode: 51,
+    versionCode: 52,
     intentFilters: [
       {
         action: "VIEW",

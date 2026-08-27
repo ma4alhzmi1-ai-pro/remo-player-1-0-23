@@ -1,5 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Brightness from "expo-brightness";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
@@ -9,10 +10,11 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { isPictureInPictureSupported, VideoView, useVideoPlayer } from "expo-video";
+import { isPictureInPictureSupported, VideoView, useVideoPlayer, type SubtitleTrack } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
+import { getSystemMusicVolume, setSystemMusicVolume } from "@/lib/native-audio-controls";
 import { usePlayer } from "@/lib/player-context";
 import { loadLocalSubtitles, saveLocalSubtitles, type LocalSubtitleTrack } from "@/lib/subtitle-store";
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
@@ -67,6 +69,8 @@ export default function VideoPlayerScreen() {
   const localBrightnessRef = useRef(1);
   const volumeStartRef = useRef(1);
   const volumeRef = useRef(1);
+  const lastBrightnessUpdateRef = useRef(0);
+  const lastVolumeUpdateRef = useRef(0);
   const pipActiveOrRequestedRef = useRef(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("auto");
   const [isSharing, setIsSharing] = useState(false);
@@ -77,6 +81,7 @@ export default function VideoPlayerScreen() {
   const [volumeHud, setVolumeHud] = useState(false);
   const [localBrightness, setLocalBrightness] = useState(1);
   const [brightnessHud, setBrightnessHud] = useState(false);
+  const [speedHud, setSpeedHud] = useState(false);
   const [temporarySpeedActive, setTemporarySpeedActive] = useState(false);
   const [muted, setMuted] = useState(false);
   const [mirrored, setMirrored] = useState(false);
@@ -94,9 +99,13 @@ export default function VideoPlayerScreen() {
   const [repeatEnd, setRepeatEnd] = useState<number | null>(null);
   const [subtitleTrack, setSubtitleTrack] = useState<LocalSubtitleTrack | null>(null);
   const [subtitleEnabled, setSubtitleEnabled] = useState(true);
+  const [embeddedSubtitleTracks, setEmbeddedSubtitleTracks] = useState<SubtitleTrack[]>([]);
+  const [embeddedSubtitleId, setEmbeddedSubtitleId] = useState<string | null>(null);
+  const [subtitlePanelOpen, setSubtitlePanelOpen] = useState(false);
   const [subtitleTime, setSubtitleTime] = useState(0);
   const [translationOpen, setTranslationOpen] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState<TranslationLanguage>("العربية");
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const defaultFrameAspect: FrameAspect = isLandscape ? "16:9" : "source";
@@ -112,6 +121,7 @@ export default function VideoPlayerScreen() {
     videoPlayer.staysActiveInBackground = false;
     videoPlayer.showNowPlayingNotification = false;
     videoPlayer.audioMixingMode = "duckOthers";
+    videoPlayer.preservesPitch = true;
     videoPlayer.timeUpdateEventInterval = 0.25;
   });
 
@@ -119,6 +129,23 @@ export default function VideoPlayerScreen() {
     if (Platform.OS === "web") return;
     void ScreenOrientation.unlockAsync();
     return () => { void ScreenOrientation.unlockAsync(); };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void Brightness.getBrightnessAsync().then((value) => {
+      if (!Number.isFinite(value)) return;
+      const safeValue = Math.max(0.2, Math.min(1, value));
+      brightnessStartRef.current = safeValue;
+      localBrightnessRef.current = safeValue;
+      setLocalBrightness(safeValue);
+    }).catch(() => undefined);
+    void getSystemMusicVolume().then((value) => {
+      if (value === null) return;
+      volumeStartRef.current = value;
+      volumeRef.current = value;
+      setVolume(value);
+    });
   }, []);
 
   useEffect(() => {
@@ -137,6 +164,28 @@ export default function VideoPlayerScreen() {
   }, [player]);
 
   useEffect(() => {
+    const syncEmbeddedSubtitles = (tracks = player.availableSubtitleTracks, selected = player.subtitleTrack) => {
+      setEmbeddedSubtitleTracks(tracks);
+      setEmbeddedSubtitleId(selected?.id ?? null);
+    };
+    syncEmbeddedSubtitles();
+    const tracksSubscription = player.addListener("availableSubtitleTracksChange", ({ availableSubtitleTracks }) => syncEmbeddedSubtitles(availableSubtitleTracks));
+    const selectedSubscription = player.addListener("subtitleTrackChange", ({ subtitleTrack: selected }) => syncEmbeddedSubtitles(player.availableSubtitleTracks, selected));
+    return () => {
+      tracksSubscription.remove();
+      selectedSubscription.remove();
+    };
+  }, [player]);
+
+  useEffect(() => {
+    const subscription = player.addListener("statusChange", ({ status, error }) => {
+      if (status === "error" && error?.message) setPlaybackError(error.message);
+      if (status === "readyToPlay") setPlaybackError(null);
+    });
+    return () => subscription.remove();
+  }, [player]);
+
+  useEffect(() => {
     player.staysActiveInBackground = false;
     player.showNowPlayingNotification = false;
   }, [player]);
@@ -146,6 +195,7 @@ export default function VideoPlayerScreen() {
     let disposed = false;
     const loadForegroundVideo = async () => {
       try {
+        setPlaybackError(null);
         player.pause();
         player.staysActiveInBackground = false;
         player.showNowPlayingNotification = false;
@@ -154,7 +204,7 @@ export default function VideoPlayerScreen() {
         player.play();
         setIsPlaying(true);
       } catch {
-        if (!disposed) Alert.alert("تعذّر تشغيل الفيديو", "تحقق من أن الفيديو ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
+        if (!disposed) setPlaybackError("تعذر فتح هذا الفيديو. قد يكون الترميز غير مدعوم من جهاز Android أو أن الملف لم يعد متاحاً.");
       }
     };
     void loadForegroundVideo();
@@ -228,6 +278,12 @@ export default function VideoPlayerScreen() {
   }, [brightnessHud]);
 
   useEffect(() => {
+    if (!speedHud) return;
+    const timeout = setTimeout(() => setSpeedHud(false), 1100);
+    return () => clearTimeout(timeout);
+  }, [speedHud]);
+
+  useEffect(() => {
     if (!controlsVisible || controlsLocked || fitPanelOpen) return;
     const timeout = setTimeout(() => setControlsVisible(false), 3200);
     return () => clearTimeout(timeout);
@@ -278,6 +334,12 @@ export default function VideoPlayerScreen() {
       touchStartX.current = event.nativeEvent.locationX;
       brightnessStartRef.current = localBrightnessRef.current;
       volumeStartRef.current = volumeRef.current;
+      void getSystemMusicVolume().then((systemVolume) => {
+        if (systemVolume === null) return;
+        volumeStartRef.current = systemVolume;
+        volumeRef.current = systemVolume;
+        setVolume(systemVolume);
+      });
       scheduleTemporarySpeed();
     },
     onPanResponderMove: (_, gesture) => {
@@ -289,15 +351,32 @@ export default function VideoPlayerScreen() {
           localBrightnessRef.current = nextBrightness;
           setLocalBrightness(nextBrightness);
           setBrightnessHud(true);
+          const now = Date.now();
+          if (now - lastBrightnessUpdateRef.current >= 70) {
+            lastBrightnessUpdateRef.current = now;
+            void Brightness.setBrightnessAsync(nextBrightness).catch(() => undefined);
+          }
         }
       }
       if (action?.type === "volume") {
         const nextVolume = resolveLocalVolume(volumeStartRef.current, gesture.dy, mediaSurfaceHeight);
         if (nextVolume !== null) {
-          player.volume = nextVolume;
           volumeRef.current = nextVolume;
           setVolume(nextVolume);
           setVolumeHud(true);
+          const now = Date.now();
+          if (now - lastVolumeUpdateRef.current >= 70) {
+            lastVolumeUpdateRef.current = now;
+            void setSystemMusicVolume(nextVolume).then((systemVolume) => {
+              if (systemVolume === null) {
+                player.volume = nextVolume;
+                return;
+              }
+              player.volume = 1;
+              volumeRef.current = systemVolume;
+              setVolume(systemVolume);
+            });
+          }
         }
       }
     },
@@ -375,7 +454,17 @@ export default function VideoPlayerScreen() {
     player.play();
     setIsPlaying(true);
   };
-  const cycleSpeed = () => { const next = nextVideoPlaybackSpeed(speed); player.playbackRate = next; setSpeed(next); };
+  const cycleSpeed = () => {
+    const next = nextVideoPlaybackSpeed(speed);
+    try {
+      player.preservesPitch = true;
+      player.playbackRate = next;
+      setSpeed(next);
+      setSpeedHud(true);
+    } catch {
+      Alert.alert("تعذر تغيير السرعة", "لا يدعم هذا الفيديو تغيير السرعة حالياً.");
+    }
+  };
   const toggleMute = () => { const next = !muted; player.muted = next; setMuted(next); };
   const openPip = async () => { if (!pipSupported) { Alert.alert("النافذة العائمة", "وضع النافذة العائمة غير مدعوم على هذا الجهاز أو يحتاج تفعيله من إعدادات النظام."); return; } pipActiveOrRequestedRef.current = true; try { await viewRef.current?.startPictureInPicture(); } catch { pipActiveOrRequestedRef.current = false; Alert.alert("النافذة العائمة", "تعذر بدء النافذة العائمة الآن. تحقق من السماح بها لتطبيق REMO PLAYER في إعدادات Android."); } };
   const setAbPoint = () => { if (repeatStart === null || repeatEnd !== null) { setRepeatStart(player.currentTime); setRepeatEnd(null); Alert.alert("تكرار A–B", "تم تحديد النقطة A. انتقل إلى نهاية المقطع واضغط الزر مرة أخرى لتحديد B."); } else { const end = Math.max(player.currentTime, repeatStart + 1); setRepeatEnd(end); Alert.alert("تكرار A–B", `سيُكرر المشغل المقطع بين ${formatDuration(repeatStart)} و${formatDuration(end)}.`); } };
@@ -425,12 +514,30 @@ export default function VideoPlayerScreen() {
       setIsCapturingFrame(false);
     }
   };
+  const selectEmbeddedSubtitle = (track: SubtitleTrack | null) => {
+    try {
+      player.subtitleTrack = track;
+      setEmbeddedSubtitleId(track?.id ?? null);
+      setSubtitleEnabled(Boolean(track) || Boolean(subtitleTrack));
+    } catch {
+      Alert.alert("تعذر اختيار الترجمة", "لا يدعم Android مسار الترجمة المحدد لهذا الفيديو.");
+    }
+  };
+  const retryCurrentVideo = () => {
+    if (!currentVideoUri) return;
+    setPlaybackError(null);
+    void player.replaceAsync({ uri: currentVideoUri }).then(() => {
+      player.play();
+      setIsPlaying(true);
+    }).catch(() => setPlaybackError("تعذر إعادة تشغيل الفيديو. جرّب ملفاً بترميز مدعوم من جهازك."));
+  };
   const importSubtitleFile = async () => { try { const result = await DocumentPicker.getDocumentAsync({ type: "*/*", multiple: false, copyToCacheDirectory: true }); if (result.canceled) return; const asset = result.assets[0]; if (!supportsSubtitleImport(asset.name)) { Alert.alert("صيغة ترجمة غير مدعومة", "اختر ملف ترجمة نصياً من صيغ SRT أو VTT أو ASS أو SSA أو SAMI أو SUB أو MPL أو PJS أو TXT."); return; } const content = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 }); const cues = parseSubtitleFile(content, asset.name); const extension = asset.name.split(".").pop()?.toUpperCase() ?? "SUB"; const track: LocalSubtitleTrack = { targetLanguage: `ملف ${extension}`, detectedLanguage: "ترجمة محلية", createdAt: Date.now(), cues }; await saveLocalSubtitles(currentItem.id, track); setSubtitleTrack(track); setSubtitleEnabled(true); Alert.alert("تم استيراد الترجمة", `أُضيفت ${cues.length} أسطر من ملف ${asset.name}.`); } catch (error) { const message = error instanceof Error ? error.message : "تعذر قراءة ملف الترجمة."; Alert.alert("تعذر استيراد الترجمة", message); } };
   const generateTranslation = async () => { try { const videoBase64 = await readVideoForTranslation(currentItem.uri); const generated = await translateMutation.mutateAsync({ videoBase64, targetLanguage }); const track: LocalSubtitleTrack = { ...generated, createdAt: Date.now() }; await saveLocalSubtitles(currentItem.id, track); setSubtitleTrack(track); setSubtitleEnabled(true); setTranslationOpen(false); Alert.alert("تم إنشاء الترجمة", `حُفظت ${track.cues.length} أسطر باللغة ${targetLanguage} داخل REMO PLAYER.`); } catch (error) { const message = error instanceof Error ? error.message : "تعذّر إنشاء الترجمة حالياً."; Alert.alert("تعذرت الترجمة", message); } };
   const displayIcon = (mode: DisplayMode): keyof typeof MaterialIcons.glyphMap => mode === "hdr" ? "hdr-on" : mode === "cinematic" ? "movie-filter" : mode === "quality" ? "high-quality" : "auto-awesome";
   const topActions: { icon: keyof typeof MaterialIcons.glyphMap; label: string; active?: boolean; onPress: () => void }[] = [
     ...displayModes.map((mode) => ({ icon: displayIcon(mode.id), label: mode.label, active: displayMode === mode.id, onPress: () => chooseMode(mode.id) })),
     { icon: "translate", label: "ترجمة", active: Boolean(subtitleTrack), onPress: () => setTranslationOpen(true) },
+    { icon: "subtitles", label: "مسارات", active: Boolean(embeddedSubtitleId), onPress: () => setSubtitlePanelOpen(true) },
     { icon: "subtitles", label: "استيراد", onPress: () => void importSubtitleFile() },
     { icon: "content-cut", label: "تحرير", onPress: () => router.push("/player/edit-video" as never) },
     { icon: "picture-in-picture-alt", label: "نافذة", onPress: () => void openPip() },
@@ -444,15 +551,18 @@ export default function VideoPlayerScreen() {
         <View onLayout={(event) => { const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout; if (nextWidth > 0 && nextHeight > 0) setSurfaceSize({ width: nextWidth, height: nextHeight }); }} style={[styles.mediaSurface, isLandscape && styles.landscapeSurface]}>
         <View style={[styles.videoContainer, { overflow: "hidden" }, frameStyle, mirrored && styles.mirrored]}><VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} contentPosition={{ dx: 0, dy: 0 }} surfaceType="textureView" useExoShutter={false} /></View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
+        <Pressable onPress={exitVideo} style={styles.persistentBack} accessibilityLabel="العودة إلى مجلد الفيديو"><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable>
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
-        {localBrightness < 1 ? <View pointerEvents="none" style={[styles.localBrightnessOverlay, { opacity: (1 - localBrightness) * 0.72 }]} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={styles.subtitleOverlay}><Text style={styles.subtitleText}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.volumeMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(volume * 100)}%` }]} /></View><MaterialIcons name="volume-up" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>الصوت: {Math.round(volume * 100)}%</Text></View></> : null}
         {brightnessHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(localBrightness * 100)}%` }]} /></View><MaterialIcons name="brightness-high" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>السطوع داخل المشغل: {Math.round(localBrightness * 100)}%</Text></View></> : null}
         {temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
+        {speedHud && !temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 130, minHeight: 45, paddingHorizontal: 14 }]}><Text style={styles.volumeText}>السرعة {speed}×</Text></View> : null}
+        {playbackError ? <View style={styles.playbackError}><MaterialIcons name="error-outline" size={24} color="#FECACA" /><Text style={styles.playbackErrorText}>{playbackError}</Text><Pressable onPress={retryCurrentVideo} style={styles.retryButton}><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.centerTransport} pointerEvents="box-none"><Pressable onPress={exitVideo} style={styles.centerBack} accessibilityLabel="العودة إلى مجلدات الفيديو"><MaterialIcons name="folder-open" size={23} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.centerControl} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={31} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={[styles.centerControl, styles.centerPlay]} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={colors.background} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.centerControl} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={31} color={colors.text} /></Pressable></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" onTouchStart={revealControls}><View style={styles.controlDock}><View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(player.currentTime)}</Text><View {...progressResponder.panHandlers} onLayout={(event) => { progressTrackWidth.current = event.nativeEvent.layout.width; }} style={playerOverlayStyles.progressTouch}><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /><View style={[playerOverlayStyles.progressThumb, { left: `${Math.max(0, Math.min(100, progress))}%` }]} /></View></View><Text style={styles.time}>{formatDuration(player.duration || currentItem.duration)}</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickIcons}><Pressable onPress={exitVideo} style={styles.quickIcon} accessibilityLabel="العودة للفيديوهات"><MaterialIcons name="arrow-forward" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(-10)} style={styles.quickIcon} accessibilityLabel="تأخير عشر ثوان"><MaterialIcons name="replay-10" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.quickIcon} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={22} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={styles.quickIcon} accessibilityLabel="تقديم عشر ثوان"><MaterialIcons name="forward-10" size={20} color={colors.text} /></Pressable>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}<Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={rotateVideo} style={styles.quickIcon}><MaterialIcons name="screen-rotation" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={() => void openPip()} style={styles.quickIcon}><MaterialIcons name="picture-in-picture-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></ScrollView></View></View></View> : null}
         {fitPanelOpen && !controlsLocked ? <View style={styles.fitPanel}><View style={styles.fitPanelHeader}><Pressable onPress={() => setFitPanelOpen(false)} style={styles.fitPanelClose}><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>الشاشة</Text></View><Text style={styles.fitPanelLabel}>طريقة العرض</Text><View style={styles.fitModeRow}>{fitModes.map((mode) => <Pressable key={mode.id} onPress={() => setVideoFit(mode.id)} style={[styles.fitModeButton, videoFit === mode.id && styles.fitModeButtonActive]}><MaterialIcons name={mode.icon} size={24} color={videoFit === mode.id ? colors.background : colors.text} /><Text style={[styles.fitModeText, videoFit === mode.id && styles.fitModeTextActive]}>{mode.label}</Text></Pressable>)}</View><Text style={styles.fitPanelLabel}>قياسي</Text><View style={styles.frameAspectRow}>{frameAspects.map((aspect) => <Pressable key={aspect.id} onPress={() => setSelectedFrameAspect(aspect.id)} style={[styles.frameAspectButton, frameAspect === aspect.id && styles.frameAspectButtonActive]}><Text style={[styles.frameAspectText, frameAspect === aspect.id && styles.frameAspectTextActive]}>{aspect.label}</Text></Pressable>)}</View></View> : null}
+        {subtitlePanelOpen ? <View style={styles.subtitlePanel}><View style={styles.fitPanelHeader}><Pressable onPress={() => setSubtitlePanelOpen(false)} style={styles.fitPanelClose}><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>مسارات الترجمة</Text></View><Pressable onPress={() => selectEmbeddedSubtitle(null)} style={[styles.subtitleOption, embeddedSubtitleId === null && styles.subtitleOptionActive]}><Text style={[styles.subtitleOptionText, embeddedSubtitleId === null && styles.subtitleOptionTextActive]}>إيقاف الترجمة المضمنة</Text></Pressable>{embeddedSubtitleTracks.length ? embeddedSubtitleTracks.map((track) => <Pressable key={track.id} onPress={() => selectEmbeddedSubtitle(track)} style={[styles.subtitleOption, embeddedSubtitleId === track.id && styles.subtitleOptionActive]}><Text style={[styles.subtitleOptionText, embeddedSubtitleId === track.id && styles.subtitleOptionTextActive]}>{track.label || track.language || "مسار ترجمة"}</Text></Pressable>) : <Text style={styles.noSubtitleText}>لا يحتوي هذا الفيديو على مسارات ترجمة مضمّنة. يمكنك استيراد ملف ترجمة خارجي.</Text>}</View> : null}
         {controlsLocked ? <View style={styles.lockOverlay}><Pressable onPress={() => setControlsLocked(false)} style={styles.unlockButton}><MaterialIcons name="lock" size={24} color={colors.text} /><Text style={styles.unlockText}>المس لفك القفل</Text></Pressable></View> : null}
       </View>
       {!isLandscape && repeatEnd !== null ? <Pressable onPress={resetAb} style={styles.resetAb}><MaterialIcons name="restart-alt" size={19} color={colors.cyan} /><Text style={styles.resetAbText}>إلغاء تكرار A-B</Text></Pressable> : null}
@@ -476,6 +586,7 @@ const styles = StyleSheet.create({
   cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 },
   videoContainer: { position: "absolute" },
   gestureSurface: { ...StyleSheet.absoluteFillObject, zIndex: 1, elevation: 1 },
+  persistentBack: { position: "absolute", top: 18, right: 16, zIndex: 5, elevation: 5, width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
   mirrored: { transform: [{ scaleX: -1 }] },
   video: { width: "100%", height: "100%" },
   nightOverlay: { position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.44)" },
@@ -490,6 +601,10 @@ const styles = StyleSheet.create({
   gestureReadout: { position: "absolute", top: 20, alignSelf: "center", zIndex: 3, elevation: 3, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "rgba(0,0,0,0.70)" },
   gestureReadoutText: { color: colors.text, fontSize: 16, fontWeight: "900" },
   temporarySpeedHud: { position: "absolute", alignSelf: "center", zIndex: 3, elevation: 3, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center" },
+  playbackError: { position: "absolute", zIndex: 6, elevation: 6, left: 20, right: 20, alignSelf: "center", top: "36%", padding: 17, borderRadius: 18, backgroundColor: "rgba(69, 10, 10, 0.96)", borderWidth: 1, borderColor: "#F87171", alignItems: "center", gap: 10 },
+  playbackErrorText: { color: "#FEF2F2", fontSize: 13, lineHeight: 20, fontWeight: "800", textAlign: "center" },
+  retryButton: { minHeight: 38, paddingHorizontal: 16, borderRadius: 12, backgroundColor: "#FECACA", alignItems: "center", justifyContent: "center" },
+  retryText: { color: "#7F1D1D", fontSize: 12, fontWeight: "900" },
   volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" },
   centerTransport: { position: "absolute", top: "43%", alignSelf: "center", zIndex: 3, elevation: 3, flexDirection: "row-reverse", alignItems: "center", gap: 12 },
   centerControl: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
@@ -498,6 +613,12 @@ const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, zIndex: 2, elevation: 2, justifyContent: "flex-end", backgroundColor: "rgba(0, 8, 15, 0.18)", paddingVertical: 10 },
   controlDock: { marginHorizontal: 10, padding: 9, borderRadius: 18, backgroundColor: "rgba(5, 13, 24, 0.90)", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
   fitPanel: { position: "absolute", zIndex: 4, elevation: 4, left: 12, right: 12, top: 44, padding: 14, borderRadius: 18, backgroundColor: "rgba(7,15,27,0.96)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
+  subtitlePanel: { position: "absolute", zIndex: 7, elevation: 7, left: 12, right: 12, top: 72, padding: 14, borderRadius: 18, backgroundColor: "rgba(7,15,27,0.98)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)", gap: 8 },
+  subtitleOption: { minHeight: 42, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.08)", paddingHorizontal: 12, alignItems: "flex-end", justifyContent: "center" },
+  subtitleOptionActive: { backgroundColor: colors.cyan },
+  subtitleOptionText: { color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "right" },
+  subtitleOptionTextActive: { color: colors.background },
+  noSubtitleText: { color: colors.muted, fontSize: 12, lineHeight: 19, textAlign: "right", paddingVertical: 7 },
   fitPanelHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   fitPanelClose: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" },
   fitPanelTitle: { color: colors.text, fontSize: 17, fontWeight: "900", textAlign: "right" },

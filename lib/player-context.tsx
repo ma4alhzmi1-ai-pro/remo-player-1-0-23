@@ -3,7 +3,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Alert, AppState, Platform } from "react-native";
 
 import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
+import { loadEqualizerSettings } from "@/lib/equalizer-storage";
 import { resolveMediaSessionPolicy } from "@/lib/media-session-policy";
+import { applyNativeAudioEffects } from "@/lib/native-audio-controls";
 import { useLibrary } from "@/lib/library-context";
 import { buildPlaybackQueue, nextQueueItem, previousQueueItem } from "@/lib/playback-queue";
 import type { MediaItem } from "@/types/media";
@@ -192,6 +194,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setDuration(item.duration);
       player.play();
       setIsPlaying(true);
+      // تؤجل قليلاً حتى ينشئ ExoPlayer معرّف جلسة الصوت، ثم تطبق منحنيات
+      // المعادل على موسيقى REMO PLAYER الفعلية فقط، لا على مشغل الفيديو.
+      setTimeout(() => {
+        void loadEqualizerSettings().then((settings) => applyNativeAudioEffects(settings));
+      }, 260);
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
