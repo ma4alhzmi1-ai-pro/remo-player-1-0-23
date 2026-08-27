@@ -126,10 +126,11 @@ public class KeyboardSettingsActivity extends Activity {
             addAction(root, "حجم خط المفاتيح", "قياسي", () -> showPanel(Panel.HEIGHT));
         } else if (panel == Panel.TRANSLATION) {
             addToggle(root, "تفعيل الترجمة", "الترجمة غير مفعلة", "translation_enabled", false);
-            addAction(root, "الترجمة من", "العربية", () -> selectValue("translation_from", "العربية"));
-            addAction(root, "الترجمة إلى", "الإنجليزية", () -> selectValue("translation_to", "الإنجليزية"));
+            boolean arEn = !"en_ar".equals(preferences.getString("translation_direction", "ar_en"));
+            addChoice(root, "العربية ← الإنجليزية", "ترجمة محلية للعبارات والكلمات الشائعة", arEn, () -> chooseTranslationDirection("ar_en"));
+            addChoice(root, "الإنجليزية ← العربية", "ترجمة محلية للعبارات والكلمات الشائعة", !arEn, () -> chooseTranslationDirection("en_ar"));
             addToggle(root, "الترجمة التلقائية", "تفعيل الترجمة التلقائية بعد نسخ النص", "auto_translate", false);
-            addAction(root, "طريقة استخدام الترجمة", "اضغط زر الترجمة من شريط أدوات الكيبورد", () -> Toast.makeText(this, "انسخ النص ثم اضغط زر الترجمة في الكيبورد", Toast.LENGTH_LONG).show());
+            addAction(root, "طريقة استخدام الترجمة", "حدّد النص أو ضع المؤشر بعد كلمة ثم اضغط زر 文", () -> Toast.makeText(this, "تظهر المعاينة أولًا، ثم اختر إدراج الترجمة", Toast.LENGTH_LONG).show());
         } else if (panel == Panel.APPEARANCE) {
             addAppearance(root);
         } else if (panel == Panel.WRITING) {
@@ -186,7 +187,7 @@ public class KeyboardSettingsActivity extends Activity {
             addAction(root, "استيراد نسخة احتياطية", "استعادة بيانات محفوظة", () -> Toast.makeText(this, "لا توجد نسخة احتياطية محددة", Toast.LENGTH_SHORT).show());
         } else if (panel == Panel.ABOUT) {
             addSection(root, "حول ريموكيبورد");
-            addAction(root, "إصدار التطبيق", "ريموكيبورد مزخرف 1.0.6", () -> {});
+            addAction(root, "إصدار التطبيق", "ريموكيبورد مزخرف 1.0.7", () -> {});
             addAction(root, "التحقق من التحديث", "فتح صفحة الإصدارات", () -> openExternalUrl("https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases"));
             addAction(root, "عن المطور", "محمد الحزمي", () -> openExternalUrl("https://t.me/moh_alymani1"));
             addAction(root, "سياسة الخصوصية", "خصوصية الحافظة والصوت والروابط", () -> Toast.makeText(this, "تظل بيانات الحافظة محلية على الجهاز", Toast.LENGTH_LONG).show());
@@ -433,6 +434,11 @@ public class KeyboardSettingsActivity extends Activity {
         preferences.edit().putString("key_style", value).apply();
         Toast.makeText(this, "تم اختيار ستايل " + title, Toast.LENGTH_SHORT).show();
         showPanel(Panel.KEY_STYLE);
+    }
+
+    private void chooseTranslationDirection(String value) {
+        preferences.edit().putString("translation_direction", value).apply();
+        showPanel(Panel.TRANSLATION);
     }
 
     private void chooseBackgroundFromStudio() {

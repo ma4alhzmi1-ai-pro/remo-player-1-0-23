@@ -13,6 +13,7 @@ const build = read("app/build.gradle");
 const service = read("app/src/main/java/com/remokeyboard/ime/RemoInputMethodService.java");
 const keyboard = read("app/src/main/java/com/remokeyboard/ime/RemoKeyboardView.java");
 const settings = read("app/src/main/java/com/remokeyboard/ime/KeyboardSettingsActivity.java");
+const translation = read("app/src/main/java/com/remokeyboard/ime/TranslationEngine.java");
 const emojiCatalog = read("app/src/main/assets/emoji_catalog.tsv");
 
 expect(build.includes("minSdk 21"), "الحد الأدنى للبناء هو Android 5.0 (API 21)");
@@ -44,5 +45,8 @@ expect(settings.includes("كمبيوتر كلاسيكي") && settings.includes("
 const emojiFont = join(root, "app/src/main/assets/NotoColorEmoji.ttf");
 expect(existsSync(emojiFont), "يوجد خط إيموجي حديث مدمج للأجهزة القديمة");
 expect(statSync(emojiFont).size > 10_000_000, "يتضمن الخط الملون المدمج نطاق الإيموجي الحديث كاملًا");
+expect(service.includes("getSelectedTextOrCurrentWord") && service.includes("replaceSelectedTextOrCurrentWord"), "تستطيع خدمة الإدخال قراءة النص المحدد وإدراج ترجمة بديلة");
+expect(keyboard.includes("showTranslationPopup") && keyboard.includes("TranslationEngine.translate"), "يوجد مسار ترجمة يعرض المعاينة قبل إدراج النتيجة");
+expect(translation.includes("AR_TO_EN") && translation.includes("EN_TO_AR") && translation.includes("ترجمة محلية"), "يوجد محرك ترجمة محلي عربي–إنجليزي مستقل عن الشبكة");
 
 console.log("اكتمل فحص البنية الثابتة لنواة ريموكيبورد.");

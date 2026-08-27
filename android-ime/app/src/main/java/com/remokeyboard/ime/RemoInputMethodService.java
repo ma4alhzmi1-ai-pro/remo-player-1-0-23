@@ -99,6 +99,30 @@ public class RemoInputMethodService extends InputMethodService {
         return source.substring(start + 1);
     }
 
+    String getSelectedTextOrCurrentWord() {
+        InputConnection connection = getCurrentInputConnection();
+        if (connection == null) return "";
+        CharSequence selected = connection.getSelectedText(0);
+        if (selected != null && selected.length() > 0) return selected.toString();
+        return getCurrentWordBeforeCursor();
+    }
+
+    void replaceSelectedTextOrCurrentWord(String original, String replacement) {
+        InputConnection connection = getCurrentInputConnection();
+        if (connection == null || TextUtils.isEmpty(replacement)) return;
+        CharSequence selected = connection.getSelectedText(0);
+        if (selected != null && selected.length() > 0) {
+            connection.commitText(replacement, 1);
+        } else if (!TextUtils.isEmpty(original)) {
+            connection.deleteSurroundingText(original.length(), 0);
+            connection.commitText(replacement, 1);
+        } else {
+            connection.commitText(replacement, 1);
+        }
+        vibrateIfEnabled();
+        if (keyboardView != null) keyboardView.refreshSuggestions();
+    }
+
     void beginVoiceInput() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "فعّل إذن الميكروفون من إعدادات ريموكيبورد أولًا", Toast.LENGTH_LONG).show();

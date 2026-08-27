@@ -101,7 +101,7 @@ final class RemoKeyboardView extends LinearLayout {
         addTool(row, "☺", "الإيموجي الحديث", () -> setPage(Page.EMOJI));
         addTool(row, "⌕", "بحث في مكتبة الإيموجي", this::showEmojiExplorerPopup);
         addTool(row, "✦", "الملصقات", this::showStickerPopup);
-        addTool(row, "文", "الترجمة", () -> showMessage("افتح إعدادات الترجمة لتفعيلها"));
+        addTool(row, "文", "ترجمة النص المحدد أو الكلمة الحالية", this::showTranslationPopup);
         addTool(row, "▦", "الأرقام", () -> setPage(Page.NUMBERS));
         addTool(row, "⌂", "مظهر الكيبورد", () -> showMessage("غيّر المظهر من إعدادات الكيبورد"));
         addTool(row, "⚙", "إعدادات الكيبورد", service::openSettings);
@@ -344,6 +344,41 @@ final class RemoKeyboardView extends LinearLayout {
         }
         popup.setElevation(dp(8));
         popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(248));
+    }
+
+    private void showTranslationPopup() {
+        if (!preferences.getBoolean("translation_enabled", false)) {
+            showMessage("فعّل الترجمة من إعدادات الكيبورد أولًا");
+            return;
+        }
+        String source = service.getSelectedTextOrCurrentWord();
+        if (source.trim().isEmpty()) {
+            showMessage("حدّد النص أو ضع المؤشر بعد الكلمة المراد ترجمتها");
+            return;
+        }
+        boolean arabicToEnglish = !"en_ar".equals(preferences.getString("translation_direction", "ar_en"));
+        TranslationEngine.Result result = TranslationEngine.translate(source, arabicToEnglish);
+        LinearLayout panel = new LinearLayout(getContext());
+        panel.setOrientation(VERTICAL);
+        panel.setPadding(dp(11), dp(11), dp(11), dp(11));
+        panel.setBackground(rounded(palette.surface, dp(12), false));
+        TextView heading = textButton(arabicToEnglish ? "ترجمة عربية ← إنجليزية" : "ترجمة إنجليزية ← عربية", 15, palette.text, palette.surface, dp(6));
+        heading.setTypeface(Typeface.DEFAULT_BOLD);
+        panel.addView(heading, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(35)));
+        TextView original = textButton(source, 15, palette.muted, palette.key, dp(8));
+        original.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        panel.addView(original, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(48)));
+        TextView translated = textButton(result.value, 18, palette.text, palette.keySpecial, dp(8));
+        translated.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        panel.addView(translated, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(54)));
+        TextView note = textButton(result.knownTokens > 0 ? "ترجمة محلية مساعدة — راجع النتيجة قبل الإدراج" : "لا يوجد تطابق محلي كامل؛ سيبقى النص كما هو", 11, palette.muted, palette.surface, dp(6));
+        panel.addView(note, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(32)));
+        TextView insert = textButton("إدراج الترجمة", 15, palette.text, palette.accent, dp(9));
+        panel.addView(insert, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(45)));
+        PopupWindow popup = new PopupWindow(panel, dp(335), LayoutParams.WRAP_CONTENT, true);
+        insert.setOnClickListener(v -> { service.replaceSelectedTextOrCurrentWord(source, result.value); popup.dismiss(); });
+        popup.setElevation(dp(12));
+        popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(228));
     }
 
     private void showStickerPopup() {

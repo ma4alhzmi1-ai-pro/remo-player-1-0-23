@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.0.6";
+export const APP_VERSION = "1.0.7";
 export const DEVELOPER_NAME = "محمد الحزمي";
 export const DEVELOPER_COPYRIGHT = "هذا التطبيق برمجة وتطوير المطور محمد الحزمي 2026";
 export const TELEGRAM_URL = "https://t.me/moh_alymani1";
