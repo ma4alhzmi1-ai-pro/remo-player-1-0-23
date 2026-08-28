@@ -17,7 +17,11 @@ export function preferredVideoPlaybackEngine(uriOrName: string): VideoPlaybackEn
 export function shouldUseLibVlcFallback(errorMessage: string | null | undefined): boolean {
   if (!errorMessage) return false;
   const normalized = errorMessage.toLowerCase();
-  return ["decoder", "codec", "unsupported", "source", "extractor", "format", "render"].some((keyword) => normalized.includes(keyword));
+  return [
+    "decoder", "codec", "unsupported", "source", "extractor", "format", "render",
+    "renderer", "parsing", "malformed", "initialization", "load error", "source error",
+    "media period", "track", "read error",
+  ].some((keyword) => normalized.includes(keyword));
 }
 
 export function isCompatibilityPlaybackEngine(engine: VideoPlaybackEngine): boolean {
