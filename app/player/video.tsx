@@ -26,7 +26,7 @@ import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
 import { resolveSafeVideoSeek } from "@/lib/video-seek";
 import { shouldPauseVideoForBackground } from "@/lib/video-background-policy";
-import { preferredVideoPlaybackEngine, shouldUseLibVlcFallback, type VideoPlaybackEngine } from "@/lib/video-engine";
+import { preferredVideoPlaybackEngine, shouldAdvanceAfterCompatibilityStop, shouldUseLibVlcFallback, type VideoPlaybackEngine } from "@/lib/video-engine";
 import { resolveFixedFrameLayout, resolveSourceAspect, resolveVideoContentFit, type FrameAspect, type VideoFitMode } from "@/lib/video-display-settings";
 import type { MediaItem } from "@/types/media";
 
@@ -88,6 +88,7 @@ export default function VideoPlayerScreen() {
   const lastVolumeUpdateRef = useRef(0);
   const pipActiveOrRequestedRef = useRef(false);
   const compatibilityErrorRef = useRef(false);
+  const compatibilityStartedRef = useRef(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("auto");
   const [isSharing, setIsSharing] = useState(false);
   const [isCapturingFrame, setIsCapturingFrame] = useState(false);
@@ -234,6 +235,7 @@ export default function VideoPlayerScreen() {
     const loadForegroundVideo = async () => {
       const preferredEngine = preferredVideoPlaybackEngine(currentVideoUri);
       compatibilityErrorRef.current = false;
+      compatibilityStartedRef.current = false;
       setPlaybackEngine(preferredEngine);
       setVlcTime(0);
       setVlcDuration(0);
@@ -646,6 +648,7 @@ export default function VideoPlayerScreen() {
   };
   const handleCompatibilityFirstPlay = (info: LibVlcMediaInfo) => {
     compatibilityErrorRef.current = false;
+    compatibilityStartedRef.current = true;
     setVlcDuration(Math.max(0, info.length / 1000));
     setSourceAspect(resolveSourceAspect(info.width, info.height));
     setPlaybackError(null);
@@ -653,7 +656,13 @@ export default function VideoPlayerScreen() {
   };
   const handleCompatibilityStopped = () => {
     setIsPlaying(false);
-    if (compatibilityErrorRef.current || isNavigatingVideoRef.current || repeatMode === "one" || isAutoAdvancingRef.current) return;
+    if (!shouldAdvanceAfterCompatibilityStop({
+      hasStarted: compatibilityStartedRef.current,
+      hasError: compatibilityErrorRef.current,
+      isNavigating: isNavigatingVideoRef.current,
+      isRepeatingOne: repeatMode === "one",
+      isAutoAdvancing: isAutoAdvancingRef.current,
+    })) return;
     isAutoAdvancingRef.current = true;
     void playNext(repeatMode === "all").then((advanced) => {
       if (!advanced) setIsPlaying(false);
@@ -661,6 +670,7 @@ export default function VideoPlayerScreen() {
   };
   const handleCompatibilityError = (message: string) => {
     compatibilityErrorRef.current = true;
+    compatibilityStartedRef.current = false;
     setIsPlaying(false);
     setPlaybackError(`تعذر على محرك التوافق فتح هذا الفيديو: ${message}. قد يكون امتداداً خاصاً بجهاز التسجيل أو ملفاً تالفاً.`);
   };
@@ -668,6 +678,8 @@ export default function VideoPlayerScreen() {
     if (!currentVideoUri) return;
     setPlaybackError(null);
     if (usingCompatibilityEngine) {
+      compatibilityErrorRef.current = false;
+      compatibilityStartedRef.current = false;
       setCompatibilityAttempt((attempt) => attempt + 1);
       return;
     }
