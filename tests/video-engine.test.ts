@@ -18,4 +18,10 @@ describe("video playback engine selection", () => {
     expect(shouldUseLibVlcFallback("Unsupported container format")).toBe(true);
     expect(shouldUseLibVlcFallback("Network is slow")).toBe(false);
   });
+
+  it("falls back for parser and renderer failures reported asynchronously", () => {
+    expect(shouldUseLibVlcFallback("Unable to parse malformed media source")).toBe(true);
+    expect(shouldUseLibVlcFallback("Video renderer initialization failed")).toBe(true);
+    expect(shouldUseLibVlcFallback("Media period failed to load track")).toBe(true);
+  });
 });
