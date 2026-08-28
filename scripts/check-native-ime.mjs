@@ -50,7 +50,8 @@ expect(statSync(emojiFont).size > 10_000_000, "يتضمن الخط الملون 
 expect(service.includes("getSelectedTextOrCurrentWord") && service.includes("replaceSelectedTextOrCurrentWord"), "تستطيع خدمة الإدخال قراءة النص المحدد وإدراج ترجمة بديلة");
 expect(keyboard.includes("showTranslationPopup") && keyboard.includes("TranslationEngine.translate"), "يوجد مسار ترجمة يعرض المعاينة قبل إدراج النتيجة");
 expect(translation.includes("AR_TO_EN") && translation.includes("EN_TO_AR") && translation.includes("ترجمة محلية"), "يوجد محرك ترجمة محلي عربي–إنجليزي مستقل عن الشبكة");
-expect(keyboard.includes("desktopFunctionRow") && keyboard.includes("\"Esc\", \"Tab\", \"←\", \"→\", \"↑\", \"↓\""), "يتضمن ستايل الكمبيوتر صف وظائف وأسهم واضحًا");
-expect(service.includes("sendDesktopKey") && keyboard.includes("KEYCODE_TAB") && keyboard.includes("KEYCODE_DPAD_LEFT"), "تُرسل مفاتيح Tab والأسهم كأحداث إدخال حقيقية");
+expect(keyboard.includes("desktopFunctionRow") && keyboard.includes("\"Esc\", \"F1\", \"F2\""), "يتضمن ستايل الكمبيوتر صف Esc وF1–F12 واضحًا");
+expect(keyboard.includes("desktopModifierRow") && keyboard.includes("\"Tab\", \"Ctrl\", \"Alt\", \"Win\"") && keyboard.includes("\"Shift\"") && keyboard.includes("\"Backspace\""), "يتضمن ستايل الكمبيوتر مفاتيح Tab وCtrl وAlt وShift وBackspace");
+expect(service.includes("sendDesktopKey") && keyboard.includes("KEYCODE_TAB") && keyboard.includes("KEYCODE_DPAD_LEFT") && keyboard.includes("KEYCODE_F12") && keyboard.includes("META_CTRL_ON"), "تُرسل مفاتيح الوظائف والتحكم والتنقل كأحداث إدخال حقيقية");
 
 console.log("اكتمل فحص البنية الثابتة لنواة ريموكيبورد.");

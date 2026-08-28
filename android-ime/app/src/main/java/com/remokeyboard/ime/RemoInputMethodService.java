@@ -77,10 +77,14 @@ public class RemoInputMethodService extends InputMethodService {
     }
 
     void sendDesktopKey(int keyCode) {
+        sendDesktopKey(keyCode, 0);
+    }
+
+    void sendDesktopKey(int keyCode, int metaState) {
         InputConnection connection = getCurrentInputConnection();
         if (connection == null) return;
-        connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, keyCode));
-        connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, keyCode));
+        connection.sendKeyEvent(new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, keyCode, 0, metaState));
+        connection.sendKeyEvent(new KeyEvent(0, 0, KeyEvent.ACTION_UP, keyCode, 0, metaState));
         vibrateIfEnabled();
     }
 

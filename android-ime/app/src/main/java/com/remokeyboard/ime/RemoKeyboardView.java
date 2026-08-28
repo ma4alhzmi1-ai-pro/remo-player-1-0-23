@@ -48,6 +48,10 @@ final class RemoKeyboardView extends LinearLayout {
     private Page page = Page.ARABIC;
     private KeyboardPalette palette;
     private boolean englishCaps = false;
+    private boolean desktopCtrl = false;
+    private boolean desktopAlt = false;
+    private boolean desktopMeta = false;
+    private boolean desktopShift = false;
     private String emojiGroupFilter = "";
 
     RemoKeyboardView(Context context, RemoInputMethodService service, SharedPreferences preferences) {
@@ -137,13 +141,16 @@ final class RemoKeyboardView extends LinearLayout {
     private void renderKeys() {
         rebuildPalette();
         keyArea.removeAllViews();
-        if (isDesktopClassic()) desktopFunctionRow();
+        if (isDesktopClassic()) {
+            desktopFunctionRow();
+            desktopModifierRow();
+        }
         if (page == Page.ARABIC) {
             if (isDesktopClassic()) row(numberRow());
             row(isDesktopClassic() ? new String[]{"ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"} : new String[]{"١\nض", "٢\nص", "٣\nث", "٤\nق", "٥\nف", "٦\nغ", "٧\nع", "٨\nه", "٩\nخ", "٠\nح", "$\nج"});
             row(isDesktopClassic() ? new String[]{"ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ط"} : new String[]{"~\nش", "@\nس", "^\nي", "•\nب", "ل", "ا", "ت", "ن", "م", "ك", "ط"});
-            rowWeighted(isDesktopClassic() ? new String[]{"⇧", "ئ", "ء", "ؤ", "ر", "لا", "ى", "ة", "و", "ز", "ظ", "⌫"} : new String[]{"⇧", "ء\nئ", "؟\nؤ", "+\nر", "−\nلا", "(\nى", ")\nة", "`\nو", "⌫"}, isDesktopClassic() ? new float[]{1.45f,1f,1f,1f,1f,1f,1f,1f,1f,1f,1f,1.65f} : null);
-            bottomRow("◉\n123", "☺", "/", "◀ العربية ▶", "▣", ".", "تنفيذ");
+            rowWeighted(isDesktopClassic() ? new String[]{"Shift", "ئ", "ء", "ؤ", "ر", "لا", "ى", "ة", "و", "ز", "ظ", "Backspace"} : new String[]{"⇧", "ء\nئ", "؟\nؤ", "+\nر", "−\nلا", "(\nى", ")\nة", "`\nو", "⌫"}, isDesktopClassic() ? new float[]{1.45f,1f,1f,1f,1f,1f,1f,1f,1f,1f,1f,1.65f} : null);
+            bottomRow("◉\n123", "☺", "/", "◀ العربية ▶", "▣", ".", isDesktopClassic() ? "Enter" : "تنفيذ");
         } else if (page == Page.ENGLISH) {
             if (isDesktopClassic()) row(numberRow());
             row(letterCase(new String[]{"1\nq", "2\nw", "3\ne", "4\nr", "5\nt", "6\ny", "7\nu", "8\ni", "9\no", "0\np"}));
@@ -270,8 +277,19 @@ final class RemoKeyboardView extends LinearLayout {
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(35));
         rowParams.setMargins(0, dp(2), 0, dp(2));
         keyArea.addView(row, rowParams);
-        String[] functions = {"Esc", "Tab", "←", "→", "↑", "↓", "⌕", "文", "▣", "⚙"};
+        String[] functions = {"Esc", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"};
         for (String value : functions) addKey(row, value, 1f);
+    }
+
+    private void desktopModifierRow() {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setGravity(Gravity.CENTER);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(35));
+        rowParams.setMargins(0, dp(2), 0, dp(2));
+        keyArea.addView(row, rowParams);
+        String[] modifiers = {"Tab", "Ctrl", "Alt", "Win", "Insert", "Home", "End", "PgUp", "PgDn", "Print", "Pause", "⌕", "文", "▣", "⚙"};
+        for (String value : modifiers) addKey(row, value, value.length() > 4 ? 1.15f : 1f);
     }
 
     private void bottomRow(String first, String emoji, String slash, String language, String clipboard, String dot, String enter) {
@@ -292,7 +310,7 @@ final class RemoKeyboardView extends LinearLayout {
 
     private void addKey(LinearLayout row, String label, float weight) {
         String primary = primaryKey(label);
-        boolean special = primary.equals("⌫") || primary.equals("تنفيذ") || primary.startsWith("◀") || primary.equals("⇧") || primary.equals("▣") || primary.equals("123") || primary.equals("#+=") || primary.equals("ABC");
+        boolean special = primary.equals("⌫") || primary.equals("Backspace") || primary.equals("تنفيذ") || primary.equals("Enter") || primary.startsWith("◀") || primary.equals("⇧") || primary.equals("Shift") || primary.equals("▣") || primary.equals("123") || primary.equals("#+=") || primary.equals("ABC") || isDesktopControl(primary);
         TextView key = textButton(label, label.contains("\n") ? 21 : (label.length() > 8 ? 13 : 20), palette.text, special ? palette.keySpecial : palette.key, dp(8));
         key.setTypeface(Typeface.create("sans", special ? Typeface.BOLD : Typeface.NORMAL));
         key.setGravity(Gravity.CENTER);
@@ -311,8 +329,8 @@ final class RemoKeyboardView extends LinearLayout {
     }
 
     private void handleKey(String label) {
-        if (label.equals("⌫")) { service.deleteBeforeCursor(); return; }
-        if (label.equals("تنفيذ")) { service.sendEnterOrNext(); return; }
+        if (label.equals("⌫") || label.equals("Backspace")) { service.deleteBeforeCursor(); return; }
+        if (label.equals("تنفيذ") || label.equals("Enter")) { service.sendEnterOrNext(); return; }
         if (label.equals("▣")) { showClipboardPopup(); return; }
         if (label.equals("☺")) { setPage(Page.EMOJI); return; }
         if (label.equals("ABC")) { setPage(Page.ARABIC); return; }
@@ -321,17 +339,88 @@ final class RemoKeyboardView extends LinearLayout {
         if (label.equals("#+=")) { setPage(Page.SYMBOLS); return; }
         if (label.equals("ALT")) { setPage(Page.SYMBOLS); return; }
         if (label.startsWith("◀")) { setPage(page == Page.ARABIC ? Page.ENGLISH : Page.ARABIC); return; }
-        if (label.equals("⇧")) { englishCaps = !englishCaps; renderKeys(); return; }
+        if (label.equals("⇧") || label.equals("Shift")) { desktopShift = isDesktopClassic() ? !desktopShift : false; englishCaps = isDesktopClassic() ? desktopShift : !englishCaps; renderKeys(); return; }
+        if (isDesktopModifier(label)) { toggleDesktopModifier(label); return; }
         if (label.equals("Esc")) { service.sendDesktopKey(KeyEvent.KEYCODE_ESCAPE); return; }
         if (label.equals("Tab")) { service.sendDesktopKey(KeyEvent.KEYCODE_TAB); return; }
         if (label.equals("←")) { service.sendDesktopKey(KeyEvent.KEYCODE_DPAD_LEFT); return; }
         if (label.equals("→")) { service.sendDesktopKey(KeyEvent.KEYCODE_DPAD_RIGHT); return; }
         if (label.equals("↑")) { service.sendDesktopKey(KeyEvent.KEYCODE_DPAD_UP); return; }
         if (label.equals("↓")) { service.sendDesktopKey(KeyEvent.KEYCODE_DPAD_DOWN); return; }
+        if (label.equals("Insert")) { service.sendDesktopKey(KeyEvent.KEYCODE_INSERT); return; }
+        if (label.equals("Home")) { service.sendDesktopKey(KeyEvent.KEYCODE_MOVE_HOME); return; }
+        if (label.equals("End")) { service.sendDesktopKey(KeyEvent.KEYCODE_MOVE_END); return; }
+        if (label.equals("PgUp")) { service.sendDesktopKey(KeyEvent.KEYCODE_PAGE_UP); return; }
+        if (label.equals("PgDn")) { service.sendDesktopKey(KeyEvent.KEYCODE_PAGE_DOWN); return; }
+        if (label.equals("Print")) { service.sendDesktopKey(KeyEvent.KEYCODE_SYSRQ); return; }
+        if (label.equals("Pause")) { service.sendDesktopKey(KeyEvent.KEYCODE_BREAK); return; }
+        if (label.matches("F([1-9]|1[0-2])")) { service.sendDesktopKey(desktopFunctionKeyCode(label)); return; }
+        if (sendDesktopCharacter(label)) return;
         if (label.equals("⌕")) { showEmojiExplorerPopup(); return; }
         if (label.equals("文")) { showTranslationPopup(); return; }
         if (label.equals("⚙")) { service.openSettings(); return; }
         service.commitText(label);
+    }
+
+    private boolean isDesktopControl(String label) {
+        return label.equals("Esc") || label.matches("F([1-9]|1[0-2])") || label.equals("Tab") || label.equals("Ctrl") || label.equals("Alt") || label.equals("Win") || label.equals("Ins") || label.equals("Home") || label.equals("End") || label.equals("PgUp") || label.equals("PgDn") || label.equals("Print") || label.equals("Pause") || label.equals("Shift") || label.equals("←") || label.equals("→") || label.equals("↑") || label.equals("↓");
+    }
+
+    private boolean isDesktopModifier(String label) {
+        return isDesktopClassic() && (label.equals("Ctrl") || label.equals("Alt") || label.equals("Win"));
+    }
+
+    private void toggleDesktopModifier(String label) {
+        if (label.equals("Ctrl")) desktopCtrl = !desktopCtrl;
+        if (label.equals("Alt")) desktopAlt = !desktopAlt;
+        if (label.equals("Win")) desktopMeta = !desktopMeta;
+        renderKeys();
+    }
+
+    private boolean sendDesktopCharacter(String label) {
+        if (!isDesktopClassic() || (!desktopCtrl && !desktopAlt && !desktopMeta)) return false;
+        String value = primaryKey(label).toLowerCase(java.util.Locale.US);
+        int keyCode = desktopKeyCode(value);
+        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) return false;
+        int meta = 0;
+        if (desktopCtrl) meta |= KeyEvent.META_CTRL_ON;
+        if (desktopAlt) meta |= KeyEvent.META_ALT_ON;
+        if (desktopMeta) meta |= KeyEvent.META_META_ON;
+        if (desktopShift) meta |= KeyEvent.META_SHIFT_ON;
+        service.sendDesktopKey(keyCode, meta);
+        desktopCtrl = false;
+        desktopAlt = false;
+        desktopMeta = false;
+        desktopShift = false;
+        englishCaps = false;
+        renderKeys();
+        return true;
+    }
+
+    private int desktopFunctionKeyCode(String value) {
+        switch (value) {
+            case "F1": return KeyEvent.KEYCODE_F1; case "F2": return KeyEvent.KEYCODE_F2; case "F3": return KeyEvent.KEYCODE_F3;
+            case "F4": return KeyEvent.KEYCODE_F4; case "F5": return KeyEvent.KEYCODE_F5; case "F6": return KeyEvent.KEYCODE_F6;
+            case "F7": return KeyEvent.KEYCODE_F7; case "F8": return KeyEvent.KEYCODE_F8; case "F9": return KeyEvent.KEYCODE_F9;
+            case "F10": return KeyEvent.KEYCODE_F10; case "F11": return KeyEvent.KEYCODE_F11; case "F12": return KeyEvent.KEYCODE_F12;
+            default: return KeyEvent.KEYCODE_UNKNOWN;
+        }
+    }
+
+    private int desktopKeyCode(String value) {
+        switch (value) {
+            case "a": return KeyEvent.KEYCODE_A; case "b": return KeyEvent.KEYCODE_B; case "c": return KeyEvent.KEYCODE_C; case "d": return KeyEvent.KEYCODE_D;
+            case "e": return KeyEvent.KEYCODE_E; case "f": return KeyEvent.KEYCODE_F; case "g": return KeyEvent.KEYCODE_G; case "h": return KeyEvent.KEYCODE_H;
+            case "i": return KeyEvent.KEYCODE_I; case "j": return KeyEvent.KEYCODE_J; case "k": return KeyEvent.KEYCODE_K; case "l": return KeyEvent.KEYCODE_L;
+            case "m": return KeyEvent.KEYCODE_M; case "n": return KeyEvent.KEYCODE_N; case "o": return KeyEvent.KEYCODE_O; case "p": return KeyEvent.KEYCODE_P;
+            case "q": return KeyEvent.KEYCODE_Q; case "r": return KeyEvent.KEYCODE_R; case "s": return KeyEvent.KEYCODE_S; case "t": return KeyEvent.KEYCODE_T;
+            case "u": return KeyEvent.KEYCODE_U; case "v": return KeyEvent.KEYCODE_V; case "w": return KeyEvent.KEYCODE_W; case "x": return KeyEvent.KEYCODE_X;
+            case "y": return KeyEvent.KEYCODE_Y; case "z": return KeyEvent.KEYCODE_Z;
+            case "0": return KeyEvent.KEYCODE_0; case "1": return KeyEvent.KEYCODE_1; case "2": return KeyEvent.KEYCODE_2; case "3": return KeyEvent.KEYCODE_3;
+            case "4": return KeyEvent.KEYCODE_4; case "5": return KeyEvent.KEYCODE_5; case "6": return KeyEvent.KEYCODE_6; case "7": return KeyEvent.KEYCODE_7;
+            case "8": return KeyEvent.KEYCODE_8; case "9": return KeyEvent.KEYCODE_9;
+            default: return KeyEvent.KEYCODE_UNKNOWN;
+        }
     }
 
     private void setPage(Page target) {
