@@ -47,6 +47,21 @@ jobs:
           EXPO_NO_TELEMETRY: "1"
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Repair Android NDK package
+        run: |
+          set -euo pipefail
+          ndk_version="27.1.12297006"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          sdkmanager="${sdk_root}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager" ]; then
+            sdkmanager="$(find "${sdk_root}/cmdline-tools" -name sdkmanager -type f | head -n 1)"
+          fi
+          test -x "$sdkmanager"
+          rm -rf "${sdk_root}/ndk/${ndk_version}"
+          yes | "$sdkmanager" --licenses >/dev/null || true
+          "$sdkmanager" --install "ndk;${ndk_version}"
+
       - name: Build standalone release APK
         working-directory: android
         run: ./gradlew app:assembleRelease --no-daemon --stacktrace
