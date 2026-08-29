@@ -3,6 +3,7 @@ package com.remokeyboard.ime;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.view.View;
 import android.widget.TextView;
 
 /** مفتاح بطبقتين: حرف أساسي واضح ورمز ثانوي صغير في الزاوية. */
@@ -35,7 +36,9 @@ final class KeyCap extends TextView {
         if (secondary.isEmpty()) return;
         secondaryPaint.setTypeface(getTypeface());
         secondaryPaint.setTextSize(Math.max(8f, getTextSize() * 0.42f));
-        secondaryPaint.setTextAlign(Paint.Align.LEFT);
-        canvas.drawText(secondary, getPaddingLeft() + getTextSize() * 0.15f, getPaddingTop() + getTextSize() * 0.62f, secondaryPaint);
+        boolean visualLeftToRight = getLayoutDirection() == View.LAYOUT_DIRECTION_LTR;
+        secondaryPaint.setTextAlign(visualLeftToRight ? Paint.Align.RIGHT : Paint.Align.LEFT);
+        float x = visualLeftToRight ? getWidth() - getPaddingRight() - getTextSize() * 0.15f : getPaddingLeft() + getTextSize() * 0.15f;
+        canvas.drawText(secondary, x, getPaddingTop() + getTextSize() * 0.62f, secondaryPaint);
     }
 }
