@@ -27,3 +27,13 @@ export function shouldUseLibVlcFallback(errorMessage: string | null | undefined)
 export function isCompatibilityPlaybackEngine(engine: VideoPlaybackEngine): boolean {
   return engine === "libvlc";
 }
+
+export function shouldAdvanceAfterCompatibilityStop(input: {
+  hasStarted: boolean;
+  hasError: boolean;
+  isNavigating: boolean;
+  isRepeatingOne: boolean;
+  isAutoAdvancing: boolean;
+}): boolean {
+  return input.hasStarted && !input.hasError && !input.isNavigating && !input.isRepeatingOne && !input.isAutoAdvancing;
+}
