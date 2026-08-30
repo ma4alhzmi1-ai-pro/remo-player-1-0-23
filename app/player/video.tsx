@@ -133,7 +133,8 @@ export default function VideoPlayerScreen() {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
-  const defaultFrameAspect: FrameAspect = isLandscape ? "16:9" : "source";
+  // Default presentation is always 16:9 landscape frame; user can change via fit panel.
+  const defaultFrameAspect: FrameAspect = "16:9";
   const frameAspect = selectedFrameAspect ?? defaultFrameAspect;
   const effectiveFit = resolveVideoContentFit(videoFit, isLandscape, displayMode === "cinematic");
   const mediaSurfaceWidth = surfaceSize.width || width;
@@ -153,8 +154,13 @@ export default function VideoPlayerScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    void ScreenOrientation.unlockAsync();
-    return () => { void ScreenOrientation.unlockAsync(); };
+    // Always enter video player in landscape 16:9; user can still toggle via rotate button.
+    setSelectedFrameAspect("16:9");
+    setAutoRotateEnabled(true);
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
+    return () => {
+      void ScreenOrientation.unlockAsync().catch(() => undefined);
+    };
   }, []);
 
   useEffect(() => {
@@ -520,6 +526,9 @@ export default function VideoPlayerScreen() {
       if (usingCompatibilityEngine) await vlcViewRef.current?.stop();
       stop();
     } catch { /* The native player may already be unavailable during navigation. */ }
+    if (Platform.OS !== "web") {
+      void ScreenOrientation.unlockAsync().catch(() => undefined);
+    }
     if (router.canGoBack()) router.back(); else router.replace(videoLibraryRoute as never);
   };
   const rotateVideo = () => {
@@ -528,10 +537,10 @@ export default function VideoPlayerScreen() {
     void ScreenOrientation.lockAsync(target).catch(() => undefined);
   };
   const handleFirstFrame = () => {
-    if (!autoRotateEnabled || isLandscape || Platform.OS === "web") return;
-    const activeTrack = player.videoTrack ?? player.availableVideoTracks.find((track) => track.isSupported);
-    const activeAspect = resolveSourceAspect(activeTrack?.size?.width ?? 0, activeTrack?.size?.height ?? 0);
-    if (activeAspect === null || activeAspect < 1) return;
+    if (Platform.OS === "web") return;
+    // Keep landscape 16:9 as the default presentation for every video clip.
+    if (!selectedFrameAspect) setSelectedFrameAspect("16:9");
+    if (!autoRotateEnabled || isLandscape) return;
     void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
   };
   const chooseMode = (mode: DisplayMode) => {
@@ -750,7 +759,106 @@ export default function VideoPlayerScreen() {
         {controlsVisible && !controlsLocked ? <View style={styles.centerTransport} pointerEvents="box-none"><Pressable onPress={exitVideo} style={styles.centerBack} accessibilityLabel="العودة إلى مجلدات الفيديو"><MaterialIcons name="folder-open" size={23} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.centerControl} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={31} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={[styles.centerControl, styles.centerPlay]} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={colors.background} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.centerControl} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={31} color={colors.text} /></Pressable></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" onTouchStart={revealControls}><View style={styles.controlDock}><View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(playbackTime)}</Text><View {...progressResponder.panHandlers} onLayout={(event) => { progressTrackWidth.current = event.nativeEvent.layout.width; }} style={playerOverlayStyles.progressTouch}><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /><View style={[playerOverlayStyles.progressThumb, { left: `${Math.max(0, Math.min(100, progress))}%` }]} /></View></View><Text style={styles.time}>{formatDuration(playbackDuration || currentItem.duration)}</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickIcons}><Pressable onPress={exitVideo} style={styles.quickIcon} accessibilityLabel="العودة للفيديوهات"><MaterialIcons name="arrow-forward" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(-10)} style={styles.quickIcon} accessibilityLabel="تأخير عشر ثوان"><MaterialIcons name="replay-10" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.quickIcon} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={22} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={styles.quickIcon} accessibilityLabel="تقديم عشر ثوان"><MaterialIcons name="forward-10" size={20} color={colors.text} /></Pressable>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}<Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={rotateVideo} style={styles.quickIcon}><MaterialIcons name="screen-rotation" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={() => void openPip()} style={styles.quickIcon}><MaterialIcons name="picture-in-picture-alt" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></ScrollView></View></View></View> : null}
         {fitPanelOpen && !controlsLocked ? <View style={styles.fitPanel}><View style={styles.fitPanelHeader}><Pressable onPress={() => setFitPanelOpen(false)} style={styles.fitPanelClose}><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>الشاشة</Text></View><Text style={styles.fitPanelLabel}>طريقة العرض</Text><View style={styles.fitModeRow}>{fitModes.map((mode) => <Pressable key={mode.id} onPress={() => setVideoFit(mode.id)} style={[styles.fitModeButton, videoFit === mode.id && styles.fitModeButtonActive]}><MaterialIcons name={mode.icon} size={24} color={videoFit === mode.id ? colors.background : colors.text} /><Text style={[styles.fitModeText, videoFit === mode.id && styles.fitModeTextActive]}>{mode.label}</Text></Pressable>)}</View><Text style={styles.fitPanelLabel}>قياسي</Text><View style={styles.frameAspectRow}>{frameAspects.map((aspect) => <Pressable key={aspect.id} onPress={() => setSelectedFrameAspect(aspect.id)} style={[styles.frameAspectButton, frameAspect === aspect.id && styles.frameAspectButtonActive]}><Text style={[styles.frameAspectText, frameAspect === aspect.id && styles.frameAspectTextActive]}>{aspect.label}</Text></Pressable>)}</View></View> : null}
-        {subtitlePanelOpen ? <View style={styles.subtitlePanel}><ScrollView style={styles.subtitlePanelScroll} contentContainerStyle={styles.subtitlePanelContent}><View style={styles.fitPanelHeader}><Pressable onPress={() => setSubtitlePanelOpen(false)} style={styles.fitPanelClose} accessibilityLabel="إغلاق إعدادات الترجمة"><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>الترجمة الحالية</Text></View>{subtitleTrack ? <Pressable onPress={() => setSubtitleEnabled((enabled) => !enabled)} style={[styles.subtitleOption, subtitleEnabled && styles.subtitleOptionActive]}><MaterialIcons name={subtitleEnabled ? "visibility" : "visibility-off"} size={19} color={subtitleEnabled ? colors.background : colors.text} /><Text style={[styles.subtitleOptionText, subtitleEnabled && styles.subtitleOptionTextActive]}>{subtitleEnabled ? `إخفاء: ${subtitleTrack.targetLanguage}` : `إظهار: ${subtitleTrack.targetLanguage}`}</Text></Pressable> : <Text style={styles.noSubtitleText}>لا توجد ترجمة خارجية مضافة لهذا الفيديو.</Text>}<View style={styles.captionActions}><Pressable onPress={() => { setSubtitlePanelOpen(false); void importSubtitleFile(); }} style={styles.captionAction}><MaterialIcons name="folder-open" size={19} color={colors.background} /><Text style={styles.captionActionText}>فتح ملف</Text></Pressable><Pressable onPress={() => { setSubtitlePanelOpen(false); setTranslationOpen(true); }} style={styles.captionAction}><MaterialIcons name="auto-awesome" size={19} color={colors.background} /><Text style={styles.captionActionText}>ترجمة AI</Text></Pressable></View><Text style={styles.subtitleSectionLabel}>مظهر الترجمة</Text><View style={styles.subtitleSetting}><Text style={styles.subtitleSettingLabel}>حجم الخط: {subtitleAppearance.fontSize}</Text><View style={styles.subtitleChoiceRow}>{[14, 18, 22, 26].map((size) => <Pressable key={size} onPress={() => setSubtitleAppearance((current) => ({ ...current, fontSize: size }))} style={[styles.subtitleSizeChoice, subtitleAppearance.fontSize === size && styles.subtitleChoiceActive]} accessibilityLabel={`حجم خط الترجمة ${size}`}><Text style={[styles.subtitleSizeText, subtitleAppearance.fontSize === size && styles.subtitleChoiceTextActive]}>{size}</Text></Pressable>)}</View></View><View style={styles.subtitleSetting}><Text style={styles.subtitleSettingLabel}>لون النص</Text><View style={styles.subtitleChoiceRow}>{subtitleTextColors.map((choice) => <Pressable key={choice.value} onPress={() => setSubtitleAppearance((current) => ({ ...current, color: choice.value }))} style={[styles.subtitleColorChoice, subtitleAppearance.color === choice.value && styles.subtitleChoiceActive]} accessibilityLabel={`لون الترجمة ${choice.label}`}><View style={[styles.subtitleColorDot, { backgroundColor: choice.value }]} /></Pressable>)}</View></View><View style={styles.subtitleSetting}><Text style={styles.subtitleSettingLabel}>خلفية النص</Text><View style={styles.subtitleChoiceRow}>{subtitleBackgroundColors.map((choice) => <Pressable key={choice.value} onPress={() => setSubtitleAppearance((current) => ({ ...current, backgroundColor: choice.value }))} style={[styles.subtitleColorChoice, subtitleAppearance.backgroundColor === choice.value && styles.subtitleChoiceActive]} accessibilityLabel={`خلفية الترجمة ${choice.label}`}><View style={[styles.subtitleColorDot, { backgroundColor: choice.value }]} /></Pressable>)}</View></View><Text style={styles.subtitleSectionLabel}>مسارات الترجمة المضمّنة</Text>{usingCompatibilityEngine ? <><Pressable onPress={() => selectCompatibilitySubtitle(-1)} style={[styles.subtitleOption, vlcSubtitleId === -1 && styles.subtitleOptionActive]}><Text style={[styles.subtitleOptionText, vlcSubtitleId === -1 && styles.subtitleOptionTextActive]}>إيقاف الترجمة المضمنة</Text></Pressable>{vlcSubtitleTracks.length ? vlcSubtitleTracks.map((track) => <Pressable key={track.id} onPress={() => selectCompatibilitySubtitle(track.id)} style={[styles.subtitleOption, vlcSubtitleId === track.id && styles.subtitleOptionActive]}><Text style={[styles.subtitleOptionText, vlcSubtitleId === track.id && styles.subtitleOptionTextActive]}>{track.name || "مسار ترجمة"}</Text></Pressable>) : <Text style={styles.noSubtitleText}>لم يعلن محرك التوافق عن مسار ترجمة مضمّن.</Text>}</> : <><Pressable onPress={() => selectEmbeddedSubtitle(null)} style={[styles.subtitleOption, embeddedSubtitleId === null && styles.subtitleOptionActive]}><Text style={[styles.subtitleOptionText, embeddedSubtitleId === null && styles.subtitleOptionTextActive]}>إيقاف الترجمة المضمنة</Text></Pressable>{embeddedSubtitleTracks.length ? embeddedSubtitleTracks.map((track) => <Pressable key={track.id} onPress={() => selectEmbeddedSubtitle(track)} style={[styles.subtitleOption, embeddedSubtitleId === track.id && styles.subtitleOptionActive]}><Text style={[styles.subtitleOptionText, embeddedSubtitleId === track.id && styles.subtitleOptionTextActive]}>{track.label || track.language || "مسار ترجمة"}</Text></Pressable>) : <Text style={styles.noSubtitleText}>لا يحتوي هذا الفيديو على مسارات ترجمة مضمّنة.</Text>}</>}</ScrollView></View> : null}
+        {subtitlePanelOpen ? (
+          <View style={styles.subtitleMenuOverlay}>
+            <Pressable style={styles.subtitleMenuBackdrop} onPress={() => setSubtitlePanelOpen(false)} />
+            <View style={styles.subtitleMenuSheet}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8, gap: 4 }}>
+              <View style={styles.subtitleMenuHeader}>
+                <Pressable onPress={() => setSubtitleEnabled((enabled) => !enabled)} style={styles.subtitleToggleRow} accessibilityLabel={subtitleEnabled ? "إيقاف الترجمة" : "تشغيل الترجمة"}>
+                  <View style={[styles.subtitleToggleTrack, subtitleEnabled && styles.subtitleToggleTrackOn]}>
+                    <View style={[styles.subtitleToggleThumb, subtitleEnabled && styles.subtitleToggleThumbOn]} />
+                  </View>
+                </Pressable>
+                <Pressable onPress={() => setSubtitlePanelOpen(false)} style={styles.subtitleMenuTitleRow} accessibilityLabel="إغلاق قائمة الترجمة">
+                  <Text style={styles.subtitleMenuTitle}>العنوان الفرعي</Text>
+                  <MaterialIcons name="arrow-forward" size={22} color={colors.text} />
+                </Pressable>
+              </View>
+
+              <Text style={styles.subtitleMenuSection}>الترجمة الحالية</Text>
+              {subtitleTrack ? (
+                <Pressable onPress={() => setSubtitleEnabled((enabled) => !enabled)} style={styles.subtitleCurrentRow}>
+                  <Text numberOfLines={2} style={styles.subtitleCurrentName}>{subtitleTrack.targetLanguage || "ترجمة خارجية"}</Text>
+                  <MaterialIcons name={subtitleEnabled ? "check-circle" : "radio-button-unchecked"} size={20} color={subtitleEnabled ? colors.cyan : colors.muted} />
+                </Pressable>
+              ) : (
+                <Text style={styles.subtitleCurrentEmpty}>لا توجد ترجمة خارجية محمّلة لهذا الفيديو</Text>
+              )}
+
+              <Pressable onPress={() => { setSubtitlePanelOpen(false); void importSubtitleFile(); }} style={styles.subtitleMenuItem}>
+                <Text style={styles.subtitleMenuItemText}>فتح ملف</Text>
+              </Pressable>
+              <Pressable onPress={() => Alert.alert("تنزيل الترجمة", "سيتم إضافة تنزيل الترجمة عبر الإنترنت في إصدار لاحق.")} style={styles.subtitleMenuItem}>
+                <Text style={styles.subtitleMenuItemText}>تنزيل عبر الإنترنت</Text>
+              </Pressable>
+              <Pressable onPress={() => { setSubtitlePanelOpen(false); setTranslationOpen(true); }} style={styles.subtitleMenuItem}>
+                <Text style={styles.subtitleMenuItemText}>ترجمة AI</Text>
+              </Pressable>
+              <Pressable onPress={() => undefined} style={styles.subtitleMenuItem}>
+                <Text style={styles.subtitleMenuItemText}>نمط الترجمة</Text>
+              </Pressable>
+
+              <Text style={styles.subtitleMenuSection}>مظهر الترجمة</Text>
+              <View style={styles.subtitleSetting}>
+                <Text style={styles.subtitleSettingLabel}>حجم الخط: {subtitleAppearance.fontSize}</Text>
+                <View style={styles.subtitleChoiceRow}>
+                  {[14, 18, 22, 26].map((size) => (
+                    <Pressable key={size} onPress={() => setSubtitleAppearance((current) => ({ ...current, fontSize: size }))} style={[styles.subtitleSizeChoice, subtitleAppearance.fontSize === size && styles.subtitleChoiceActive]}>
+                      <Text style={[styles.subtitleSizeText, subtitleAppearance.fontSize === size && styles.subtitleChoiceTextActive]}>{size}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.subtitleSetting}>
+                <Text style={styles.subtitleSettingLabel}>لون النص</Text>
+                <View style={styles.subtitleChoiceRow}>
+                  {subtitleTextColors.map((choice) => (
+                    <Pressable key={choice.value} onPress={() => setSubtitleAppearance((current) => ({ ...current, color: choice.value }))} style={[styles.subtitleColorChoice, subtitleAppearance.color === choice.value && styles.subtitleChoiceActive]}>
+                      <View style={[styles.subtitleColorDot, { backgroundColor: choice.value }]} />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.subtitleSetting}>
+                <Text style={styles.subtitleSettingLabel}>خلفية النص</Text>
+                <View style={styles.subtitleChoiceRow}>
+                  {subtitleBackgroundColors.map((choice) => (
+                    <Pressable key={choice.value} onPress={() => setSubtitleAppearance((current) => ({ ...current, backgroundColor: choice.value }))} style={[styles.subtitleColorChoice, subtitleAppearance.backgroundColor === choice.value && styles.subtitleChoiceActive]}>
+                      <View style={[styles.subtitleColorDot, { backgroundColor: choice.value }]} />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <Text style={styles.subtitleMenuSection}>مسارات الترجمة المضمّنة</Text>
+              {usingCompatibilityEngine ? (
+                <>
+                  <Pressable onPress={() => selectCompatibilitySubtitle(-1)} style={[styles.subtitleOption, vlcSubtitleId === -1 && styles.subtitleOptionActive]}>
+                    <Text style={[styles.subtitleOptionText, vlcSubtitleId === -1 && styles.subtitleOptionTextActive]}>إيقاف الترجمة المضمنة</Text>
+                  </Pressable>
+                  {vlcSubtitleTracks.length ? vlcSubtitleTracks.map((track) => (
+                    <Pressable key={track.id} onPress={() => selectCompatibilitySubtitle(track.id)} style={[styles.subtitleOption, vlcSubtitleId === track.id && styles.subtitleOptionActive]}>
+                      <Text style={[styles.subtitleOptionText, vlcSubtitleId === track.id && styles.subtitleOptionTextActive]}>{track.name || "مسار ترجمة"}</Text>
+                    </Pressable>
+                  )) : <Text style={styles.noSubtitleText}>لم يعلن محرك التوافق عن مسار ترجمة مضمّن.</Text>}
+                </>
+              ) : (
+                <>
+                  <Pressable onPress={() => selectEmbeddedSubtitle(null)} style={[styles.subtitleOption, embeddedSubtitleId === null && styles.subtitleOptionActive]}>
+                    <Text style={[styles.subtitleOptionText, embeddedSubtitleId === null && styles.subtitleOptionTextActive]}>إيقاف الترجمة المضمنة</Text>
+                  </Pressable>
+                  {embeddedSubtitleTracks.length ? embeddedSubtitleTracks.map((track) => (
+                    <Pressable key={track.id} onPress={() => selectEmbeddedSubtitle(track)} style={[styles.subtitleOption, embeddedSubtitleId === track.id && styles.subtitleOptionActive]}>
+                      <Text style={[styles.subtitleOptionText, embeddedSubtitleId === track.id && styles.subtitleOptionTextActive]}>{track.label || track.language || "مسار ترجمة"}</Text>
+                    </Pressable>
+                  )) : <Text style={styles.noSubtitleText}>لا يحتوي هذا الفيديو على مسارات ترجمة مضمّنة.</Text>}
+                </>
+              )}
+              </ScrollView>
+            </View>
+          </View>
+        ) : null}
         {controlsLocked ? <View style={styles.lockOverlay}><Pressable onPress={() => setControlsLocked(false)} style={styles.unlockButton}><MaterialIcons name="lock" size={24} color={colors.text} /><Text style={styles.unlockText}>المس لفك القفل</Text></Pressable></View> : null}
       </View>
       {!isLandscape && repeatEnd !== null ? <Pressable onPress={resetAb} style={styles.resetAb}><MaterialIcons name="restart-alt" size={19} color={colors.cyan} /><Text style={styles.resetAbText}>إلغاء تكرار A-B</Text></Pressable> : null}
@@ -807,17 +915,27 @@ const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, zIndex: 2, elevation: 2, justifyContent: "flex-end", backgroundColor: "rgba(0, 8, 15, 0.18)", paddingVertical: 10 },
   controlDock: { marginHorizontal: 10, padding: 9, borderRadius: 18, backgroundColor: "rgba(5, 13, 24, 0.90)", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
   fitPanel: { position: "absolute", zIndex: 4, elevation: 4, left: 12, right: 12, top: 44, padding: 14, borderRadius: 18, backgroundColor: "rgba(7,15,27,0.96)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
-  subtitlePanel: { position: "absolute", zIndex: 7, elevation: 7, left: 12, right: 12, top: 72, maxHeight: "82%", padding: 14, borderRadius: 18, backgroundColor: "rgba(7,15,27,0.98)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
-  subtitlePanelScroll: { flexGrow: 0 },
-  subtitlePanelContent: { gap: 8 },
-  subtitleOption: { minHeight: 42, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.08)", paddingHorizontal: 12, alignItems: "flex-end", justifyContent: "center" },
+  subtitleMenuOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 8, elevation: 8, justifyContent: "center" },
+  subtitleMenuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },
+  subtitleMenuSheet: { marginHorizontal: 28, maxHeight: "88%", paddingHorizontal: 18, paddingTop: 14, paddingBottom: 18, borderRadius: 18, backgroundColor: "rgba(8, 14, 22, 0.96)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", gap: 4 },
+  subtitleMenuHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  subtitleMenuTitleRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  subtitleMenuTitle: { color: colors.text, fontSize: 18, fontWeight: "900" },
+  subtitleToggleRow: { padding: 4 },
+  subtitleToggleTrack: { width: 46, height: 26, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.22)", justifyContent: "center", paddingHorizontal: 3 },
+  subtitleToggleTrackOn: { backgroundColor: "#34C759" },
+  subtitleToggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#FFFFFF", alignSelf: "flex-start" },
+  subtitleToggleThumbOn: { alignSelf: "flex-end" },
+  subtitleMenuSection: { color: "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: "700", textAlign: "right", marginTop: 10, marginBottom: 2 },
+  subtitleCurrentRow: { minHeight: 44, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10, paddingVertical: 6 },
+  subtitleCurrentName: { flex: 1, color: "rgba(255,255,255,0.72)", fontSize: 13, lineHeight: 18, textAlign: "right" },
+  subtitleCurrentEmpty: { color: "rgba(255,255,255,0.45)", fontSize: 12, textAlign: "right", paddingVertical: 8 },
+  subtitleMenuItem: { minHeight: 48, justifyContent: "center", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.12)" },
+  subtitleMenuItemText: { color: colors.text, fontSize: 16, fontWeight: "600", textAlign: "right" },
+  subtitleOption: { minHeight: 42, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.08)", paddingHorizontal: 12, alignItems: "flex-end", justifyContent: "center", marginTop: 4 },
   subtitleOptionActive: { backgroundColor: colors.cyan },
   subtitleOptionText: { color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "right" },
   subtitleOptionTextActive: { color: colors.background },
-  subtitleSectionLabel: { color: colors.muted, fontSize: 11, fontWeight: "800", textAlign: "right", marginTop: 4 },
-  captionActions: { flexDirection: "row-reverse", gap: 8 },
-  captionAction: { flex: 1, minHeight: 42, borderRadius: 12, backgroundColor: colors.cyan, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6 },
-  captionActionText: { color: colors.background, fontSize: 12, fontWeight: "900" },
   subtitleSetting: { paddingVertical: 3, gap: 6 },
   subtitleSettingLabel: { color: colors.text, fontSize: 12, fontWeight: "800", textAlign: "right" },
   subtitleChoiceRow: { flexDirection: "row-reverse", gap: 8 },
