@@ -10,7 +10,7 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { StatusBar } from "expo-status-bar";
 import { LibVlcPlayerView, type LibVlcPlayerViewRef, type MediaInfo as LibVlcMediaInfo, type MediaTracks as LibVlcMediaTracks } from "expo-libvlc-player";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, AppState, BackHandler, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { isPictureInPictureSupported, VideoView, useVideoPlayer, type SubtitleTrack } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
@@ -509,13 +509,7 @@ export default function VideoPlayerScreen() {
   }), [seekFromProgress]);
 
   const videoLibraryRoute = folderPath ? `/(tabs)/video?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/video";
-  if (!currentItem || currentItem.mediaType !== "video") {
-    return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر فيديو من مكتبتك أولاً.</Text><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace(videoLibraryRoute as never)} style={styles.backButton}><Text style={styles.backText}>العودة للفيديوهات</Text></Pressable></View></ScreenContainer>;
-  }
-
-  const activeCue = subtitleTrack?.cues.find((cue) => subtitleTime >= cue.start && subtitleTime <= cue.end);
-  const progress = playbackDuration > 0 ? Math.min(100, (playbackTime / playbackDuration) * 100) : 0;
-  const exitVideo = async () => {
+  const exitVideo = useCallback(async () => {
     if (isNavigatingVideoRef.current) return;
     isNavigatingVideoRef.current = true;
     restoreTemporarySpeed();
@@ -530,7 +524,21 @@ export default function VideoPlayerScreen() {
       void ScreenOrientation.unlockAsync().catch(() => undefined);
     }
     if (router.canGoBack()) router.back(); else router.replace(videoLibraryRoute as never);
-  };
+  }, [restoreTemporarySpeed, router, stop, usingCompatibilityEngine, videoLibraryRoute]);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      void exitVideo();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [exitVideo]);
+  if (!currentItem || currentItem.mediaType !== "video") {
+    return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر فيديو من مكتبتك أولاً.</Text><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace(videoLibraryRoute as never)} style={styles.backButton}><Text style={styles.backText}>العودة للفيديوهات</Text></Pressable></View></ScreenContainer>;
+  }
+
+  const activeCue = subtitleTrack?.cues.find((cue) => subtitleTime >= cue.start && subtitleTime <= cue.end);
+  const progress = playbackDuration > 0 ? Math.min(100, (playbackTime / playbackDuration) * 100) : 0;
   const rotateVideo = () => {
     setAutoRotateEnabled(false);
     const target = isLandscape ? ScreenOrientation.OrientationLock.PORTRAIT_UP : ScreenOrientation.OrientationLock.LANDSCAPE;
