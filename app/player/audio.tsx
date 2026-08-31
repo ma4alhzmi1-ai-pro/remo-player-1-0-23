@@ -2,7 +2,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Image, Modal, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, BackHandler, Image, Modal, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -37,7 +37,20 @@ export default function AudioPlayerScreen() {
     onPanResponderMove: (event) => seekFromProgress(event.nativeEvent.locationX),
     onPanResponderRelease: (event) => seekFromProgress(event.nativeEvent.locationX),
   }), [seekFromProgress]);
-  if (!currentItem || currentItem.mediaType !== "audio") return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر مساراً من مكتبتك أولاً.</Text><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>العودة للمكتبة</Text></Pressable></View></ScreenContainer>;
+  const musicLibraryRoute = folderPath ? `/(tabs)/music?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/music";
+  const goBackToMusic = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace(musicLibraryRoute as never);
+  }, [musicLibraryRoute, router]);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      goBackToMusic();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [goBackToMusic]);
+  if (!currentItem || currentItem.mediaType !== "audio") return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر مساراً من مكتبتك أولاً.</Text><Pressable onPress={goBackToMusic} style={styles.backButton}><Text style={styles.backText}>العودة للمكتبة</Text></Pressable></View></ScreenContainer>;
 
   const nextSpeed = speeds[(speeds.indexOf(speed) + 1) % speeds.length];
   const toggleFavorite = () => { const next = !currentItem.isFavorite; void updateMediaItem(currentItem.id, { isFavorite: next }); setCurrentItem({ ...currentItem, isFavorite: next }); };
@@ -46,13 +59,6 @@ export default function AudioPlayerScreen() {
   const openEqualizer = () => router.push("/player/equalizer" as never);
   const previousTrack = async () => { if (!(await playPrevious())) await skipBy(-15); };
   const nextTrack = async () => { if (!(await playNext())) await skipBy(15); };
-  const goBackToMusic = () => {
-    if (router.canGoBack()) router.back();
-    else {
-      const route = folderPath ? `/(tabs)/music?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/music";
-      router.replace(route as never);
-    }
-  };
   const closeMediaSession = () => {
     dismissMediaSession();
     goBackToMusic();

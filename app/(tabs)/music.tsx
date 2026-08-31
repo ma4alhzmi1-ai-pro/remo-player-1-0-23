@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { BackHandler, FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, EmptyState, MediaRow } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -48,6 +48,21 @@ export default function MusicScreen() {
     setSelectedCollection(null);
     setSelectedFolder(folder);
   }, [folderPath, folders]);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedFolder) {
+        setSelectedFolder(null);
+        return true;
+      }
+      if (selectedCollection) {
+        setSelectedCollection(null);
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [selectedCollection, selectedFolder]);
   const openTrack = async (item: MediaItem, sourceQueue: MediaItem[] = tracks, originFolderPath?: string) => {
     await playItem(item, sourceQueue);
     const route = originFolderPath ? `/player/audio?folderPath=${encodeURIComponent(originFolderPath)}` : "/player/audio";

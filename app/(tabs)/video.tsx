@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, BackHandler, FlatList, Image, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Artwork, colors, EmptyState, formatDuration, MediaRow } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -50,6 +50,21 @@ export default function VideoScreen() {
     setSelectedPlaylist(null);
     setSelectedFolder(folder);
   }, [folderPath, folders]);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedFolder) {
+        setSelectedFolder(null);
+        return true;
+      }
+      if (selectedPlaylist) {
+        setSelectedPlaylist(null);
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [selectedFolder, selectedPlaylist]);
   const openVideo = async (item: MediaItem, source = matchingVideos, originFolderPath?: string) => {
     await playItem(item, source);
     const route = originFolderPath ? `/player/video?folderPath=${encodeURIComponent(originFolderPath)}` : "/player/video";
