@@ -48,7 +48,36 @@ export function mergeMediaItems(current: MediaItem[], incoming: MediaItem[]) {
   return Array.from(byUri.values()).sort((a, b) => b.addedAt - a.addedAt);
 }
 
+export const legacyVideoFormats = [
+  "flv",
+  "fvl",
+  "mp5",
+  "mvr",
+  "dvd",
+  "vob",
+  "avi",
+  "wmv",
+  "3gp",
+  "ts",
+  "mkv",
+  "webm",
+  "mov",
+  "mpg",
+  "mpeg",
+  "rmvb",
+  "rm",
+  "asf",
+  "ogv",
+  "m4v",
+] as const;
+
+export function isLegacyVideoFormat(name: string): boolean {
+  const ext = extensionOf(name);
+  return (legacyVideoFormats as readonly string[]).includes(ext);
+}
+
 export function isConvertibleFormat(name: string): boolean {
   const ext = extensionOf(name);
-  return (videoExtensions as readonly string[]).includes(ext);
+  return (videoExtensions as readonly string[]).includes(ext) || (legacyVideoFormats as readonly string[]).includes(ext);
 }
+
