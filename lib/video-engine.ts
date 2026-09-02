@@ -2,12 +2,15 @@ import { extensionOf } from "./media-utils";
 
 export type VideoPlaybackEngine = "media3" | "libvlc";
 
-// These extensions frequently contain proprietary or non-standard container layouts.
-// They are sent to LibVLC first, while ordinary media keeps the lower-overhead Media3 path.
+// هذه الامتدادات غالبًا تحتوي على ترميزات أو حاويات غير قياسية.
+// يتم إرسالها إلى LibVLC أولاً، بينما يحتفظ الوسائط العادية بمسار Media3 الأقل استهلاكًا.
 const compatibilityFirstExtensions = new Set([
+  // الامتدادات الأصلية
   "amv", "bik", "crf", "evo", "gvi", "gxf", "mvr", "mp5", "mtv", "mxf",
   "mxg", "nsv", "nuv", "rec", "rm", "rmvb", "rpl", "thp", "tod", "txd",
   "vlc", "vro", "wtv", "xesc",
+  // إضافات لتغطية صيغ أخرى قد تكون غير مدعومة جيدًا من Media3
+  "iso", "bin", "ogm", "ogx", "ps", "ts", "wmv", "avi", "mpg", "flv",
 ]);
 
 export function preferredVideoPlaybackEngine(uriOrName: string): VideoPlaybackEngine {
@@ -17,11 +20,20 @@ export function preferredVideoPlaybackEngine(uriOrName: string): VideoPlaybackEn
 export function shouldUseLibVlcFallback(errorMessage: string | null | undefined): boolean {
   if (!errorMessage) return false;
   const normalized = errorMessage.toLowerCase();
-  return [
+
+  // قائمة موسّعة من الكلمات المفتاحية التي تشير إلى فشل Media3 في قراءة المصدر
+  const patterns = [
+    // الإنجليزية (الأكثر شيوعًا)
     "decoder", "codec", "unsupported", "source", "extractor", "format", "render",
     "renderer", "parsing", "malformed", "initialization", "load error", "source error",
-    "media period", "track", "read error",
-  ].some((keyword) => normalized.includes(keyword));
+    "media period", "track", "read error", "none of the available", "could read the stream",
+    "playback exception",
+    // العربية (بعض الأجهزة تعرض رسائل مترجمة)
+    "أداة الاستخراج", "أدوات الاستخراج", "خطأ في المصدر", "فشل في القراءة",
+    "تعذر قراءة", "الترميز غير مدعوم", "مشغل الفيديو", "محرك التشغيل"
+  ];
+
+  return patterns.some((pattern) => normalized.includes(pattern.toLowerCase()));
 }
 
 export function isCompatibilityPlaybackEngine(engine: VideoPlaybackEngine): boolean {
