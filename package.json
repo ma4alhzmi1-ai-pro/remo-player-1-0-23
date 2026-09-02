@@ -48,7 +48,6 @@
     "expo-image-picker": "^17.0.11",
     "expo-intent-launcher": "~13.0.8",
     "expo-keep-awake": "~15.0.8",
-    "expo-libvlc-player": "7.1.8",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.12",
     "expo-media-library": "^18.2.1",
@@ -64,7 +63,6 @@
     "expo-video-thumbnails": "~10.0.8",
     "expo-web-browser": "~15.0.11",
     "express": "^4.22.1",
-    "ffmpeg-kit-react-native": "^6.0.2",
     "jose": "6.1.0",
     "mysql2": "^3.16.0",
     "nativewind": "^4.2.1",
@@ -101,6 +99,5 @@
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "vitest": "^2.1.9"
-  },
-  "packageManager": "pnpm@9.12.0"
+  }
 }
