@@ -8,18 +8,19 @@ import {
   Dimensions,
   BackHandler,
   Alert,
+  PanResponder,
+  LayoutChangeEvent,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useMediaSession } from "@/hooks/useMediaSession";
-import { usePlayerStore } from "@/store/player";
 import { MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRef, useState, useEffect, useCallback } from "react";
-import { PanResponder } from "react-native";
+import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+import * as Sharing from "expo-sharing";
 import { colors } from "@/constants/colors";
 import { ScreenContainer } from "@/components/ScreenContainer";
 
-const { width } = Dimensions.get("window");
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function AudioPlayerScreen() {
   const router = useRouter();
@@ -35,65 +36,100 @@ export default function AudioPlayerScreen() {
     currentIndex,
     playlist,
   } = useMediaSession();
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
-  const progressRef = useRef(0);
+  const [progressBarWidth, setProgressBarWidth] = useState(0);
+  const progressRef = useRef(progress);
+  const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // تحديث المرجع عند تغيير التقدم
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+
+  // معالج زر الرجوع في الأندرويد
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (menuOpen) {
+        setMenuOpen(false);
+        return true;
+      }
+      closeMediaSession();
+      router.back();
+      return true;
+    });
+    return () => backHandler.remove();
+  }, [menuOpen, closeMediaSession, router]);
+
+  // إدارة مؤقت النوم
+  useEffect(() => {
+    if (sleepTimer === null || sleepTimer <= 0) return;
+
+    sleepTimerRef.current = setTimeout(() => {
+      setSleepTimer((prev) => {
+        if (prev === null || prev <= 1) {
+          // وصلنا للصفر: إيقاف التشغيل وتنبيه
+          closeMediaSession();
+          Alert.alert("مؤقت النوم", "تم إيقاف التشغيل تلقائياً.");
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 60000);
+
+    return () => {
+      if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
+    };
+  }, [sleepTimer, closeMediaSession]);
+
+  // إنشاء PanResponder للتحكم في شريط التقدم
+  const progressResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          seekFromGesture(evt.nativeEvent.locationX);
+        },
+        onPanResponderMove: (evt) => {
+          seekFromGesture(evt.nativeEvent.locationX);
+        },
+      }),
+    [seekTo, duration, progressBarWidth]
+  );
+
+  const seekFromGesture = useCallback(
+    (locationX: number) => {
+      if (progressBarWidth === 0 || duration === 0) return;
+      const ratio = Math.min(Math.max(locationX / progressBarWidth, 0), 1);
+      seekTo(ratio * duration);
+    },
+    [progressBarWidth, duration, seekTo]
+  );
+
+  const onProgressBarLayout = (event: LayoutChangeEvent) => {
+    setProgressBarWidth(event.nativeEvent.layout.width);
+  };
 
   const goBackToMusic = () => {
     router.push("/(tabs)/music");
   };
 
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      () => {
-        if (menuOpen) {
-          setMenuOpen(false);
-          return true;
-        }
-        closeMediaSession();
-        router.back();
-        return true;
+  const shareTrack = async () => {
+    if (!currentItem?.uri) return;
+    try {
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(currentItem.uri, {
+          dialogTitle: `مشاركة ${currentItem.title || "المسار"}`,
+          mimeType: "audio/*",
+        });
+      } else {
+        Alert.alert("المشاركة غير متاحة", "لا يمكن المشاركة على هذا الجهاز.");
       }
-    );
-    return () => backHandler.remove();
-  }, [menuOpen, closeMediaSession, router]);
-
-  useEffect(() => {
-    progressRef.current = progress;
-  }, [progress]);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (sleepTimer !== null && sleepTimer > 0) {
-      timer = setTimeout(() => {
-        setSleepTimer((prev) => (prev !== null ? prev - 1 : null));
-        if (sleepTimer === 1) {
-          closeMediaSession();
-          setSleepTimer(null);
-          Alert.alert("مؤقت النوم", "تم إيقاف التشغيل تلقائياً.");
-        }
-      }, 60000);
+    } catch (error) {
+      Alert.alert("تعذرت المشاركة", "حدث خطأ أثناء محاولة المشاركة.");
     }
-    return () => clearTimeout(timer);
-  }, [sleepTimer, closeMediaSession]);
-
-  const progressResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => {},
-    onPanResponderMove: (evt, gestureState) => {
-      const newProgress = Math.min(
-        Math.max(gestureState.dx / (width - 40), 0),
-        1
-      );
-      seekTo(newProgress * duration);
-    },
-    onPanResponderRelease: () => {},
-  });
-
-  const shareTrack = () => {
-    Alert.alert("مشاركة", "سيتم فتح واجهة المشاركة");
   };
 
   const openEqualizer = () => {
@@ -118,6 +154,8 @@ export default function AudioPlayerScreen() {
       </ScreenContainer>
     );
   }
+
+  const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
 
   return (
     <ScreenContainer>
@@ -160,13 +198,17 @@ export default function AudioPlayerScreen() {
             </Text>
           </View>
 
-          <View style={styles.progressTouch} {...progressResponder.panHandlers}>
+          <View
+            style={styles.progressTouch}
+            onLayout={onProgressBarLayout}
+            {...progressResponder.panHandlers}
+          >
             <View style={styles.progressTrack}>
               <View
-                style={[styles.progressFill, { width: `${(progress / duration) * 100}%` }]}
+                style={[styles.progressFill, { width: `${progressPercent}%` }]}
               />
               <View
-                style={[styles.progressThumb, { left: `${(progress / duration) * 100}%` }]}
+                style={[styles.progressThumb, { left: `${progressPercent}%` }]}
               />
             </View>
           </View>
@@ -178,8 +220,13 @@ export default function AudioPlayerScreen() {
                 if (prev) loadTrack(prev);
               }}
               style={styles.controlButton}
+              disabled={currentIndex === 0}
             >
-              <MaterialIcons name="skip-previous" size={36} color={colors.text} />
+              <MaterialIcons
+                name="skip-previous"
+                size={36}
+                color={currentIndex === 0 ? colors.disabled : colors.text}
+              />
             </Pressable>
 
             <Pressable onPress={togglePlayPause} style={styles.playButton}>
@@ -196,16 +243,23 @@ export default function AudioPlayerScreen() {
                 if (next) loadTrack(next);
               }}
               style={styles.controlButton}
+              disabled={currentIndex === playlist.length - 1}
             >
-              <MaterialIcons name="skip-next" size={36} color={colors.text} />
+              <MaterialIcons
+                name="skip-next"
+                size={36}
+                color={
+                  currentIndex === playlist.length - 1
+                    ? colors.disabled
+                    : colors.text
+                }
+              />
             </Pressable>
           </View>
 
           {sleepTimer !== null && (
             <View style={styles.sleepIndicator}>
-              <Text style={styles.sleepText}>
-                النوم بعد {sleepTimer} دقيقة
-              </Text>
+              <Text style={styles.sleepText}>النوم بعد {sleepTimer} دقيقة</Text>
             </View>
           )}
         </View>
@@ -232,9 +286,17 @@ function PlayerMenu({
   onShare,
   onEqualizer,
   onSleep,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+  onLyrics: () => void;
+  onShare: () => void;
+  onEqualizer: () => void;
+  onSleep: (minutes: number) => void;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <View style={styles.sheet}>
           <Text style={styles.sheetTitle}>خيارات المسار</Text>
@@ -268,7 +330,15 @@ function PlayerMenu({
   );
 }
 
-function MenuAction({ icon, label, onPress }) {
+function MenuAction({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
   return (
     <Pressable
       onPress={onPress}
