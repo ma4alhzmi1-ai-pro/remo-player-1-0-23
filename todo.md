@@ -322,3 +322,9 @@
 - [x] جعل زر المشغل وزر Android Back يعيدان أولاً إلى مجلد/مصدر التشغيل ثم إلى القائمة السابقة بالتسلسل
 - [x] منع الرجوع من القفز إلى الرئيسية أو فقدان مسار الشبكة/المجلدات
 - [ ] تدقيق وبناء APK واختبار الرجوع المتسلسل على Android
+- [x] تصحيح أخطاء JSX المكررة في الواجهة الرئيسية app/(tabs)/index.tsx
+- [x] إعادة ربط مشغل الصوت app/player/audio.tsx بسياق PlayerContext الحقيقي بدلاً من الخطاف المفقود useMediaSession
+- [x] إصلاح استيراد ScreenContainer وcolors ودعم زر الرجوع جهة اليمين ومؤقت النوم
+- [x] إضافة الدالة الناقصة isConvertibleFormat في lib/media-utils.ts وتأمين محول الفيديو lib/video-converter.ts ضد الانهيار
+- [x] تسجيل شاشتي converter وplayer/equalizer في Stack التنقل الرئيسي داخل app/_layout.tsx
+- [x] استعادة حزم expo-file-system وexpo-libvlc-player في package.json وتصحيح معالج pnpm في workflow بناء APK

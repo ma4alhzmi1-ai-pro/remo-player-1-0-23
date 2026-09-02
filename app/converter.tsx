@@ -7,13 +7,16 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as DocumentPicker from 'expo-document-picker';
 import { convertVideoToMp4 } from '@/lib/video-converter';
 import { isConvertibleFormat } from '@/lib/media-utils';
-import { ScreenContainer } from '@/components/ScreenContainer';
-import { colors } from '@/constants/colors';
+import { ScreenContainer } from '@/components/screen-container';
+import { colors } from '@/components/remo-ui';
 
 export default function ConverterScreen() {
+  const router = useRouter();
   const [converting, setConverting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -53,6 +56,13 @@ export default function ConverterScreen() {
 
   return (
     <ScreenContainer>
+      <View style={styles.header}>
+        <View style={{ width: 40 }} />
+        <Text style={styles.headerTitle}>محول الفيديو</Text>
+        <Pressable onPress={() => router.back()} style={styles.headerBack}>
+          <MaterialIcons name="arrow-forward" size={24} color={colors.text} />
+        </Pressable>
+      </View>
       <View style={styles.container}>
         <Text style={styles.title}>تحويل صيغ الفيديو</Text>
         <Text style={styles.subtitle}>
@@ -89,6 +99,23 @@ export default function ConverterScreen() {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  headerTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  headerBack: {
+    padding: 8,
+  },
   container: {
     flex: 1,
     padding: 20,

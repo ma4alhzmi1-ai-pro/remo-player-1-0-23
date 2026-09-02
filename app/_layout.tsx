@@ -97,6 +97,8 @@ export default function RootLayout() {
                   <Stack.Screen name="player/lyrics" />
                   <Stack.Screen name="player/video" />
                   <Stack.Screen name="player/edit-video" />
+                  <Stack.Screen name="player/equalizer" />
+                  <Stack.Screen name="converter" />
                   <Stack.Screen name="privacy" />
                   <Stack.Screen name="support-developer" />
                   <Stack.Screen name="oauth/callback" />

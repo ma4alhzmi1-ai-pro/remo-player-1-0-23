@@ -37,21 +37,6 @@ export default function HomeScreen() {
 
   if (isReady && items.length === 0) {
     return (
-        <Pressable onPress={() => router.push('/converter')} style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 10, paddingVertical: 12, paddingHorizontal: 18, backgroundColor: '#1A2532', borderRadius: 25, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 }}>
-          <MaterialIcons name="file-upload" size={24} color={colors.text} />
-          <Text style={{ color: colors.text, marginLeft: 5 }}>تحويل</Text>
-        </Pressable>
-
-        <Pressable onPress={() => router.push('/converter')} style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 10, paddingVertical: 12, paddingHorizontal: 18, backgroundColor: '#1A2532', borderRadius: 25, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 }}>
-          <MaterialIcons name="file-upload" size={24} color={colors.text} />
-          <Text style={{ color: colors.text, marginLeft: 5 }}>تحويل</Text>
-        </Pressable>
-
-        <Pressable onPress={() => router.push('/converter')} style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 10, paddingVertical: 12, paddingHorizontal: 18, backgroundColor: '#1A2532', borderRadius: 25, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 }}>
-          <MaterialIcons name="file-upload" size={24} color={colors.text} />
-          <Text style={{ color: colors.text, marginLeft: 5 }}>تحويل</Text>
-        </Pressable>
-
       <ScreenContainer className="px-0" safeAreaClassName="bg-background">
         <HomeHeader />
         <EmptyState
@@ -64,6 +49,10 @@ export default function HomeScreen() {
         <Pressable onPress={() => void importFiles()} style={({ pressed }) => [styles.secondaryImport, pressed && styles.pressed]}>
           <MaterialIcons name="file-open" size={20} color={colors.cyan} />
           <Text style={styles.secondaryImportText}>استيراد ملفات محددة</Text>
+        </Pressable>
+        <Pressable onPress={() => router.push('/converter' as never)} style={styles.converterFab}>
+          <MaterialIcons name="file-upload" size={20} color={colors.text} />
+          <Text style={styles.converterFabText}>تحويل</Text>
         </Pressable>
       </ScreenContainer>
     );
@@ -99,6 +88,10 @@ export default function HomeScreen() {
           {latest.map((item) => <MediaRow key={item.id} item={item} onPress={() => void openItem(item)} />)}
         </View>
       </ScrollView>
+      <Pressable onPress={() => router.push('/converter' as never)} style={({ pressed }) => [styles.converterFab, pressed && styles.pressed]}>
+        <MaterialIcons name="file-upload" size={20} color={colors.text} />
+        <Text style={styles.converterFabText}>تحويل</Text>
+      </Pressable>
     </ScreenContainer>
   );
 }
@@ -141,5 +134,7 @@ const styles = StyleSheet.create({
   recentList: { marginHorizontal: 16, borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: colors.border },
   secondaryImport: { minHeight: 46, marginTop: 14, marginHorizontal: 40, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 8, flexDirection: "row-reverse", borderWidth: 1, borderColor: "#1E6382" },
   secondaryImportText: { color: colors.cyan, fontSize: 14, fontWeight: "800" },
+  converterFab: { position: "absolute", bottom: 20, right: 20, zIndex: 10, paddingVertical: 10, paddingHorizontal: 16, backgroundColor: "#1A2532", borderRadius: 25, flexDirection: "row-reverse", alignItems: "center", gap: 6, shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 5, elevation: 5, borderWidth: 1, borderColor: "#2B3B4E" },
+  converterFabText: { color: colors.text, fontSize: 13, fontWeight: "700" },
   pressed: { opacity: 0.68 },
 });

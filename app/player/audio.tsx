@@ -5,73 +5,76 @@ import {
   Pressable,
   StyleSheet,
   Modal,
-  Dimensions,
   BackHandler,
   Alert,
   PanResponder,
   LayoutChangeEvent,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useMediaSession } from "@/hooks/useMediaSession";
-import { MaterialIcons } from "@expo/vector-icons";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import * as Sharing from "expo-sharing";
-import { colors } from "@/constants/colors";
-import { ScreenContainer } from "@/components/ScreenContainer";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+import { colors, formatDuration } from "@/components/remo-ui";
+import { ScreenContainer } from "@/components/screen-container";
+import { usePlayer } from "@/lib/player-context";
+import { resolveAudioProgressSeek } from "@/lib/audio-progress";
 
 export default function AudioPlayerScreen() {
   const router = useRouter();
   const {
     currentItem,
     isPlaying,
-    progress,
+    currentTime,
     duration,
-    togglePlayPause,
+    togglePlayback,
     seekTo,
-    closeMediaSession,
-    loadTrack,
-    currentIndex,
-    playlist,
-  } = useMediaSession();
+    playNext,
+    playPrevious,
+    stop,
+    repeatMode,
+    toggleRepeat,
+    shuffle,
+    toggleShuffle,
+    playbackQueue,
+  } = usePlayer();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
-  const progressRef = useRef(progress);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // تحديث المرجع عند تغيير التقدم
-  useEffect(() => {
-    progressRef.current = progress;
-  }, [progress]);
+  // Current track index in queue
+  const currentIndex = useMemo(() => {
+    if (!currentItem || !playbackQueue.length) return -1;
+    return playbackQueue.findIndex((item) => item.uri === currentItem.uri);
+  }, [currentItem, playbackQueue]);
 
-  // معالج زر الرجوع في الأندرويد
+  const hasPrevious = currentIndex > 0 || repeatMode === "all" || shuffle;
+  const hasNext = (currentIndex >= 0 && currentIndex < playbackQueue.length - 1) || repeatMode === "all" || shuffle;
+
+  // Android hardware back handler
   useEffect(() => {
     const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
       if (menuOpen) {
         setMenuOpen(false);
         return true;
       }
-      closeMediaSession();
       router.back();
       return true;
     });
     return () => backHandler.remove();
-  }, [menuOpen, closeMediaSession, router]);
+  }, [menuOpen, router]);
 
-  // إدارة مؤقت النوم
+  // Sleep timer manager
   useEffect(() => {
     if (sleepTimer === null || sleepTimer <= 0) return;
 
     sleepTimerRef.current = setTimeout(() => {
       setSleepTimer((prev) => {
         if (prev === null || prev <= 1) {
-          // وصلنا للصفر: إيقاف التشغيل وتنبيه
-          closeMediaSession();
-          Alert.alert("مؤقت النوم", "تم إيقاف التشغيل تلقائياً.");
+          stop();
+          Alert.alert("مؤقت النوم", "تم إيقاف التشغيل تلقائياً بواسطة مؤقت النوم.");
           return null;
         }
         return prev - 1;
@@ -81,9 +84,18 @@ export default function AudioPlayerScreen() {
     return () => {
       if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
     };
-  }, [sleepTimer, closeMediaSession]);
+  }, [sleepTimer, stop]);
 
-  // إنشاء PanResponder للتحكم في شريط التقدم
+  const seekFromGesture = useCallback(
+    (locationX: number) => {
+      const targetTime = resolveAudioProgressSeek(locationX, progressBarWidth, duration);
+      if (targetTime !== null) {
+        seekTo(targetTime);
+      }
+    },
+    [progressBarWidth, duration, seekTo]
+  );
+
   const progressResponder = useMemo(
     () =>
       PanResponder.create({
@@ -96,24 +108,11 @@ export default function AudioPlayerScreen() {
           seekFromGesture(evt.nativeEvent.locationX);
         },
       }),
-    [seekTo, duration, progressBarWidth]
-  );
-
-  const seekFromGesture = useCallback(
-    (locationX: number) => {
-      if (progressBarWidth === 0 || duration === 0) return;
-      const ratio = Math.min(Math.max(locationX / progressBarWidth, 0), 1);
-      seekTo(ratio * duration);
-    },
-    [progressBarWidth, duration, seekTo]
+    [seekFromGesture]
   );
 
   const onProgressBarLayout = (event: LayoutChangeEvent) => {
     setProgressBarWidth(event.nativeEvent.layout.width);
-  };
-
-  const goBackToMusic = () => {
-    router.push("/(tabs)/music");
   };
 
   const shareTrack = async () => {
@@ -127,152 +126,203 @@ export default function AudioPlayerScreen() {
       } else {
         Alert.alert("المشاركة غير متاحة", "لا يمكن المشاركة على هذا الجهاز.");
       }
-    } catch (error) {
+    } catch {
       Alert.alert("تعذرت المشاركة", "حدث خطأ أثناء محاولة المشاركة.");
     }
   };
 
   const openEqualizer = () => {
+    setMenuOpen(false);
     router.push("/player/equalizer");
   };
 
   const chooseSleep = (minutes: number) => {
     setSleepTimer(minutes);
     setMenuOpen(false);
-    Alert.alert(`تم ضبط مؤقت النوم على ${minutes} دقيقة`);
+    Alert.alert("مؤقت النوم", `تم ضبط مؤقت النوم على ${minutes} دقيقة`);
   };
 
-  if (!currentItem || currentItem.mediaType !== "audio") {
+  const cancelSleep = () => {
+    setSleepTimer(null);
+    if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
+    setMenuOpen(false);
+    Alert.alert("مؤقت النوم", "تم إلغاء مؤقت النوم");
+  };
+
+  if (!currentItem) {
     return (
       <ScreenContainer>
         <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>اختر مساراً من مكتبتك أولاً.</Text>
-          <Pressable onPress={goBackToMusic} style={styles.backButton}>
-            <Text style={styles.backButtonText}>العودة للمكتبة</Text>
+          <Text style={styles.errorText}>لا يوجد مقطع صوتي قيد التشغيل حالياً.</Text>
+          <Pressable onPress={() => router.push("/(tabs)/music")} style={styles.backButton}>
+            <Text style={styles.backButtonText}>الذهاب للمكتبة الموسيقية</Text>
           </Pressable>
         </View>
       </ScreenContainer>
     );
   }
 
-  const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
+  const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
 
   return (
     <ScreenContainer>
       <LinearGradient
-        colors={["#0B1119", "#1A2532"]}
+        colors={["#0B1119", "#131C26", "#1A2532"]}
         style={styles.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
+        {/* Header - Back button on right for RTL, menu on left */}
         <View style={styles.header}>
-          <Pressable onPress={closeMediaSession} style={styles.headerIcon}>
-            <MaterialIcons name="arrow-back" size={24} color={colors.text} />
-          </Pressable>
           <Pressable onPress={() => setMenuOpen(true)} style={styles.headerIcon}>
             <MaterialIcons name="more-vert" size={24} color={colors.text} />
+          </Pressable>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            مشغل الموسيقى
+          </Text>
+          <Pressable onPress={() => router.back()} style={styles.headerIcon}>
+            <MaterialIcons name="arrow-forward" size={24} color={colors.text} />
           </Pressable>
         </View>
 
         <View style={styles.body}>
+          {/* Disc Art */}
           <View style={styles.discWrap}>
             {currentItem.thumbnailUri ? (
               <Image
                 source={{ uri: currentItem.thumbnailUri }}
                 style={styles.discImage}
+                resizeMode="cover"
               />
             ) : (
               <View style={styles.discFallback}>
-                <MaterialIcons name="music-note" size={64} color={colors.muted} />
+                <MaterialIcons name="music-note" size={72} color={colors.cyan} />
               </View>
             )}
           </View>
 
+          {/* Title & Artist */}
           <View style={styles.metaRow}>
-            <Text style={styles.title}>{currentItem.title || "بدون عنوان"}</Text>
-            <Text style={styles.artist}>
+            <Text style={styles.title} numberOfLines={2}>
+              {currentItem.title || "بدون عنوان"}
+            </Text>
+            <Text style={styles.artist} numberOfLines={1}>
               {currentItem.artist || "فنان غير معروف"}
             </Text>
-            <Text style={styles.album}>
-              {currentItem.album || "بدون ألبوم"}
-            </Text>
+            {currentItem.album ? (
+              <Text style={styles.album} numberOfLines={1}>
+                {currentItem.album}
+              </Text>
+            ) : null}
           </View>
 
-          <View
-            style={styles.progressTouch}
-            onLayout={onProgressBarLayout}
-            {...progressResponder.panHandlers}
-          >
-            <View style={styles.progressTrack}>
-              <View
-                style={[styles.progressFill, { width: `${progressPercent}%` }]}
-              />
-              <View
-                style={[styles.progressThumb, { left: `${progressPercent}%` }]}
-              />
+          {/* Progress Bar & Timestamps */}
+          <View style={styles.progressSection}>
+            <View
+              style={styles.progressTouch}
+              onLayout={onProgressBarLayout}
+              {...progressResponder.panHandlers}
+            >
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                <View style={[styles.progressThumb, { left: `${progressPercent}%` }]} />
+              </View>
+            </View>
+
+            <View style={styles.timeRow}>
+              <Text style={styles.timeText}>{formatDuration(currentTime)}</Text>
+              <Text style={styles.timeText}>{formatDuration(duration)}</Text>
             </View>
           </View>
 
+          {/* Secondary Controls: Repeat & Shuffle */}
+          <View style={styles.secondaryControls}>
+            <Pressable onPress={toggleRepeat} style={styles.subControlButton}>
+              <MaterialIcons
+                name={repeatMode === "one" ? "repeat-one" : "repeat"}
+                size={24}
+                color={repeatMode !== "off" ? colors.cyan : colors.muted}
+              />
+            </Pressable>
+
+            <Pressable onPress={openEqualizer} style={styles.subControlButton}>
+              <MaterialIcons name="equalizer" size={24} color={colors.muted} />
+            </Pressable>
+
+            <Pressable onPress={toggleShuffle} style={styles.subControlButton}>
+              <MaterialIcons
+                name="shuffle"
+                size={24}
+                color={shuffle ? colors.cyan : colors.muted}
+              />
+            </Pressable>
+          </View>
+
+          {/* Primary Controls: Previous, Play/Pause, Next */}
           <View style={styles.primaryControls}>
             <Pressable
-              onPress={() => {
-                const prev = playlist[currentIndex - 1];
-                if (prev) loadTrack(prev);
-              }}
+              onPress={() => playPrevious()}
               style={styles.controlButton}
-              disabled={currentIndex === 0}
+              disabled={!hasPrevious}
             >
               <MaterialIcons
                 name="skip-previous"
-                size={36}
-                color={currentIndex === 0 ? colors.disabled : colors.text}
+                size={42}
+                color={!hasPrevious ? "rgba(255,255,255,0.25)" : colors.text}
               />
             </Pressable>
 
-            <Pressable onPress={togglePlayPause} style={styles.playButton}>
+            <Pressable onPress={togglePlayback} style={styles.playButton}>
               <MaterialIcons
                 name={isPlaying ? "pause" : "play-arrow"}
-                size={48}
-                color="#fff"
+                size={44}
+                color="#04121F"
               />
             </Pressable>
 
             <Pressable
-              onPress={() => {
-                const next = playlist[currentIndex + 1];
-                if (next) loadTrack(next);
-              }}
+              onPress={() => playNext()}
               style={styles.controlButton}
-              disabled={currentIndex === playlist.length - 1}
+              disabled={!hasNext}
             >
               <MaterialIcons
                 name="skip-next"
-                size={36}
-                color={
-                  currentIndex === playlist.length - 1
-                    ? colors.disabled
-                    : colors.text
-                }
+                size={42}
+                color={!hasNext ? "rgba(255,255,255,0.25)" : colors.text}
               />
             </Pressable>
           </View>
 
+          {/* Sleep Timer Indicator */}
           {sleepTimer !== null && (
-            <View style={styles.sleepIndicator}>
-              <Text style={styles.sleepText}>النوم بعد {sleepTimer} دقيقة</Text>
-            </View>
+            <Pressable onPress={() => setMenuOpen(true)} style={styles.sleepIndicator}>
+              <MaterialIcons name="timer" size={16} color={colors.cyan} />
+              <Text style={styles.sleepText}>إيقاف التشغيل بعد {sleepTimer} دقيقة</Text>
+            </Pressable>
           )}
         </View>
       </LinearGradient>
 
+      {/* Options Menu Modal */}
       <PlayerMenu
         visible={menuOpen}
+        sleepTimer={sleepTimer}
         onClose={() => setMenuOpen(false)}
-        onEdit={() => router.push("/player/edit-audio")}
-        onLyrics={() => router.push("/player/lyrics")}
-        onShare={shareTrack}
+        onEdit={() => {
+          setMenuOpen(false);
+          router.push("/player/edit-audio");
+        }}
+        onLyrics={() => {
+          setMenuOpen(false);
+          router.push("/player/lyrics");
+        }}
+        onShare={() => {
+          setMenuOpen(false);
+          shareTrack();
+        }}
         onEqualizer={openEqualizer}
         onSleep={chooseSleep}
+        onCancelSleep={cancelSleep}
       />
     </ScreenContainer>
   );
@@ -280,49 +330,71 @@ export default function AudioPlayerScreen() {
 
 function PlayerMenu({
   visible,
+  sleepTimer,
   onClose,
   onEdit,
   onLyrics,
   onShare,
   onEqualizer,
   onSleep,
+  onCancelSleep,
 }: {
   visible: boolean;
+  sleepTimer: number | null;
   onClose: () => void;
   onEdit: () => void;
   onLyrics: () => void;
   onShare: () => void;
   onEqualizer: () => void;
   onSleep: (minutes: number) => void;
+  onCancelSleep: () => void;
 }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>خيارات المسار</Text>
+        <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>خيارات المسار الصوتي</Text>
 
-          <MenuAction icon="edit" label="تعديل" onPress={onEdit} />
-          <MenuAction icon="lyrics" label="الكلمات" onPress={onLyrics} />
-          <MenuAction icon="share" label="مشاركة" onPress={onShare} />
-          <MenuAction icon="equalizer" label="المؤثرات" onPress={onEqualizer} />
+          <MenuAction icon="edit" label="تعديل بيانات المسار والغلاف" onPress={onEdit} />
+          <MenuAction icon="lyrics" label="عرض كلمات الأغنية" onPress={onLyrics} />
+          <MenuAction icon="equalizer" label="المعادل والمؤثرات الصوتية" onPress={onEqualizer} />
+          <MenuAction icon="share" label="مشاركة المسار" onPress={onShare} />
 
           <View style={styles.sleepSection}>
-            <Text style={styles.sleepLabel}>مؤقت النوم</Text>
+            <View style={styles.sleepSectionHeader}>
+              <Text style={styles.sleepLabel}>مؤقت النوم</Text>
+              {sleepTimer !== null && (
+                <Pressable onPress={onCancelSleep}>
+                  <Text style={styles.cancelSleepText}>إلغاء المؤقت</Text>
+                </Pressable>
+              )}
+            </View>
             <View style={styles.sleepOptions}>
-              {[5, 15, 30].map((minutes) => (
+              {[5, 15, 30, 45, 60].map((minutes) => (
                 <Pressable
                   key={minutes}
                   onPress={() => onSleep(minutes)}
-                  style={styles.sleepOption}
+                  style={[
+                    styles.sleepOption,
+                    sleepTimer === minutes && styles.sleepOptionActive,
+                  ]}
                 >
-                  <Text style={styles.sleepOptionText}>{minutes} د</Text>
+                  <Text
+                    style={[
+                      styles.sleepOptionText,
+                      sleepTimer === minutes && styles.sleepOptionTextActive,
+                    ]}
+                  >
+                    {minutes} د
+                  </Text>
                 </Pressable>
               ))}
             </View>
           </View>
 
           <Pressable onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>إلغاء</Text>
+            <Text style={styles.closeButtonText}>إغلاق</Text>
           </Pressable>
         </View>
       </Pressable>
@@ -344,8 +416,9 @@ function MenuAction({
       onPress={onPress}
       style={({ pressed }) => [styles.menuAction, pressed && styles.dimmed]}
     >
-      <MaterialIcons name={icon} size={24} color={colors.text} />
+      <MaterialIcons name={icon} size={22} color={colors.cyan} />
       <Text style={styles.menuLabel}>{label}</Text>
+      <MaterialIcons name="chevron-left" size={20} color={colors.muted} />
     </Pressable>
   );
 }
@@ -358,55 +431,66 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   errorText: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: 16,
     textAlign: "center",
     marginBottom: 20,
+    lineHeight: 24,
   },
   backButton: {
     backgroundColor: colors.cyan,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 10,
   },
   backButtonText: {
-    color: "#fff",
+    color: "#04121F",
     fontWeight: "bold",
-    fontSize: 16,
+    fontSize: 15,
   },
   header: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 8,
   },
   headerIcon: {
     padding: 8,
+    borderRadius: 20,
+  },
+  headerTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: "600",
   },
   body: {
     flex: 1,
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 32,
   },
   discWrap: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
+    width: 230,
+    height: 230,
+    borderRadius: 115,
     overflow: "hidden",
-    marginBottom: 32,
-    backgroundColor: "#2A3542",
+    backgroundColor: "#16202C",
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
+    borderWidth: 3,
+    borderColor: "rgba(117, 230, 218, 0.25)",
   },
   discImage: {
     width: "100%",
@@ -417,105 +501,153 @@ const styles = StyleSheet.create({
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#111822",
   },
   metaRow: {
     alignItems: "center",
-    marginBottom: 32,
+    width: "100%",
+    paddingHorizontal: 16,
+    marginTop: 8,
   },
   title: {
     color: colors.text,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "bold",
     textAlign: "center",
   },
   artist: {
-    color: colors.muted,
-    fontSize: 16,
-    marginTop: 4,
+    color: colors.cyan,
+    fontSize: 15,
+    marginTop: 6,
     textAlign: "center",
   },
   album: {
     color: colors.muted,
-    fontSize: 14,
-    marginTop: 2,
+    fontSize: 13,
+    marginTop: 3,
     textAlign: "center",
+  },
+  progressSection: {
+    width: "100%",
+    marginTop: 8,
   },
   progressTouch: {
     width: "100%",
-    height: 40,
+    height: 36,
     justifyContent: "center",
-    marginBottom: 24,
   },
   progressTrack: {
     width: "100%",
-    height: 4,
-    backgroundColor: "#3A4A5A",
-    borderRadius: 2,
+    height: 5,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 3,
     position: "relative",
   },
   progressFill: {
     height: "100%",
     backgroundColor: colors.cyan,
-    borderRadius: 2,
+    borderRadius: 3,
   },
   progressThumb: {
     position: "absolute",
-    top: -8,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.cyan,
-    marginLeft: -8,
+    top: -6,
+    width: 17,
+    height: 17,
+    borderRadius: 9,
+    backgroundColor: "#FFFFFF",
+    marginLeft: -8.5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  timeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 2,
+    paddingHorizontal: 2,
+  },
+  timeText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontVariant: ["tabular-nums"],
+  },
+  secondaryControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    width: "70%",
+    marginTop: 4,
+  },
+  subControlButton: {
+    padding: 10,
+    borderRadius: 20,
   },
   primaryControls: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 24,
+    gap: 32,
     marginTop: 8,
   },
   controlButton: {
-    padding: 8,
+    padding: 10,
   },
   playButton: {
     backgroundColor: colors.cyan,
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: colors.cyan,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 10,
   },
   sleepIndicator: {
-    marginTop: 20,
-    backgroundColor: "#2A3542",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+    backgroundColor: "rgba(117, 230, 218, 0.12)",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(117, 230, 218, 0.2)",
   },
   sleepText: {
-    color: colors.text,
-    fontSize: 14,
+    color: colors.cyan,
+    fontSize: 12,
   },
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#1A2532",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: "#16202C",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     padding: 20,
     paddingBottom: 36,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
   },
   sheetTitle: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "bold",
     marginBottom: 16,
     textAlign: "center",
@@ -523,50 +655,74 @@ const styles = StyleSheet.create({
   menuAction: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#2A3542",
+    borderBottomColor: "rgba(255,255,255,0.06)",
   },
   menuLabel: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 15,
+    flex: 1,
+    textAlign: "right",
   },
   sleepSection: {
-    marginTop: 16,
+    marginTop: 18,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: "#2A3542",
-    paddingTop: 16,
+    borderTopColor: "rgba(255,255,255,0.06)",
+  },
+  sleepSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
   },
   sleepLabel: {
     color: colors.muted,
     fontSize: 14,
-    marginBottom: 8,
+  },
+  cancelSleepText: {
+    color: "#FF6B6B",
+    fontSize: 13,
   },
   sleepOptions: {
     flexDirection: "row",
-    gap: 12,
+    justifyContent: "space-between",
+    gap: 8,
   },
   sleepOption: {
-    backgroundColor: "#2A3542",
+    flex: 1,
+    backgroundColor: "#0D141E",
     paddingVertical: 10,
-    paddingHorizontal: 16,
     borderRadius: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  sleepOptionActive: {
+    backgroundColor: "rgba(117, 230, 218, 0.15)",
+    borderColor: colors.cyan,
   },
   sleepOptionText: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 13,
+  },
+  sleepOptionTextActive: {
+    color: colors.cyan,
+    fontWeight: "bold",
   },
   closeButton: {
-    marginTop: 16,
-    backgroundColor: "#2A3542",
+    marginTop: 18,
+    backgroundColor: "#0D141E",
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: "center",
   },
   closeButtonText: {
-    color: colors.text,
-    fontSize: 16,
+    color: colors.muted,
+    fontSize: 15,
   },
   dimmed: {
     opacity: 0.6,

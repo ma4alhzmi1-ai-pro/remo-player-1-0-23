@@ -47,3 +47,8 @@ export function mergeMediaItems(current: MediaItem[], incoming: MediaItem[]) {
   });
   return Array.from(byUri.values()).sort((a, b) => b.addedAt - a.addedAt);
 }
+
+export function isConvertibleFormat(name: string): boolean {
+  const ext = extensionOf(name);
+  return (videoExtensions as readonly string[]).includes(ext);
+}
