@@ -10,7 +10,7 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { StatusBar } from "expo-status-bar";
 import { LibVlcPlayerView, type LibVlcPlayerViewRef, type MediaInfo as LibVlcMediaInfo, type MediaTracks as LibVlcMediaTracks } from "expo-libvlc-player";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, AppState, BackHandler, I18nManager, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { isPictureInPictureSupported, VideoView, useVideoPlayer, type SubtitleTrack } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
@@ -22,12 +22,21 @@ import { defaultSubtitleAppearance, loadLocalSubtitles, loadSubtitleAppearance, 
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
 import { readVideoForTranslation } from "@/lib/translation-upload";
 import { trpc } from "@/lib/trpc";
+import { resolvePlayableVideoUri } from "@/lib/video-uri";
 import { resolveLocalBrightness, resolveLocalVolume, resolveVideoGesture, shouldActivateVideoGesture } from "@/lib/video-gesture";
 import { nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
 import { resolveSafeVideoSeek } from "@/lib/video-seek";
 import { shouldPauseVideoForBackground } from "@/lib/video-background-policy";
 import { preferredVideoPlaybackEngine, shouldAdvanceAfterCompatibilityStop, shouldUseLibVlcFallback, type VideoPlaybackEngine } from "@/lib/video-engine";
+import {
+  checkExtractedCache,
+  extractAndPrepareVideo,
+  isExoPlayerSourceError,
+  isLegacyExtractionFormat,
+  cancelExtraction,
+  type ExtractionProgress,
+} from "@/lib/ffmpeg-extractor";
 import { resolveFixedFrameLayout, resolveSourceAspect, resolveVideoContentFit, type FrameAspect, type VideoFitMode } from "@/lib/video-display-settings";
 import type { MediaItem } from "@/types/media";
 
@@ -133,6 +142,19 @@ export default function VideoPlayerScreen() {
   const [translationOpen, setTranslationOpen] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState<TranslationLanguage>("العربية");
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [resolvedVideoUri, setResolvedVideoUri] = useState<string | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState<ExtractionProgress>({
+    percent: 0,
+    stage: "",
+  });
+  const extractionCanceledRef = useRef(false);
+  const isSwitchingEngineRef = useRef(false);
+  const playbackErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    playbackErrorRef.current = playbackError;
+  }, [playbackError]);
+
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const defaultFrameAspect: FrameAspect = "16:9";
@@ -215,29 +237,105 @@ export default function VideoPlayerScreen() {
     };
   }, [player]);
 
-  // تعديل 1: تحسين مستمع statusChange لالتقاط أخطاء Media3 والتحويل إلى LibVLC
+    const switchToLibVlc = useCallback(() => {
+    if (usingCompatibilityEngine) return;
+    isSwitchingEngineRef.current = true;
+    try {
+      player.pause();
+      player.replace(null as any);
+    } catch {
+      // ignore
+    }
+    setPlaybackEngine("libvlc");
+    setPlaybackError(null);
+    setTimeout(() => {
+      isSwitchingEngineRef.current = false;
+    }, 1200);
+  }, [player, usingCompatibilityEngine]);
+
+  const cancelActiveExtraction = useCallback(() => {
+    extractionCanceledRef.current = true;
+    setIsExtracting(false);
+    if (currentVideoUri) {
+      cancelExtraction(currentVideoUri);
+    }
+  }, [currentVideoUri]);
+
+  const triggerFfmpegExtraction = useCallback(
+    async (targetUri: string, filename?: string) => {
+      if (isExtracting || usingCompatibilityEngine) return;
+      setIsExtracting(true);
+      extractionCanceledRef.current = false;
+      setPlaybackError(null);
+      try {
+        player.pause();
+      } catch {
+        // ignore
+      }
+
+      const result = await extractAndPrepareVideo(targetUri, {
+        fileName: filename,
+        forceTranscode: true,
+        signal: {
+          get aborted() {
+            return extractionCanceledRef.current;
+          },
+          set aborted(val: boolean) {
+            extractionCanceledRef.current = val;
+          },
+        },
+        onProgress: (p) => {
+          setExtractionProgress(p);
+        },
+      });
+
+      setIsExtracting(false);
+      if (extractionCanceledRef.current) return;
+
+      if (result.success && result.outputUri) {
+        setResolvedVideoUri(result.outputUri);
+        setPlaybackError(null);
+        try {
+          if (typeof player.replaceAsync === "function") {
+            await player.replaceAsync({ uri: result.outputUri });
+          } else {
+            player.replace({ uri: result.outputUri });
+          }
+          player.play();
+          setIsPlaying(true);
+        } catch {
+          switchToLibVlc();
+        }
+      } else {
+        switchToLibVlc();
+      }
+    },
+    [isExtracting, usingCompatibilityEngine, player, switchToLibVlc]
+  );
+
   useEffect(() => {
     const subscription = player.addListener("statusChange", ({ status, error }) => {
       if (status === "error") {
-        // استخراج نص الخطأ سواء كان string أو كائن
-        const errorMessage = typeof error === 'string' ? error : error?.message;
-        if (errorMessage && !usingCompatibilityEngine && shouldUseLibVlcFallback(errorMessage)) {
-          try {
-            player.pause();
-            player.replace(null);
-          } catch {
-            // تجاهل أخطاء التنظيف
+        const errorMessage = typeof error === "string" ? error : error?.message;
+        if (!usingCompatibilityEngine) {
+          if (
+            isExoPlayerSourceError(errorMessage) ||
+            isLegacyExtractionFormat(currentVideoUri || currentItem?.title)
+          ) {
+            void triggerFfmpegExtraction(resolvedVideoUri || currentVideoUri!, currentItem?.title);
+            return;
           }
-          setPlaybackEngine("libvlc");
-          setPlaybackError(null);
-          return;
+          if (shouldUseLibVlcFallback(errorMessage)) {
+            switchToLibVlc();
+            return;
+          }
         }
         if (errorMessage) setPlaybackError(errorMessage);
       }
       if (status === "readyToPlay") setPlaybackError(null);
     });
     return () => subscription.remove();
-  }, [player, usingCompatibilityEngine]);
+  }, [player, usingCompatibilityEngine, switchToLibVlc, currentVideoUri, currentItem?.title, resolvedVideoUri, triggerFfmpegExtraction]);
 
   useEffect(() => {
     player.staysActiveInBackground = false;
@@ -248,7 +346,7 @@ export default function VideoPlayerScreen() {
     if (!currentVideoUri) return;
     let disposed = false;
     const loadForegroundVideo = async () => {
-      const preferredEngine = preferredVideoPlaybackEngine(currentVideoUri);
+      const preferredEngine = preferredVideoPlaybackEngine(currentVideoUri, currentItem?.title);
       compatibilityErrorRef.current = false;
       compatibilityStartedRef.current = false;
       setPlaybackEngine(preferredEngine);
@@ -260,10 +358,25 @@ export default function VideoPlayerScreen() {
       const resumeAt = resumePosition(memory, currentItem?.duration);
       vlcResumeSeekRef.current = resumeAt;
       lastSavedSecondRef.current = resumeAt;
+
+      let playableUri = currentVideoUri;
+      try {
+        const cachedExtracted = await checkExtractedCache(currentVideoUri);
+        if (cachedExtracted) {
+          playableUri = cachedExtracted;
+        } else {
+          playableUri = await resolvePlayableVideoUri(currentVideoUri, currentItem?.title || currentVideoUri);
+        }
+      } catch {
+        playableUri = currentVideoUri;
+      }
+      if (disposed) return;
+      setResolvedVideoUri(playableUri);
+
       if (preferredEngine === "libvlc") {
         try {
           player.pause();
-          player.replace(null);
+          player.replace(null as any);
         } catch {
           // ignore
         }
@@ -274,11 +387,10 @@ export default function VideoPlayerScreen() {
         player.pause();
         player.staysActiveInBackground = false;
         player.showNowPlayingNotification = false;
-        // استخدام replaceAsync إذا كانت موجودة، وإلا replace
         if (typeof player.replaceAsync === 'function') {
-          await player.replaceAsync({ uri: currentVideoUri });
+          await player.replaceAsync({ uri: playableUri });
         } else {
-          player.replace({ uri: currentVideoUri });
+          player.replace({ uri: playableUri });
         }
         if (disposed) return;
         if (resumeAt > 0) {
@@ -288,17 +400,28 @@ export default function VideoPlayerScreen() {
         setIsPlaying(true);
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
-        if (!disposed && shouldUseLibVlcFallback(message)) {
-          setPlaybackEngine("libvlc");
-          setPlaybackError(null);
-          return;
+        if (!disposed) {
+          if (!usingCompatibilityEngine) {
+            if (
+              isExoPlayerSourceError(message) ||
+              isLegacyExtractionFormat(currentVideoUri || currentItem?.title)
+            ) {
+              void triggerFfmpegExtraction(playableUri, currentItem?.title);
+              return;
+            }
+            if (shouldUseLibVlcFallback(message)) {
+              switchToLibVlc();
+              return;
+            }
+          }
+          setPlaybackError("تعذر فتح هذا الفيديو. قد يكون الترميز غير مدعوم من جهاز Android أو أن الملف لم يعد متاحاً.");
         }
-        if (!disposed) setPlaybackError("تعذر فتح هذا الفيديو. قد يكون الترميز غير مدعوم من جهاز Android أو أن الملف لم يعد متاحاً.");
       }
     };
     void loadForegroundVideo();
     return () => {
       disposed = true;
+      cancelActiveExtraction();
       try {
         player.pause();
         player.staysActiveInBackground = false;
@@ -308,7 +431,7 @@ export default function VideoPlayerScreen() {
         // ignore
       }
     };
-  }, [currentVideoUri, player]);
+  }, [currentVideoUri, currentItem?.id, currentItem?.duration, currentItem?.title, player, switchToLibVlc, usingCompatibilityEngine, cancelActiveExtraction, triggerFfmpegExtraction]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
@@ -330,14 +453,26 @@ export default function VideoPlayerScreen() {
   useEffect(() => { player.loop = repeatMode === "one"; }, [player, repeatMode]);
   useEffect(() => {
     const subscription = player.addListener("playToEnd", () => {
-      if (repeatMode === "one" || isAutoAdvancingRef.current) return;
-      isAutoAdvancingRef.current = true;
-      void playNext(repeatMode === "all").then((advanced) => {
-        if (!advanced) setIsPlaying(false);
-      }).finally(() => { isAutoAdvancingRef.current = false; });
+      if (
+        repeatMode === "one" ||
+        isAutoAdvancingRef.current ||
+        isSwitchingEngineRef.current ||
+        usingCompatibilityEngine ||
+        playbackErrorRef.current
+      ) {
+        return;
+      }
+      const dur = player.duration;
+      const cur = player.currentTime;
+      if (dur > 1 && cur >= Math.max(0, dur - 1.5)) {
+        isAutoAdvancingRef.current = true;
+        void playNext(repeatMode === "all").then((advanced) => {
+          if (!advanced) setIsPlaying(false);
+        }).finally(() => { isAutoAdvancingRef.current = false; });
+      }
     });
     return () => subscription.remove();
-  }, [player, playNext, repeatMode]);
+  }, [player, playNext, repeatMode, usingCompatibilityEngine]);
   const playbackTime = usingCompatibilityEngine ? vlcTime : player.currentTime;
   const playbackDuration = usingCompatibilityEngine ? vlcDuration : player.duration;
   useEffect(() => {
@@ -562,6 +697,32 @@ export default function VideoPlayerScreen() {
     }
     if (router.canGoBack()) router.back(); else router.replace(videoLibraryRoute as never);
   };
+  
+  useEffect(() => {
+    const onHardwareBack = () => {
+      if (controlsLocked) {
+        setControlsLocked(false);
+        return true;
+      }
+      if (subtitlePanelOpen) {
+        setSubtitlePanelOpen(false);
+        return true;
+      }
+      if (fitPanelOpen) {
+        setFitPanelOpen(false);
+        return true;
+      }
+      if (translationOpen) {
+        setTranslationOpen(false);
+        return true;
+      }
+      void exitVideo();
+      return true;
+    };
+    const subscription = BackHandler.addEventListener("hardwareBackPress", onHardwareBack);
+    return () => subscription.remove();
+  }, [controlsLocked, subtitlePanelOpen, fitPanelOpen, translationOpen, exitVideo]);
+
   const rotateVideo = () => {
     setAutoRotateEnabled(false);
     const target = isLandscape ? ScreenOrientation.OrientationLock.PORTRAIT_UP : ScreenOrientation.OrientationLock.LANDSCAPE;
@@ -707,6 +868,9 @@ export default function VideoPlayerScreen() {
       isRepeatingOne: repeatMode === "one",
       isAutoAdvancing: isAutoAdvancingRef.current,
     })) return;
+    if (vlcDuration > 1 && vlcTime < Math.max(0, vlcDuration - 2)) {
+      return;
+    }
     isAutoAdvancingRef.current = true;
     void playNext(repeatMode === "all").then((advanced) => {
       if (!advanced) setIsPlaying(false);
@@ -721,6 +885,7 @@ export default function VideoPlayerScreen() {
   const retryCurrentVideo = async () => {
     if (!currentVideoUri) return;
     setPlaybackError(null);
+    const playableUri = resolvedVideoUri || currentVideoUri;
     if (usingCompatibilityEngine) {
       compatibilityErrorRef.current = false;
       compatibilityStartedRef.current = false;
@@ -729,14 +894,14 @@ export default function VideoPlayerScreen() {
     }
     try {
       if (typeof player.replaceAsync === "function") {
-        await player.replaceAsync({ uri: currentVideoUri });
+        await player.replaceAsync({ uri: playableUri });
       } else {
-        player.replace({ uri: currentVideoUri });
+        player.replace({ uri: playableUri });
       }
       player.play();
       setIsPlaying(true);
     } catch {
-      setPlaybackError("تعذر إعادة تشغيل الفيديو. جرّب ملفاً بترميز مدعوم من جهازك.");
+      switchToLibVlc();
     }
   };
   const importSubtitleFile = async () => { try { const result = await DocumentPicker.getDocumentAsync({ type: "*/*", multiple: false, copyToCacheDirectory: true }); if (result.canceled) return; const asset = result.assets[0]; if (!supportsSubtitleImport(asset.name)) { Alert.alert("صيغة ترجمة غير مدعومة", "اختر ملف ترجمة نصياً من صيغ SRT أو VTT أو ASS أو SSA أو SAMI أو SUB أو MPL أو PJS أو TXT."); return; } const content = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 }); const cues = parseSubtitleFile(content, asset.name); const extension = asset.name.split(".").pop()?.toUpperCase() ?? "SUB"; const track: LocalSubtitleTrack = { targetLanguage: `ملف ${extension}`, detectedLanguage: "ترجمة محلية", createdAt: Date.now(), cues }; await saveLocalSubtitles(currentItem.id, track); setSubtitleTrack(track); setSubtitleEnabled(true); Alert.alert("تم استيراد الترجمة", `أُضيفت ${cues.length} أسطر من ملف ${asset.name}.`); } catch (error) { const message = error instanceof Error ? error.message : "تعذر قراءة ملف الترجمة."; Alert.alert("تعذر استيراد الترجمة", message); } };
@@ -764,7 +929,7 @@ export default function VideoPlayerScreen() {
               key={`${currentItem.uri}-${compatibilityAttempt}-${playbackEngine}`}
               ref={vlcViewRef}
               style={styles.video}
-              source={currentItem.uri}
+              source={resolvedVideoUri || currentItem.uri}
               options={["--file-caching=1000", "--network-caching=1000", "--avcodec-hw=any"]}
               contentFit={effectiveFit}
               rate={Math.max(0.25, speed)}
@@ -797,8 +962,72 @@ export default function VideoPlayerScreen() {
         {brightnessHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(localBrightness * 100)}%` }]} /></View><MaterialIcons name="brightness-high" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>السطوع داخل المشغل: {Math.round(localBrightness * 100)}%</Text></View></> : null}
         {temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>2×</Text></Text></View> : null}
         {speedHud && !temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 130, minHeight: 45, paddingHorizontal: 14 }]}><Text style={styles.volumeText}>السرعة {speed}×</Text></View> : null}
-        {usingCompatibilityEngine ? <View pointerEvents="none" style={styles.compatibilityBadge}><MaterialIcons name="high-quality" size={15} color={colors.background} /><Text style={styles.compatibilityBadgeText}>محرك التوافق</Text></View> : null}
-        {playbackError ? <View style={styles.playbackError}><MaterialIcons name="error-outline" size={24} color="#FECACA" /><Text style={styles.playbackErrorText}>{playbackError}</Text><Pressable onPress={retryCurrentVideo} style={styles.retryButton}><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View> : null}
+        {playbackError ? (
+          <View style={styles.playbackError}>
+            <MaterialIcons name="error-outline" size={24} color="#FECACA" />
+            <Text style={styles.playbackErrorText}>{playbackError}</Text>
+            <View style={{ flexDirection: "row-reverse", flexWrap: "wrap", gap: 10, marginTop: 8, justifyContent: "center" }}>
+              <Pressable onPress={retryCurrentVideo} style={styles.retryButton}>
+                <Text style={styles.retryText}>إعادة المحاولة</Text>
+              </Pressable>
+              {currentVideoUri ? (
+                <Pressable
+                  onPress={() => void triggerFfmpegExtraction(resolvedVideoUri || currentVideoUri, currentItem?.title)}
+                  style={[styles.retryButton, { backgroundColor: "#10B981" }]}
+                >
+                  <Text style={[styles.retryText, { color: "#FFFFFF" }]}>معالجة عبر FFmpeg</Text>
+                </Pressable>
+              ) : null}
+              {!usingCompatibilityEngine ? (
+                <Pressable onPress={switchToLibVlc} style={[styles.retryButton, { backgroundColor: colors.cyan }]}>
+                  <Text style={[styles.retryText, { color: colors.background }]}>محرك التوافق (VLC)</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={exitVideo} style={[styles.retryButton, { backgroundColor: "rgba(255,255,255,0.18)" }]}>
+                <Text style={styles.retryText}>العودة للفيديوهات</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+        {isExtracting ? (
+          <View style={styles.extractionOverlay} pointerEvents="box-none">
+            <View style={styles.extractionCard}>
+              <View style={styles.extractionHeaderRow}>
+                <ActivityIndicator size="small" color={colors.cyan} />
+                <Text style={styles.extractionTitle}>محرك FFmpeg: استخراج وتجهيز الفيديو</Text>
+              </View>
+              <Text style={styles.extractionStage}>
+                {extractionProgress.stage || "جارٍ معالجة الحاوية والترميز المتوافق..."}
+              </Text>
+              <View style={styles.extractionBarTrack}>
+                <View
+                  style={[
+                    styles.extractionBarFill,
+                    { width: `${Math.max(4, Math.min(100, extractionProgress.percent))}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.extractionPercent}>{Math.round(extractionProgress.percent)}%</Text>
+              <View style={{ flexDirection: "row-reverse", gap: 10, marginTop: 10 }}>
+                <Pressable
+                  onPress={() => {
+                    cancelActiveExtraction();
+                    switchToLibVlc();
+                  }}
+                  style={[styles.retryButton, { backgroundColor: colors.cyan }]}
+                >
+                  <Text style={[styles.retryText, { color: colors.background }]}>تشغيل عبر VLC فوراً</Text>
+                </Pressable>
+                <Pressable
+                  onPress={cancelActiveExtraction}
+                  style={[styles.retryButton, { backgroundColor: "rgba(255,255,255,0.18)" }]}
+                >
+                  <Text style={styles.retryText}>إلغاء</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ) : null}
         {controlsVisible && !controlsLocked ? <View style={styles.centerTransport} pointerEvents="box-none"><Pressable onPress={exitVideo} style={styles.centerBack} accessibilityLabel="العودة إلى مجلدات الفيديو"><MaterialIcons name="folder-open" size={23} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.centerControl} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={31} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={[styles.centerControl, styles.centerPlay]} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={colors.background} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.centerControl} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={31} color={colors.text} /></Pressable></View> : null}
         {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" onTouchStart={revealControls}><View style={styles.controlDock}><View style={styles.overlayBottom}><View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(playbackTime)}</Text><View {...progressResponder.panHandlers} onLayout={(event) => { progressTrackWidth.current = event.nativeEvent.layout.width; }} style={playerOverlayStyles.progressTouch}><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /><View style={[playerOverlayStyles.progressThumb, { left: `${Math.max(0, Math.min(100, progress))}%` }]} /></View></View><Text style={styles.time}>{formatDuration(playbackDuration || currentItem.duration)}</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickIcons}><Pressable onPress={exitVideo} style={styles.quickIcon} accessibilityLabel="العودة للفيديوهات"><MaterialIcons name="arrow-forward" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(-10)} style={styles.quickIcon} accessibilityLabel="تأخير عشر ثوان"><MaterialIcons name="replay-10" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.quickIcon} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={22} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={styles.quickIcon} accessibilityLabel="تقديم عشر ثوان"><MaterialIcons name="forward-10" size={20} color={colors.text} /></Pressable>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}<Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={rotateVideo} style={styles.quickIcon}><MaterialIcons name="screen-rotation" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></ScrollView></View></View></View> : null}
         {fitPanelOpen && !controlsLocked ? <View style={styles.fitPanel}><View style={styles.fitPanelHeader}><Pressable onPress={() => setFitPanelOpen(false)} style={styles.fitPanelClose}><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>الشاشة</Text></View><Text style={styles.fitPanelLabel}>طريقة العرض</Text><View style={styles.fitModeRow}>{fitModes.map((mode) => <Pressable key={mode.id} onPress={() => setVideoFit(mode.id)} style={[styles.fitModeButton, videoFit === mode.id && styles.fitModeButtonActive]}><MaterialIcons name={mode.icon} size={24} color={videoFit === mode.id ? colors.background : colors.text} /><Text style={[styles.fitModeText, videoFit === mode.id && styles.fitModeTextActive]}>{mode.label}</Text></Pressable>)}</View><Text style={styles.fitPanelLabel}>قياسي</Text><View style={styles.frameAspectRow}>{frameAspects.map((aspect) => <Pressable key={aspect.id} onPress={() => setSelectedFrameAspect(aspect.id)} style={[styles.frameAspectButton, frameAspect === aspect.id && styles.frameAspectButtonActive]}><Text style={[styles.frameAspectText, frameAspect === aspect.id && styles.frameAspectTextActive]}>{aspect.label}</Text></Pressable>)}</View></View> : null}
@@ -944,8 +1173,64 @@ const styles = StyleSheet.create({
   gestureReadout: { position: "absolute", top: 20, alignSelf: "center", zIndex: 3, elevation: 3, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "rgba(0,0,0,0.70)" },
   gestureReadoutText: { color: colors.text, fontSize: 16, fontWeight: "900" },
   temporarySpeedHud: { position: "absolute", alignSelf: "center", zIndex: 3, elevation: 3, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center" },
-  compatibilityBadge: { position: "absolute", top: 22, left: 18, zIndex: 4, elevation: 4, minHeight: 28, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: colors.cyan },
+  compatibilityBadge: { position: "absolute", top: 22, zIndex: 4, elevation: 4, minHeight: 28, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: colors.cyan },
   compatibilityBadgeText: { color: colors.background, fontSize: 10, fontWeight: "900" },
+  extractionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 7,
+    elevation: 7,
+    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  extractionCard: {
+    width: "100%",
+    maxWidth: 420,
+    padding: 20,
+    borderRadius: 18,
+    backgroundColor: "rgba(15, 23, 42, 0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    alignItems: "center",
+    gap: 10,
+  },
+  extractionHeaderRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+  },
+  extractionTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  extractionStage: {
+    color: "#94A3B8",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  extractionBarTrack: {
+    width: "100%",
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    overflow: "hidden",
+    marginTop: 6,
+  },
+  extractionBarFill: {
+    height: "100%",
+    backgroundColor: colors.cyan,
+    borderRadius: 3,
+  },
+  extractionPercent: {
+    color: colors.cyan,
+    fontSize: 13,
+    fontWeight: "900",
+  },
   playbackError: { position: "absolute", zIndex: 6, elevation: 6, left: 20, right: 20, alignSelf: "center", top: "36%", padding: 17, borderRadius: 18, backgroundColor: "rgba(69, 10, 10, 0.96)", borderWidth: 1, borderColor: "#F87171", alignItems: "center", gap: 10 },
   playbackErrorText: { color: "#FEF2F2", fontSize: 13, lineHeight: 20, fontWeight: "800", textAlign: "center" },
   retryButton: { minHeight: 38, paddingHorizontal: 16, borderRadius: 12, backgroundColor: "#FECACA", alignItems: "center", justifyContent: "center" },

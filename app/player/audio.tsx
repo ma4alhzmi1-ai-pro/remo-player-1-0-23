@@ -6,11 +6,12 @@ import {
   StyleSheet,
   Modal,
   BackHandler,
+  I18nManager,
   Alert,
   PanResponder,
   LayoutChangeEvent,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
@@ -22,6 +23,8 @@ import { resolveAudioProgressSeek } from "@/lib/audio-progress";
 
 export default function AudioPlayerScreen() {
   const router = useRouter();
+  const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
+  const musicLibraryRoute = folderPath ? `/(tabs)/music?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/music";
   const {
     currentItem,
     isPlaying,
@@ -53,18 +56,26 @@ export default function AudioPlayerScreen() {
   const hasPrevious = currentIndex > 0 || repeatMode === "all" || shuffle;
   const hasNext = (currentIndex >= 0 && currentIndex < playbackQueue.length - 1) || repeatMode === "all" || shuffle;
 
-  // Android hardware back handler
+  const exitAudio = useCallback(() => {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(musicLibraryRoute as never);
+    }
+  }, [menuOpen, router, musicLibraryRoute]);
+
+  // Android hardware back handler integrated with sequential exit
   useEffect(() => {
     const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (menuOpen) {
-        setMenuOpen(false);
-        return true;
-      }
-      router.back();
+      exitAudio();
       return true;
     });
     return () => backHandler.remove();
-  }, [menuOpen, router]);
+  }, [exitAudio]);
 
   // Sleep timer manager
   useEffect(() => {
@@ -172,16 +183,16 @@ export default function AudioPlayerScreen() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Header - Back button on right for RTL, menu on left */}
+        {/* Header - Back button on right, title in center, menu on left */}
         <View style={styles.header}>
-          <Pressable onPress={() => setMenuOpen(true)} style={styles.headerIcon}>
-            <MaterialIcons name="more-vert" size={24} color={colors.text} />
+          <Pressable onPress={exitAudio} style={styles.headerIcon} accessibilityLabel="رجوع">
+            <MaterialIcons name="arrow-forward" size={24} color={colors.text} />
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>
             مشغل الموسيقى
           </Text>
-          <Pressable onPress={() => router.back()} style={styles.headerIcon}>
-            <MaterialIcons name="arrow-forward" size={24} color={colors.text} />
+          <Pressable onPress={() => setMenuOpen(true)} style={styles.headerIcon} accessibilityLabel="خيارات">
+            <MaterialIcons name="more-vert" size={24} color={colors.text} />
           </Pressable>
         </View>
 
@@ -452,7 +463,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   header: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,

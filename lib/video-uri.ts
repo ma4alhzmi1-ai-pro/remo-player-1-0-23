@@ -1,4 +1,11 @@
 import * as FileSystem from "expo-file-system/legacy";
+import {
+  checkExtractedCache,
+  extractAndPrepareVideo,
+  isLegacyExtractionFormat,
+  type ExtractionOptions,
+  type ExtractionResult,
+} from "./ffmpeg-extractor";
 
 function stableUriKey(uri: string): string {
   let hash = 2166136261;
@@ -33,4 +40,36 @@ export async function resolvePlayableVideoUri(uri: string, nameOrUri = uri): Pro
   } catch {
     return uri;
   }
+}
+
+/**
+ * Resolves a playable video URI with transparent FFMPEG extraction cache checks.
+ * If the video is an unsupported legacy format (e.g. FLV, VOB) and has an extracted
+ * MP4 cache, returns the cached file immediately.
+ */
+export async function resolveExtractedPlayableVideoUri(
+  uri: string,
+  nameOrUri = uri,
+  options?: ExtractionOptions
+): Promise<{ uri: string; extracted: boolean; isCached?: boolean }> {
+  const resolvedBaseUri = await resolvePlayableVideoUri(uri, nameOrUri);
+
+  // Check if an extracted cache exists
+  const cached = await checkExtractedCache(resolvedBaseUri);
+  if (cached) {
+    return { uri: cached, extracted: true, isCached: true };
+  }
+
+  // If it's a known legacy container format and extraction is requested or forced
+  if (isLegacyExtractionFormat(nameOrUri) && options?.forceTranscode) {
+    const res: ExtractionResult = await extractAndPrepareVideo(resolvedBaseUri, {
+      ...options,
+      fileName: nameOrUri,
+    });
+    if (res.success && res.outputUri) {
+      return { uri: res.outputUri, extracted: true, isCached: res.isCached };
+    }
+  }
+
+  return { uri: resolvedBaseUri, extracted: false };
 }

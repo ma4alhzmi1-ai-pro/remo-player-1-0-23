@@ -1,39 +1,80 @@
 import { extensionOf } from "./media-utils";
+import {
+  isExoPlayerSourceError,
+  isLegacyExtractionFormat,
+  getFfmpegExtractionStrategy,
+  extractAndPrepareVideo,
+  checkExtractedCache,
+  getExtractedCacheUri,
+  cancelExtraction,
+  type ExtractionProgress,
+  type ExtractionResult,
+  type ExtractionStrategy,
+} from "./ffmpeg-extractor";
 
 export type VideoPlaybackEngine = "media3" | "libvlc";
 
-// هذه الامتدادات غالبًا تحتوي على ترميزات أو حاويات غير قياسية.
-// يتم إرسالها إلى LibVLC أولاً، بينما يحتفظ الوسائط العادية بمسار Media3 الأقل استهلاكًا.
+export {
+  isExoPlayerSourceError,
+  isLegacyExtractionFormat,
+  getFfmpegExtractionStrategy,
+  extractAndPrepareVideo,
+  checkExtractedCache,
+  getExtractedCacheUri,
+  cancelExtraction,
+  type ExtractionProgress,
+  type ExtractionResult,
+  type ExtractionStrategy,
+};
+
+// هذه الامتدادات المتخصصة تفشل أدوات استخراج Media3 القياسية في قراءتها افتراضياً.
+// يتم توجيهها إلى محرك LibVLC مباشرة للاستفادة من مكتبات الترميز والحاويات الخاصة.
 const compatibilityFirstExtensions = new Set([
-  // الامتدادات الأصلية
-  "amv", "bik", "crf", "evo", "gvi", "gxf", "mvr", "mp5", "mtv", "mxf",
-  "mxg", "nsv", "nuv", "rec", "rm", "rmvb", "rpl", "thp", "tod", "txd",
-  "vlc", "vro", "wtv", "xesc",
-  // إضافات لتغطية صيغ أخرى قد تكون غير مدعومة جيدًا من Media3
-  "iso", "bin", "ogm", "ogx", "ps", "ts", "wmv", "avi", "mpg", "flv",
+  // حاويات نادرة أو خاصة
+  "mvr", "mp5", "bik", "amv", "crf", "evo", "gvi", "gxf", "mtv", "mxf",
+  "mxg", "nsv", "nuv", "rec", "rmvb", "rpl", "thp", "tod", "txd",
+  "vlc", "vro", "wtv", "xesc", "iso", "bin"
 ]);
 
-export function preferredVideoPlaybackEngine(uriOrName: string): VideoPlaybackEngine {
-  return compatibilityFirstExtensions.has(extensionOf(uriOrName)) ? "libvlc" : "media3";
+function extractExt(uriOrName?: string | null): string {
+  if (!uriOrName) return "";
+  const clean = uriOrName.split(/[?#]/)[0] ?? "";
+  return extensionOf(clean);
+}
+
+export function preferredVideoPlaybackEngine(uri: string, filename?: string): VideoPlaybackEngine {
+  const extFromName = extractExt(filename);
+  if (extFromName && compatibilityFirstExtensions.has(extFromName)) {
+    return "libvlc";
+  }
+  const extFromUri = extractExt(uri);
+  if (extFromUri && compatibilityFirstExtensions.has(extFromUri)) {
+    return "libvlc";
+  }
+  return "media3";
 }
 
 export function shouldUseLibVlcFallback(errorMessage: string | null | undefined): boolean {
-  if (!errorMessage) return false;
+  if (!errorMessage) return true;
   const normalized = errorMessage.toLowerCase();
 
-  // قائمة موسّعة من الكلمات المفتاحية التي تشير إلى فشل Media3 في قراءة المصدر
   const patterns = [
-    // الإنجليزية (الأكثر شيوعًا)
     "decoder", "codec", "unsupported", "source", "extractor", "format", "render",
     "renderer", "parsing", "malformed", "initialization", "load error", "source error",
     "media period", "track", "read error", "none of the available", "could read the stream",
-    "playback exception",
-    // العربية (بعض الأجهزة تعرض رسائل مترجمة)
+    "playback exception", "contentismalformed", "datatype", "extractors", "ts", "mp4", "mkv",
     "أداة الاستخراج", "أدوات الاستخراج", "خطأ في المصدر", "فشل في القراءة",
-    "تعذر قراءة", "الترميز غير مدعوم", "مشغل الفيديو", "محرك التشغيل"
+    "تعذر قراءة", "الترميز غير مدعوم", "مشغل الفيديو", "محرك التشغيل", "لم يتمكن"
   ];
 
   return patterns.some((pattern) => normalized.includes(pattern.toLowerCase()));
+}
+
+export function shouldAttemptFfmpegExtraction(
+  uriOrName?: string | null,
+  errorMessage?: string | null
+): boolean {
+  return isLegacyExtractionFormat(uriOrName) || isExoPlayerSourceError(errorMessage);
 }
 
 export function isCompatibilityPlaybackEngine(engine: VideoPlaybackEngine): boolean {
