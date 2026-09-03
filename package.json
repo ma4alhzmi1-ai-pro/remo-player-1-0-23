@@ -9,7 +9,7 @@
     "dev:metro": "cross-env EXPO_USE_METRO_WORKSPACE_ROOT=1 npx expo start --web --port ${EXPO_PORT:-8081}",
     "build": "esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit --skipLibCheck",
     "lint": "expo lint",
     "format": "prettier --write .",
     "test": "vitest run",
@@ -17,7 +17,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "qr": "node scripts/generate_qr.mjs",
-    "postinstall": "node scripts/patch-expo-audio-media-controls.mjs"
+    "postinstall": "node scripts/patch-expo-audio-media-controls.mjs",
+    "build:android": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

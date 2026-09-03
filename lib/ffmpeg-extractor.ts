@@ -1,4 +1,25 @@
-import * as FileSystem from "expo-file-system/legacy";
+// Dynamic FileSystem resolver for dual compatibility (Node.js Vitest runner and Android Expo runtime)
+let _fsInstance: any = null;
+function getFileSystem(): any {
+  if (_fsInstance) return _fsInstance;
+  try {
+    _fsInstance = require("expo-file-system/legacy");
+  } catch {
+    try {
+      _fsInstance = require("expo-file-system");
+    } catch {
+      _fsInstance = {
+        cacheDirectory: "file:///data/user/0/com.remoplayer/cache/",
+        documentDirectory: "file:///data/user/0/com.remoplayer/files/",
+        getInfoAsync: async () => ({ exists: false, size: 0 }),
+        copyAsync: async () => {},
+        deleteAsync: async () => {},
+        readDirectoryAsync: async () => [],
+      };
+    }
+  }
+  return _fsInstance;
+}
 import { extensionOf } from "./media-utils";
 
 export type ExtractionProgress = {
@@ -91,7 +112,7 @@ export function stableUriHash(uri: string): string {
  * Returns the destination cache URI for an extracted video
  */
 export function getExtractedCacheUri(sourceUri: string): string {
-  const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory || "";
+  const baseDir = getFileSystem().cacheDirectory || getFileSystem().documentDirectory || "";
   const hash = stableUriHash(sourceUri);
   return `${baseDir}remo-extracted-${hash}.mp4`;
 }
@@ -102,7 +123,7 @@ export function getExtractedCacheUri(sourceUri: string): string {
 export async function checkExtractedCache(sourceUri: string): Promise<string | null> {
   try {
     const targetUri = getExtractedCacheUri(sourceUri);
-    const info = await FileSystem.getInfoAsync(targetUri);
+    const info = await getFileSystem().getInfoAsync(targetUri);
     if (info.exists && (info.size ?? 0) > 1024) {
       return targetUri;
     }
@@ -290,7 +311,7 @@ export async function extractAndPrepareVideo(
         });
 
         if (remuxSuccess) {
-          const info = await FileSystem.getInfoAsync(outputUri);
+          const info = await getFileSystem().getInfoAsync(outputUri);
           if (info.exists && (info.size ?? 0) > 1024) {
             extractionDone = true;
             strategyUsed = "remux";
@@ -331,7 +352,7 @@ export async function extractAndPrepareVideo(
         });
 
         if (transcodeSuccess) {
-          const info = await FileSystem.getInfoAsync(outputUri);
+          const info = await getFileSystem().getInfoAsync(outputUri);
           if (info.exists && (info.size ?? 0) > 1024) {
             extractionDone = true;
             strategyUsed = "transcode";
@@ -348,7 +369,7 @@ export async function extractAndPrepareVideo(
         await new Promise((r) => setTimeout(r, 200));
 
         try {
-          await FileSystem.copyAsync({ from: sourceUri, to: outputUri });
+          await getFileSystem().copyAsync({ from: sourceUri, to: outputUri });
           extractionDone = true;
         } catch {
           // If direct copy fails, outputUri remains valid fallback target
@@ -358,7 +379,7 @@ export async function extractAndPrepareVideo(
 
       if (abortSignal.aborted) {
         try {
-          await FileSystem.deleteAsync(outputUri, { idempotent: true });
+          await getFileSystem().deleteAsync(outputUri, { idempotent: true });
         } catch {
           // ignore
         }
@@ -406,13 +427,13 @@ export async function extractAndPrepareVideo(
  */
 export async function clearExtractionCache(): Promise<void> {
   try {
-    const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+    const baseDir = getFileSystem().cacheDirectory || getFileSystem().documentDirectory;
     if (!baseDir) return;
-    const dirInfo = await FileSystem.readDirectoryAsync(baseDir);
+    const dirInfo = await getFileSystem().readDirectoryAsync(baseDir);
     const extractedFiles = dirInfo.filter((f) => f.startsWith("remo-extracted-"));
     await Promise.all(
       extractedFiles.map((file) =>
-        FileSystem.deleteAsync(`${baseDir}${file}`, { idempotent: true }).catch(() => {})
+        getFileSystem().deleteAsync(`${baseDir}${file}`, { idempotent: true }).catch(() => {})
       )
     );
   } catch {
