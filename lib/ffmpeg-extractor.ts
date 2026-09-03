@@ -430,9 +430,9 @@ export async function clearExtractionCache(): Promise<void> {
     const baseDir = getFileSystem().cacheDirectory || getFileSystem().documentDirectory;
     if (!baseDir) return;
     const dirInfo = await getFileSystem().readDirectoryAsync(baseDir);
-    const extractedFiles = dirInfo.filter((f) => f.startsWith("remo-extracted-"));
+    const extractedFiles = (dirInfo as string[]).filter((f: string) => f.startsWith("remo-extracted-"));
     await Promise.all(
-      extractedFiles.map((file) =>
+      extractedFiles.map((file: string) =>
         getFileSystem().deleteAsync(`${baseDir}${file}`, { idempotent: true }).catch(() => {})
       )
     );

@@ -849,7 +849,7 @@ export default function VideoPlayerScreen() {
     compatibilityErrorRef.current = false;
     compatibilityStartedRef.current = true;
     setVlcDuration(Math.max(0, info.length / 1000));
-    setSourceAspect(resolveSourceAspect(info.width, info.height));
+    setSourceAspect(resolveSourceAspect((info as any)?.width, (info as any)?.height));
     setPlaybackError(null);
     setIsPlaying(true);
     if (vlcResumeSeekRef.current > 0) {
