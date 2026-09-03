@@ -1,0 +1,6 @@
+{
+  "name": "Remo Player",
+  "description": "مشغل محلي متطور للموسيقى والفيديو مع دعم قوائم التشغيل والتحكم المتقدم",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
