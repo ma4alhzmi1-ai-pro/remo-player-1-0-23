@@ -1,6 +1,6 @@
 {
-  "name": "app-template",
-  "version": "1.0.0",
+  "name": "remo-player",
+  "version": "1.0.23",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -18,7 +18,16 @@
     "ios": "expo run:ios",
     "qr": "node scripts/generate_qr.mjs",
     "postinstall": "node scripts/patch-expo-audio-media-controls.mjs",
-    "build:android": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease"
+    "build:android": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease",
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "prebuild": "expo prebuild",
+    "prebuild:clean": "expo prebuild --clean",
+    "android:run": "expo run:android",
+    "android:build": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease",
+    "android:apk": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease",
+    "android:bundle": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:bundleRelease",
+    "android:clean": "cd android && ./gradlew clean",
+    "build:apk": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -102,5 +111,13 @@
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "vitest": "^2.1.9"
-  }
+  },
+  "description": "REMO PLAYER - Advanced Android Media, Audio & Video Player with VLC and ExoPlayer Engine",
+  "author": "ma4alhzmi1-ai-pro",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23.git"
+  },
+  "homepage": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23"
 }
