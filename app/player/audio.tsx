@@ -198,17 +198,25 @@ export default function AudioPlayerScreen() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Header - Back button on left, shape toggle & menu on right */}
+        {/* Header - Back button on left, title in center, shape toggle & menu on right */}
         <View style={styles.header}>
           <Pressable onPress={exitAudio} style={styles.headerIcon} accessibilityLabel="رجوع">
-            <MaterialIcons name="arrow-forward" size={24} color={colors.text} />
+            <MaterialIcons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>
             مشغل الموسيقى
           </Text>
           <View style={styles.headerRightActions}>
-            <Pressable onPress={() => setDiscShape(s => s === "circle" ? "square" : "circle")} style={styles.headerIcon} accessibilityLabel="تبديل شكل الغلاف">
-              <MaterialIcons name={discShape === "circle" ? "crop-square" : "radio-button-unchecked"} size={22} color={colors.text} />
+            <Pressable
+              onPress={() => setDiscShape((s) => (s === "circle" ? "square" : "circle"))}
+              style={[styles.headerIcon, styles.shapeToggleBtn]}
+              accessibilityLabel={discShape === "circle" ? "تحويل لشكل مربع" : "تحويل لشكل دائري"}
+            >
+              <MaterialIcons
+                name={discShape === "circle" ? "crop-square" : "radio-button-unchecked"}
+                size={22}
+                color={colors.cyan}
+              />
             </Pressable>
             <Pressable onPress={() => setMenuOpen(true)} style={styles.headerIcon} accessibilityLabel="خيارات القائمة">
               <MaterialIcons name="more-vert" size={24} color={colors.text} />
@@ -217,8 +225,8 @@ export default function AudioPlayerScreen() {
         </View>
 
         <View style={styles.body}>
-          {/* Disc Art */}
-          <View style={styles.discWrap}>
+          {/* Disc Art with dynamic circular or square shape */}
+          <View style={[styles.discWrap, discShape === "circle" ? styles.discCircle : styles.discSquare]}>
             {currentItem.thumbnailUri ? (
               <Image
                 source={{ uri: currentItem.thumbnailUri }}
@@ -247,21 +255,26 @@ export default function AudioPlayerScreen() {
             ) : null}
           </View>
 
-          {/* Progress Bar & Timestamps */}
+          {/* Progress Bar & Timestamps with professional scrubbing */}
           <View style={styles.progressSection}>
             <View
               style={styles.progressTouch}
               onLayout={onProgressBarLayout}
               {...progressResponder.panHandlers}
             >
-              <View style={styles.progressTrack}>
+              {isScrubbing ? (
+                <View style={[styles.scrubbingTooltip, { left: `${Math.max(4, Math.min(96, progressPercent))}%` }]}>
+                  <Text style={styles.scrubbingTooltipText}>{formatDuration(scrubbingTime)}</Text>
+                </View>
+              ) : null}
+              <View style={[styles.progressTrack, isScrubbing && styles.progressTrackScrubbing]}>
                 <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-                <View style={[styles.progressThumb, { left: `${progressPercent}%` }]} />
+                <View style={[styles.progressThumb, isScrubbing && styles.progressThumbScrubbing, { left: `${progressPercent}%` }]} />
               </View>
             </View>
 
             <View style={styles.timeRow}>
-              <Text style={styles.timeText}>{formatDuration(currentTime)}</Text>
+              <Text style={styles.timeText}>{formatDuration(effectiveTime)}</Text>
               <Text style={styles.timeText}>{formatDuration(duration)}</Text>
             </View>
           </View>
@@ -455,9 +468,10 @@ function MenuAction({
 }
 
 const styles = StyleSheet.create({
-  headerRightActions: { flexDirection: "row-reverse", alignItems: "center", gap: 4 },
-  discCircle: { borderRadius: 140 },
-  discSquare: { borderRadius: 24 },
+  headerRightActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  shapeToggleBtn: { backgroundColor: "rgba(6, 182, 212, 0.12)", borderWidth: 1, borderColor: "rgba(6, 182, 212, 0.3)" },
+  discCircle: { borderRadius: 120 },
+  discSquare: { borderRadius: 28 },
   scrubbingTooltip: { position: "absolute", top: -38, transform: [{ translateX: "-50%" }], backgroundColor: "rgba(15, 23, 42, 0.95)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", zIndex: 40 },
   scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "850" },
   gradient: {
@@ -488,7 +502,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   header: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
@@ -513,9 +527,8 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   discWrap: {
-    width: 230,
-    height: 230,
-    borderRadius: 115,
+    width: 240,
+    height: 240,
     overflow: "hidden",
     backgroundColor: "#16202C",
     justifyContent: "center",
@@ -569,8 +582,9 @@ const styles = StyleSheet.create({
   },
   progressTouch: {
     width: "100%",
-    height: 36,
+    height: 38,
     justifyContent: "center",
+    position: "relative",
   },
   progressTrack: {
     width: "100%",
@@ -578,6 +592,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.14)",
     borderRadius: 3,
     position: "relative",
+  },
+  progressTrackScrubbing: {
+    height: 8,
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
   progressFill: {
     height: "100%",
@@ -597,6 +615,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 3,
     elevation: 3,
+  },
+  progressThumbScrubbing: {
+    top: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginLeft: -12,
+    backgroundColor: colors.cyan,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    elevation: 8,
   },
   timeRow: {
     flexDirection: "row",
