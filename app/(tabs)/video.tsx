@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, BackHandler, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Artwork, colors, EmptyState, formatDuration, MediaRow } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
