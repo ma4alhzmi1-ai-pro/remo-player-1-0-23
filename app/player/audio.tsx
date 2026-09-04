@@ -43,6 +43,9 @@ export default function AudioPlayerScreen() {
   } = usePlayer();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubbingTime, setScrubbingTime] = useState(0);
+  const [discShape, setDiscShape] = useState<"circle" | "square">("circle");
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,10 +101,15 @@ export default function AudioPlayerScreen() {
   }, [sleepTimer, stop]);
 
   const seekFromGesture = useCallback(
-    (locationX: number) => {
+    (locationX: number, isFinal = false) => {
       const targetTime = resolveAudioProgressSeek(locationX, progressBarWidth, duration);
       if (targetTime !== null) {
-        seekTo(targetTime);
+        setScrubbingTime(targetTime);
+        setIsScrubbing(true);
+        if (isFinal) {
+          setIsScrubbing(false);
+          seekTo(targetTime);
+        }
       }
     },
     [progressBarWidth, duration, seekTo]
@@ -113,10 +121,16 @@ export default function AudioPlayerScreen() {
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
-          seekFromGesture(evt.nativeEvent.locationX);
+          seekFromGesture(evt.nativeEvent.locationX, false);
         },
         onPanResponderMove: (evt) => {
-          seekFromGesture(evt.nativeEvent.locationX);
+          seekFromGesture(evt.nativeEvent.locationX, false);
+        },
+        onPanResponderRelease: (evt) => {
+          seekFromGesture(evt.nativeEvent.locationX, true);
+        },
+        onPanResponderTerminate: (evt) => {
+          seekFromGesture(evt.nativeEvent.locationX, true);
         },
       }),
     [seekFromGesture]
@@ -173,7 +187,8 @@ export default function AudioPlayerScreen() {
     );
   }
 
-  const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const effectiveTime = isScrubbing ? scrubbingTime : currentTime;
+  const progressPercent = duration > 0 ? Math.min(100, (effectiveTime / duration) * 100) : 0;
 
   return (
     <ScreenContainer>
@@ -183,7 +198,7 @@ export default function AudioPlayerScreen() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Header - Back button on right, title in center, menu on left */}
+        {/* Header - Back button on left, shape toggle & menu on right */}
         <View style={styles.header}>
           <Pressable onPress={exitAudio} style={styles.headerIcon} accessibilityLabel="رجوع">
             <MaterialIcons name="arrow-forward" size={24} color={colors.text} />
@@ -191,9 +206,14 @@ export default function AudioPlayerScreen() {
           <Text style={styles.headerTitle} numberOfLines={1}>
             مشغل الموسيقى
           </Text>
-          <Pressable onPress={() => setMenuOpen(true)} style={styles.headerIcon} accessibilityLabel="خيارات">
-            <MaterialIcons name="more-vert" size={24} color={colors.text} />
-          </Pressable>
+          <View style={styles.headerRightActions}>
+            <Pressable onPress={() => setDiscShape(s => s === "circle" ? "square" : "circle")} style={styles.headerIcon} accessibilityLabel="تبديل شكل الغلاف">
+              <MaterialIcons name={discShape === "circle" ? "crop-square" : "radio-button-unchecked"} size={22} color={colors.text} />
+            </Pressable>
+            <Pressable onPress={() => setMenuOpen(true)} style={styles.headerIcon} accessibilityLabel="خيارات القائمة">
+              <MaterialIcons name="more-vert" size={24} color={colors.text} />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.body}>
@@ -202,11 +222,11 @@ export default function AudioPlayerScreen() {
             {currentItem.thumbnailUri ? (
               <Image
                 source={{ uri: currentItem.thumbnailUri }}
-                style={styles.discImage}
+                style={[styles.discImage, discShape === "circle" ? styles.discCircle : styles.discSquare]}
                 resizeMode="cover"
               />
             ) : (
-              <View style={styles.discFallback}>
+              <View style={[styles.discFallback, discShape === "circle" ? styles.discCircle : styles.discSquare]}>
                 <MaterialIcons name="music-note" size={72} color={colors.cyan} />
               </View>
             )}
@@ -435,6 +455,11 @@ function MenuAction({
 }
 
 const styles = StyleSheet.create({
+  headerRightActions: { flexDirection: "row-reverse", alignItems: "center", gap: 4 },
+  discCircle: { borderRadius: 140 },
+  discSquare: { borderRadius: 24 },
+  scrubbingTooltip: { position: "absolute", top: -38, transform: [{ translateX: "-50%" }], backgroundColor: "rgba(15, 23, 42, 0.95)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", zIndex: 40 },
+  scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "850" },
   gradient: {
     flex: 1,
   },

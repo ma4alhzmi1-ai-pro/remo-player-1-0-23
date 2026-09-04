@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { BackHandler, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, EmptyState, MediaRow } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -40,6 +40,16 @@ export default function MusicScreen() {
   const visibleFolders = useMemo(() => folders.filter((folder) => !query.trim() || `${folder.title} ${folder.path}`.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [folders, query]);
   const visibleAlbums = useMemo(() => albums.filter((album) => !query.trim() || album.name.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [albums, query]);
   const visibleArtists = useMemo(() => artists.filter((artist) => !query.trim() || artist.name.toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"))), [artists, query]);
+
+  useEffect(() => {
+    if (!selectedCollection && !selectedFolder) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedCollection) { setSelectedCollection(null); return true; }
+      if (selectedFolder) { setSelectedFolder(null); return true; }
+      return false;
+    });
+    return () => sub.remove();
+  }, [selectedCollection, selectedFolder]);
   useEffect(() => {
     if (!folderPath) return;
     const folder = folders.find((candidate) => candidate.path === folderPath);

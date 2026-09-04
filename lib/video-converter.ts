@@ -41,7 +41,7 @@ export async function convertVideoToMp4(
     const ffmpegModule = await import('ffmpeg-kit-react-native').catch(() => null);
     if (ffmpegModule && ffmpegModule.FFmpegKit) {
       const { FFmpegKit, ReturnCode } = ffmpegModule;
-      const command = `-y -i "${inputUri}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart "${outputUri}"`;
+      const command = `-y -i "${inputUri}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -g 48 -keyint_min 48 -sc_threshold 0 -c:a aac -b:a 128k -movflags +faststart "${outputUri}"`;
 
       await new Promise<void>((resolve, reject) => {
         FFmpegKit.executeAsync(

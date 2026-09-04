@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, BackHandler, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Artwork, colors, EmptyState, formatDuration, MediaRow } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -42,6 +42,16 @@ export default function VideoScreen() {
     items: playlist.itemIds.map((id) => items.find((item) => item.id === id)).filter((item): item is MediaItem => item?.mediaType === "video"),
   })).filter((playlist) => playlist.items.length > 0), [items, playlists]);
 
+
+  useEffect(() => {
+    if (!selectedFolder && !selectedPlaylist) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedFolder) { setSelectedFolder(null); return true; }
+      if (selectedPlaylist) { setSelectedPlaylist(null); return true; }
+      return false;
+    });
+    return () => sub.remove();
+  }, [selectedFolder, selectedPlaylist]);
   useEffect(() => {
     if (!folderPath) return;
     const folder = folders.find((candidate) => candidate.path === folderPath);

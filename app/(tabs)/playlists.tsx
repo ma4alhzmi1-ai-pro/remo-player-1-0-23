@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useState } from "react";
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { colors, EmptyState, MediaRow } from "@/components/remo-ui";
@@ -11,6 +11,16 @@ import { PLAYLIST_TEMPLATES, type PlaylistTemplateId } from "@/lib/playlist-temp
 import type { MediaItem, Playlist } from "@/types/media";
 
 export default function PlaylistsScreen() {
+
+  useEffect(() => {
+    if (!selectedPlaylist) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setSelectedPlaylist(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [selectedPlaylist]);
+
   const router = useRouter();
   const { playlists, items, createPlaylist, createPlaylistFromTemplate, deletePlaylist, removeItemFromPlaylist } = useLibrary();
   const { playItem } = usePlayer();

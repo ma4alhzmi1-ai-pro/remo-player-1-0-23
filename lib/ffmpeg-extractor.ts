@@ -82,6 +82,8 @@ export const legacyExtractorFormats = new Set([
 
 // Codecs/containers that strictly require full transcoding rather than stream copy
 export const strictTranscodeFormats = new Set([
+  "mvr",
+  "mp5",
   "vob",
   "mpg",
   "mpeg",
@@ -326,7 +328,7 @@ export async function extractAndPrepareVideo(
           stage: "إعادة ترميز الفيديو والصوت لضمان التوافق الكامل مع ExoPlayer (H.264 / AAC)...",
         });
 
-        const transcodeCommand = `-y -i "${sourceUri}" -c:v libx264 -preset veryfast -crf 23 -c:a aac -b:a 128k -movflags +faststart "${outputUri}"`;
+        const transcodeCommand = `-y -i "${sourceUri}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -g 48 -keyint_min 48 -sc_threshold 0 -c:a aac -b:a 128k -movflags +faststart "${outputUri}"`;
         const transcodeSuccess = await new Promise<boolean>((resolve) => {
           nativeFfmpegModule.FFmpegKit.executeAsync(
             transcodeCommand,
