@@ -1,0 +1,40 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useState } from "react";
+import { Alert, BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
+
+import { colors, EmptyState, MediaRow } from "@/components/remo-ui";
+import { ScreenContainer } from "@/components/screen-container";
+import { useLibrary } from "@/lib/library-context";
+import { usePlayer } from "@/lib/player-context";
+import { PLAYLIST_TEMPLATES, type PlaylistTemplateId } from "@/lib/playlist-templates";
+import type { MediaItem, Playlist } from "@/types/media";
+
+export default function PlaylistsScreen() {
+
+  useEffect(() => {
+    if (!selectedPlaylist) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setSelectedPlaylist(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [selectedPlaylist]);
+
+  const router = useRouter();
+  const { playlists, items, createPlaylist, createPlaylistFromTemplate, deletePlaylist, removeItemFromPlaylist } = useLibrary();
+  const { playItem } = usePlayer();
+  const [name, setName] = useState("");
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+  const addPlaylist = async () => { const created = await createPlaylist(name); if (created) setName(""); else Alert.alert("تعذر إنشاء القائمة", "أدخل اسماً جديداً ومميزاً لقائمة التشغيل."); };
+  const selectedItems = selectedPlaylist ? selectedPlaylist.itemIds.map((id) => items.find((item) => item.id === id)).filter((item): item is MediaItem => Boolean(item)) : [];
+  const openTrack = async (item: MediaItem) => { await playItem(item); router.push("/player/audio" as never); };
+  const applyTemplate = async (templateId: PlaylistTemplateId) => { const created = await createPlaylistFromTemplate(templateId); if (!created) Alert.alert("تعذر تطبيق القالب", "حاول مرة أخرى بعد تحديث المكتبة."); };
+
+  if (selectedPlaylist) return <ScreenContainer className="px-0"><View style={styles.detailHeader}><Pressable onPress={() => setSelectedPlaylist(null)} style={styles.backButton}><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><View style={styles.detailTitleWrap}><Text numberOfLines={1} style={styles.detailTitle}>{selectedPlaylist.name}</Text><Text style={styles.detailSubtitle}>{selectedItems.length} عناصر · اضغط مطولاً لحذف عنصر</Text></View></View>{selectedItems.length ? <FlatList data={selectedItems} keyExtractor={(item) => item.id} contentContainerStyle={styles.detailList} renderItem={({ item }) => <MediaRow item={item} onPress={() => void openTrack(item)} onLongPress={() => { void removeItemFromPlaylist(selectedPlaylist.id, item.id); }} />} /> : <EmptyState icon="playlist-remove" title="القائمة فارغة" description="اضغط مطولاً على أي أغنية في تبويب الموسيقى لإضافتها إلى هذه القائمة." />}</ScreenContainer>;
+
+  const header = <><View style={styles.header}><Text style={styles.title}>قوائم التشغيل</Text><Text style={styles.subtitle}>نظّم جلسات الاستماع الخاصة بك محلياً</Text></View><View style={styles.templateSection}><View style={styles.templateHeading}><Text style={styles.templateTitle}>قوالب جاهزة</Text><Text style={styles.templateSub}>ابدأ بجلسة استماع منظمة</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templates}>{PLAYLIST_TEMPLATES.map((template) => <Pressable key={template.id} onPress={() => void applyTemplate(template.id)} style={({ pressed }) => [styles.templateCard, pressed && styles.pressed]}><View style={[styles.templateIcon, { backgroundColor: `${template.color}24` }]}><MaterialIcons name={template.icon} size={22} color={template.color} /></View><Text style={styles.templateName}>{template.name}</Text><Text numberOfLines={2} style={styles.templateDescription}>{template.description}</Text></Pressable>)}</ScrollView></View><View style={styles.composer}><TextInput value={name} onChangeText={setName} onSubmitEditing={() => void addPlaylist()} placeholder="اسم قائمة التشغيل" placeholderTextColor={colors.muted} returnKeyType="done" style={styles.input} textAlign="right" /><Pressable onPress={() => void addPlaylist()} style={({ pressed }) => [styles.createButton, pressed && styles.pressed]}><MaterialIcons name="add" size={21} color={colors.background} /></Pressable></View></>;
+  return <ScreenContainer className="px-0"><FlatList data={playlists} keyExtractor={(item) => item.id} ListHeaderComponent={header} ListEmptyComponent={<EmptyState icon="queue-music" title="أنشئ أول قائمة تشغيل" description="اختر قالباً جاهزاً أو أنشئ قائمة تناسبك." />} contentContainerStyle={styles.list} renderItem={({ item }) => <Pressable onPress={() => setSelectedPlaylist(item)} style={({ pressed }) => [styles.playlistRow, pressed && styles.pressed]}><View style={styles.playlistIcon}><MaterialIcons name="queue-music" size={23} color={colors.violet} /></View><View style={styles.playlistCopy}><Text style={styles.playlistName}>{item.name}</Text><Text style={styles.playlistMeta}>{item.itemIds.length} عناصر</Text></View><Pressable onPress={() => void deletePlaylist(item.id)} hitSlop={8} style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={21} color={colors.muted} /></Pressable></Pressable>} /></ScreenContainer>;
+}
+
+const styles = StyleSheet.create({ header: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 12, alignItems: "flex-end" }, title: { color: colors.text, fontSize: 25, lineHeight: 32, fontWeight: "900" }, subtitle: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: "right" }, templateSection: { marginBottom: 12 }, templateHeading: { paddingHorizontal: 18, flexDirection: "row-reverse", alignItems: "baseline", gap: 8 }, templateTitle: { color: colors.text, fontSize: 15, fontWeight: "900" }, templateSub: { color: colors.muted, fontSize: 10 }, templates: { paddingHorizontal: 16, paddingTop: 9, gap: 9 }, templateCard: { width: 132, minHeight: 113, padding: 11, borderRadius: 17, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "flex-end" }, templateIcon: { width: 37, height: 37, borderRadius: 12, alignItems: "center", justifyContent: "center" }, templateName: { color: colors.text, fontSize: 13, fontWeight: "900", marginTop: 8, textAlign: "right" }, templateDescription: { color: colors.muted, fontSize: 10, lineHeight: 14, marginTop: 2, textAlign: "right" }, composer: { flexDirection: "row-reverse", marginHorizontal: 16, minHeight: 54, padding: 5, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, input: { flex: 1, color: colors.text, fontSize: 14, paddingHorizontal: 12 }, createButton: { width: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.cyan }, list: { paddingBottom: 92, gap: 10 }, playlistRow: { minHeight: 74, marginHorizontal: 16, padding: 12, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: "row-reverse", alignItems: "center", gap: 11 }, playlistIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: "#231D44", alignItems: "center", justifyContent: "center" }, playlistCopy: { flex: 1, alignItems: "flex-end" }, playlistName: { color: colors.text, fontSize: 15, fontWeight: "800" }, playlistMeta: { color: colors.muted, fontSize: 11, lineHeight: 17 }, deleteButton: { width: 34, height: 34, alignItems: "center", justifyContent: "center" }, detailHeader: { minHeight: 74, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", gap: 10 }, backButton: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface }, detailTitleWrap: { flex: 1, alignItems: "flex-end" }, detailTitle: { color: colors.text, fontSize: 20, lineHeight: 27, fontWeight: "900" }, detailSubtitle: { color: colors.muted, fontSize: 11, lineHeight: 17 }, detailList: { paddingBottom: 92, borderTopWidth: 1, borderColor: colors.border }, pressed: { opacity: 0.65 } });
