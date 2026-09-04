@@ -1162,7 +1162,7 @@ function TranslationSheet({ visible, item, selectedLanguage, onSelectLanguage, g
 
 const styles = StyleSheet.create({
   scrubbingTooltip: { position: "absolute", top: -36, transform: [{ translateX: "-50%" }], backgroundColor: "rgba(15, 23, 42, 0.9)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.2)", zIndex: 30 },
-  scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "850" },
+  scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
   root: { flex: 1 },
   landscapeRoot: { backgroundColor: "#02060B" },
   header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },

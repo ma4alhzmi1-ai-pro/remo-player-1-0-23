@@ -11,6 +11,11 @@ import { PLAYLIST_TEMPLATES, type PlaylistTemplateId } from "@/lib/playlist-temp
 import type { MediaItem, Playlist } from "@/types/media";
 
 export default function PlaylistsScreen() {
+  const router = useRouter();
+  const { playlists, items, createPlaylist, createPlaylistFromTemplate, deletePlaylist, removeItemFromPlaylist } = useLibrary();
+  const { playItem } = usePlayer();
+  const [name, setName] = useState("");
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
 
   useEffect(() => {
     if (!selectedPlaylist) return;
@@ -20,12 +25,6 @@ export default function PlaylistsScreen() {
     });
     return () => sub.remove();
   }, [selectedPlaylist]);
-
-  const router = useRouter();
-  const { playlists, items, createPlaylist, createPlaylistFromTemplate, deletePlaylist, removeItemFromPlaylist } = useLibrary();
-  const { playItem } = usePlayer();
-  const [name, setName] = useState("");
-  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const addPlaylist = async () => { const created = await createPlaylist(name); if (created) setName(""); else Alert.alert("تعذر إنشاء القائمة", "أدخل اسماً جديداً ومميزاً لقائمة التشغيل."); };
   const selectedItems = selectedPlaylist ? selectedPlaylist.itemIds.map((id) => items.find((item) => item.id === id)).filter((item): item is MediaItem => Boolean(item)) : [];
   const openTrack = async (item: MediaItem) => { await playItem(item); router.push("/player/audio" as never); };

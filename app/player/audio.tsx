@@ -222,7 +222,7 @@ export default function AudioPlayerScreen() {
             {currentItem.thumbnailUri ? (
               <Image
                 source={{ uri: currentItem.thumbnailUri }}
-                style={[styles.discImage, discShape === "circle" ? styles.discCircle : styles.discSquare]}
+                style={[styles.discImage, { borderRadius: discShape === "circle" ? 140 : 24 }]}
                 resizeMode="cover"
               />
             ) : (
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
   discCircle: { borderRadius: 140 },
   discSquare: { borderRadius: 24 },
   scrubbingTooltip: { position: "absolute", top: -38, transform: [{ translateX: "-50%" }], backgroundColor: "rgba(15, 23, 42, 0.95)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", zIndex: 40 },
-  scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "850" },
+  scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
   gradient: {
     flex: 1,
   },
