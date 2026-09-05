@@ -42,7 +42,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "alhzmi",
-  version: "1.0.58",
+  version: "1.0.59",
   orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -65,7 +65,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    versionCode: 60,
+    versionCode: 61,
     permissions: [
       "READ_EXTERNAL_STORAGE",
       "WRITE_EXTERNAL_STORAGE",
@@ -148,8 +148,8 @@ const config: ExpoConfig = {
       "expo-build-properties",
       {
         android: {
-          compileSdkVersion: 35,
-          targetSdkVersion: 35,
+          compileSdkVersion: 36,
+          targetSdkVersion: 36,
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
           enableMinifyInReleaseBuilds: true,
