@@ -17,7 +17,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "qr": "node scripts/generate_qr.mjs",
-    "postinstall": "node scripts/patch-expo-audio-media-controls.mjs",
+    "postinstall": "node scripts/patch-expo-audio-media-controls.mjs && node scripts/patch-expo-video-media-controls.mjs",
     "build:android": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "prebuild": "expo prebuild",

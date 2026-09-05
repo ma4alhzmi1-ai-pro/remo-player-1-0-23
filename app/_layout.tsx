@@ -13,7 +13,6 @@ import { PlayerProvider } from "@/lib/player-context";
 import { DeveloperCreditToast } from "@/components/developer-credit-toast";
 import { AppSideMenuProvider } from "@/components/app-side-menu";
 import { IntroScreen } from "@/components/intro-screen";
-import { MiniPlayer } from "@/components/mini-player";
 import { LanguageProvider } from "@/lib/language-provider";
 import {
   SafeAreaFrameContext,
@@ -103,7 +102,6 @@ export default function RootLayout() {
                   <Stack.Screen name="support-developer" />
                   <Stack.Screen name="oauth/callback" />
                 </Stack>
-                <MiniPlayer />
                 <DeveloperCreditToast />
               </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}
               <StatusBar style="light" hidden={pathname === "/player/video"} />

@@ -46,9 +46,17 @@ export default function AudioPlayerScreen() {
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubbingTime, setScrubbingTime] = useState(0);
   const [discShape, setDiscShape] = useState<"circle" | "square">("circle");
+  const [showLyrics, setShowLyrics] = useState(false);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
+  const progressBarRef = useRef<View>(null);
+  const progressLayout = useRef({ pageX: 0, width: 0 });
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const initialLetter = useMemo(() => {
+    const raw = currentItem?.title?.trim() || "";
+    return raw ? raw.charAt(0).toUpperCase() : "♫";
+  }, [currentItem?.title]);
 
   // Current track index in queue
   const currentIndex = useMemo(() => {
@@ -100,16 +108,35 @@ export default function AudioPlayerScreen() {
     };
   }, [sleepTimer, stop]);
 
+  const updateProgressLayout = useCallback(() => {
+    progressBarRef.current?.measure((_x, _y, width, _height, pageX) => {
+      if (width > 0) {
+        progressLayout.current = { pageX, width };
+        setProgressBarWidth(width);
+      }
+    });
+  }, []);
+
   const seekFromGesture = useCallback(
-    (locationX: number, isFinal = false) => {
-      const targetTime = resolveAudioProgressSeek(locationX, progressBarWidth, duration);
-      if (targetTime !== null) {
-        setScrubbingTime(targetTime);
-        setIsScrubbing(true);
-        if (isFinal) {
-          setIsScrubbing(false);
-          seekTo(targetTime);
-        }
+    (pageX: number, isFinal = false) => {
+      if (!duration || duration <= 0) return;
+      const { pageX: barX, width: barW } = progressLayout.current;
+      const effectiveWidth = barW > 0 ? barW : progressBarWidth;
+      if (effectiveWidth <= 0) return;
+
+      let ratio = 0;
+      if (barX > 0 && Number.isFinite(pageX)) {
+        ratio = Math.max(0, Math.min(1, (pageX - barX) / effectiveWidth));
+      } else {
+        return;
+      }
+
+      const targetTime = ratio * duration;
+      setScrubbingTime(targetTime);
+      setIsScrubbing(true);
+      if (isFinal) {
+        setIsScrubbing(false);
+        seekTo(targetTime);
       }
     },
     [progressBarWidth, duration, seekTo]
@@ -121,23 +148,29 @@ export default function AudioPlayerScreen() {
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
-          seekFromGesture(evt.nativeEvent.locationX, false);
+          updateProgressLayout();
+          seekFromGesture(evt.nativeEvent.pageX, false);
         },
         onPanResponderMove: (evt) => {
-          seekFromGesture(evt.nativeEvent.locationX, false);
+          seekFromGesture(evt.nativeEvent.pageX, false);
         },
         onPanResponderRelease: (evt) => {
-          seekFromGesture(evt.nativeEvent.locationX, true);
+          seekFromGesture(evt.nativeEvent.pageX, true);
         },
         onPanResponderTerminate: (evt) => {
-          seekFromGesture(evt.nativeEvent.locationX, true);
+          seekFromGesture(evt.nativeEvent.pageX, true);
         },
       }),
-    [seekFromGesture]
+    [seekFromGesture, updateProgressLayout]
   );
 
   const onProgressBarLayout = (event: LayoutChangeEvent) => {
-    setProgressBarWidth(event.nativeEvent.layout.width);
+    const width = event.nativeEvent.layout.width;
+    if (width > 0) {
+      setProgressBarWidth(width);
+      progressLayout.current.width = width;
+    }
+    updateProgressLayout();
   };
 
   const shareTrack = async () => {
@@ -217,20 +250,69 @@ export default function AudioPlayerScreen() {
         </View>
 
         <View style={styles.body}>
-          {/* Disc Art */}
-          <View style={styles.discWrap}>
-            {currentItem.thumbnailUri ? (
-              <Image
-                source={{ uri: currentItem.thumbnailUri }}
-                style={[styles.discImage, { borderRadius: discShape === "circle" ? 140 : 24 }]}
-                resizeMode="cover"
-              />
+          {/* Disc Art & Interactive Lyrics View */}
+          <Pressable
+            onPress={() => setShowLyrics((prev) => !prev)}
+            style={({ pressed }) => [
+              styles.discWrap,
+              discShape === "circle" ? styles.discCircleWrap : styles.discSquareWrap,
+              showLyrics && styles.discWrapLyrics,
+              pressed && { opacity: 0.94 },
+            ]}
+            accessibilityLabel={showLyrics ? "العودة لصورة الغلاف" : "عرض كلمات الأغنية"}
+            accessibilityHint="اضغط للتبديل بين صورة الموسيقى والكلمات المرفقة"
+          >
+            {showLyrics ? (
+              <View style={styles.lyricsContainer}>
+                <View style={styles.lyricsHeader}>
+                  <MaterialIcons name="lyrics" size={18} color={colors.cyan} />
+                  <Text style={styles.lyricsHeaderTitle}>الكلمات المرفقة</Text>
+                  <MaterialIcons name="touch-app" size={16} color={colors.muted} />
+                </View>
+                {currentItem.lyrics ? (
+                  <ScrollView
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.lyricsScroll}
+                  >
+                    <Text style={styles.lyricsContentText}>{currentItem.lyrics}</Text>
+                  </ScrollView>
+                ) : (
+                  <View style={styles.lyricsEmpty}>
+                    <Text style={styles.lyricsEmptyTitle}>لا توجد كلمات مرفقة</Text>
+                    <Text style={styles.lyricsEmptyDesc}>اضغط لإضافة كلمات لهذه الأغنية</Text>
+                    <Pressable
+                      onPress={() => router.push("/player/edit-audio" as never)}
+                      style={styles.lyricsAddButton}
+                    >
+                      <Text style={styles.lyricsAddButtonText}>إضافة الكلمات</Text>
+                    </Pressable>
+                  </View>
+                )}
+                <Text style={styles.lyricsHint}>انقر للعودة لصورة الغلاف</Text>
+              </View>
             ) : (
-              <View style={[styles.discFallback, discShape === "circle" ? styles.discCircle : styles.discSquare]}>
-                <MaterialIcons name="music-note" size={72} color={colors.cyan} />
+              <View style={styles.discInnerContainer}>
+                {currentItem.thumbnailUri ? (
+                  <Image
+                    source={{ uri: currentItem.thumbnailUri }}
+                    style={[styles.discImage, discShape === "circle" ? styles.discCircle : styles.discSquare]}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.discFallback, discShape === "circle" ? styles.discCircle : styles.discSquare]}>
+                    <View style={styles.discVinylRing} />
+                    <Text style={styles.discInitial}>{initialLetter}</Text>
+                    <MaterialIcons name="music-note" size={32} color={colors.cyan} style={styles.discMiniNote} />
+                  </View>
+                )}
+                <View style={styles.lyricsBadgeOverlay}>
+                  <MaterialIcons name="lyrics" size={14} color="#FFFFFF" />
+                  <Text style={styles.lyricsBadgeText}>انقر للكلمات</Text>
+                </View>
               </View>
             )}
-          </View>
+          </Pressable>
 
           {/* Title & Artist */}
           <View style={styles.metaRow}>
@@ -250,18 +332,19 @@ export default function AudioPlayerScreen() {
           {/* Progress Bar & Timestamps */}
           <View style={styles.progressSection}>
             <View
+              ref={progressBarRef}
               style={styles.progressTouch}
               onLayout={onProgressBarLayout}
               {...progressResponder.panHandlers}
             >
-              <View style={styles.progressTrack}>
+              <View style={styles.progressTrack} pointerEvents="none">
                 <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
                 <View style={[styles.progressThumb, { left: `${progressPercent}%` }]} />
               </View>
             </View>
 
             <View style={styles.timeRow}>
-              <Text style={styles.timeText}>{formatDuration(currentTime)}</Text>
+              <Text style={styles.timeText}>{formatDuration(effectiveTime)}</Text>
               <Text style={styles.timeText}>{formatDuration(duration)}</Text>
             </View>
           </View>
@@ -458,6 +541,125 @@ const styles = StyleSheet.create({
   headerRightActions: { flexDirection: "row-reverse", alignItems: "center", gap: 4 },
   discCircle: { borderRadius: 140 },
   discSquare: { borderRadius: 24 },
+  discCircleWrap: { borderRadius: 115 },
+  discSquareWrap: { borderRadius: 24 },
+  discWrapLyrics: {
+    backgroundColor: "#111E2E",
+    borderColor: colors.cyan,
+    borderWidth: 2,
+    padding: 12,
+  },
+  lyricsContainer: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  lyricsHeader: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.12)",
+    width: "100%",
+  },
+  lyricsHeaderTitle: {
+    color: colors.cyan,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  lyricsScroll: {
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  lyricsContentText: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  lyricsEmpty: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+  lyricsEmptyTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  lyricsEmptyDesc: {
+    color: colors.muted,
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  lyricsAddButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: colors.cyan,
+  },
+  lyricsAddButtonText: {
+    color: colors.background,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  lyricsHint: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: "center",
+  },
+  discInnerContainer: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  discVinylRing: {
+    position: "absolute",
+    width: "70%",
+    height: "70%",
+    borderRadius: 100,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  discInitial: {
+    color: "#FFFFFF",
+    fontSize: 64,
+    fontWeight: "900",
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
+  discMiniNote: {
+    position: "absolute",
+    bottom: 24,
+  },
+  lyricsBadgeOverlay: {
+    position: "absolute",
+    bottom: 8,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(10, 25, 45, 0.85)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(117, 230, 218, 0.4)",
+  },
+  lyricsBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "700",
+  },
   scrubbingTooltip: { position: "absolute", top: -38, transform: [{ translateX: "-50%" }], backgroundColor: "rgba(15, 23, 42, 0.95)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", zIndex: 40 },
   scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
   gradient: {

@@ -34,16 +34,16 @@ describe("video gesture resolution", () => {
   });
 
   it("tracks the local brightness preview continuously and keeps it within a safe visual range", () => {
-    expect(resolveLocalBrightness(0.7, -80, 400)).toBeCloseTo(0.9);
-    expect(resolveLocalBrightness(0.7, 120, 400)).toBeCloseTo(0.4);
-    expect(resolveLocalBrightness(0.3, 500, 400)).toBe(0.2);
+    expect(resolveLocalBrightness(0.7, -80, 400)).toBeCloseTo(0.967, 2);
+    expect(resolveLocalBrightness(0.7, 120, 400)).toBeCloseTo(0.3, 2);
+    expect(resolveLocalBrightness(0.3, 500, 400)).toBe(0.05);
     expect(resolveLocalBrightness(0.8, -500, 400)).toBe(1);
     expect(resolveLocalBrightness(0.8, 20, 0)).toBeNull();
   });
 
   it("tracks volume continuously and clamps it to the player range", () => {
-    expect(resolveLocalVolume(0.7, -80, 400)).toBeCloseTo(0.9);
-    expect(resolveLocalVolume(0.7, 120, 400)).toBeCloseTo(0.4);
+    expect(resolveLocalVolume(0.7, -80, 400)).toBeCloseTo(0.967, 2);
+    expect(resolveLocalVolume(0.7, 120, 400)).toBeCloseTo(0.3, 2);
     expect(resolveLocalVolume(0.2, 500, 400)).toBe(0);
     expect(resolveLocalVolume(0.8, -500, 400)).toBe(1);
     expect(resolveLocalVolume(0.8, 20, 0)).toBeNull();

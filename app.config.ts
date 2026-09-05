@@ -114,7 +114,7 @@ const config: ExpoConfig = {
     [
       "expo-video",
       {
-        supportsBackgroundPlayback: false,
+        supportsBackgroundPlayback: true,
         supportsPictureInPicture: true,
       },
     ],

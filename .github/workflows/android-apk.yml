@@ -67,7 +67,7 @@ jobs:
         working-directory: android
         run: ./gradlew app:assembleRelease --no-daemon --stacktrace
 
-      - name: Verify music service and absence of video background service
+      - name: Verify media playback background permissions
         working-directory: android
         run: |
           manifest=$(find app/build/intermediates -path '*release*' -name AndroidManifest.xml | head -n 1)
@@ -78,10 +78,6 @@ jobs:
           fi
           if ! grep -Eq 'android\.permission\.FOREGROUND_SERVICE_MEDIA_PLAYBACK' "$manifest"; then
             echo "Music background permission is missing from final manifest"
-            exit 1
-          fi
-          if grep -Eq 'expo\.modules\.video\.playbackService\.ExpoVideoPlaybackService' "$manifest"; then
-            echo "Video background service must not be present in final manifest"
             exit 1
           fi
 

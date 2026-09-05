@@ -120,6 +120,29 @@ export default function HomeScreen() {
           <StatCard icon="folder-open" label="إضافة" value="+" onPress={() => void importFiles()} />
         </View>
 
+        {/* Quick Video to Audio Converter Card */}
+        <View style={[styles.quickConverterCard, { borderColor: "#1A5C4D", backgroundColor: "#0C2320" }]}>
+          <View style={styles.quickConverterHeader}>
+            <View style={[styles.quickConverterBadge, { backgroundColor: "rgba(78, 222, 128, 0.15)" }]}>
+              <MaterialIcons name="audiotrack" size={14} color="#4ADE80" />
+              <Text style={[styles.quickConverterBadgeText, { color: "#4ADE80" }]}>تحويل الفيديو إلى صوت</Text>
+            </View>
+            <Text style={styles.quickConverterTitle}>استخراج الصوت بجميع الصيغ والجودات</Text>
+            <Text style={styles.quickConverterDesc}>
+              حوّل أي فيديو إلى ملف صوتي عالي النقاء (MP3, M4A, AAC, FLAC, WAV...) وحدد الجودة والتردد بدقة وحفظه بالهاتف.
+            </Text>
+          </View>
+          <View style={styles.quickConverterActions}>
+            <Pressable
+              onPress={() => router.push("/converter?mode=audio" as never)}
+              style={({ pressed }) => [styles.quickUploadBtn, { backgroundColor: "#4ADE80" }, pressed && styles.pressed]}
+            >
+              <MaterialIcons name="music-note" size={20} color="#04121F" />
+              <Text style={styles.quickUploadBtnText}>تحويل فيديو إلى صوت الآن</Text>
+            </Pressable>
+          </View>
+        </View>
+
         {/* Quick Video Converter Card with Direct File Upload Button */}
         <View style={styles.quickConverterCard}>
           <View style={styles.quickConverterHeader}>
@@ -141,7 +164,7 @@ export default function HomeScreen() {
               <Text style={styles.quickUploadBtnText}>رفع ملف للتحويل إلى MP4</Text>
             </Pressable>
             <Pressable
-              onPress={() => router.push("/converter" as never)}
+              onPress={() => router.push("/converter?mode=video" as never)}
               style={({ pressed }) => [styles.quickOpenBtn, pressed && styles.pressed]}
             >
               <MaterialIcons name="tune" size={18} color={colors.cyan} />
