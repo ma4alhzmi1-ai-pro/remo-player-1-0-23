@@ -2,29 +2,45 @@ import {
   View,
   Text,
   Image,
+  ImageBackground,
   Pressable,
   StyleSheet,
   Modal,
   BackHandler,
-  I18nManager,
   Alert,
   PanResponder,
   LayoutChangeEvent,
+  ScrollView,
+  TextInput,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import * as Sharing from "expo-sharing";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
+
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { usePlayer } from "@/lib/player-context";
-import { resolveAudioProgressSeek } from "@/lib/audio-progress";
+import { useLibrary } from "@/lib/library-context";
+import {
+  getStoredPlayerTheme,
+  savePlayerThemeId,
+  saveCustomPlayerBg,
+  pickPlayerBackgroundImage,
+  PRESET_THEMES,
+  type PlayerThemePreset,
+} from "@/lib/player-theme";
 
 export default function AudioPlayerScreen() {
   const router = useRouter();
   const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
-  const musicLibraryRoute = folderPath ? `/(tabs)/music?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/music";
+  const musicLibraryRoute = folderPath
+    ? `/(tabs)/music?folderPath=${encodeURIComponent(folderPath)}`
+    : "/(tabs)/music";
+
   const {
     currentItem,
     isPlaying,
@@ -42,34 +58,76 @@ export default function AudioPlayerScreen() {
     playbackQueue,
   } = usePlayer();
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { playlists, addItemToPlaylist, createPlaylist, updateMediaItem } = useLibrary();
+
+  // Dialog / Menu States
+  const [popupMenuVisible, setPopupMenuVisible] = useState(false);
+  const [themeModalVisible, setThemeModalVisible] = useState(false);
+  const [sleepModalVisible, setSleepModalVisible] = useState(false);
+  const [playlistModalVisible, setPlaylistModalVisible] = useState(false);
+  const [lyricsModalVisible, setLyricsModalVisible] = useState(false);
+  const [propertiesModalVisible, setPropertiesModalVisible] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [editedLyrics, setEditedLyrics] = useState("");
+  const [fileDetails, setFileDetails] = useState<{ sizeStr: string; path: string }>({
+    sizeStr: "جارِ الحساب...",
+    path: "",
+  });
+
+  // Theme & Background States
+  const [activeThemeId, setActiveThemeId] = useState<string>("anime-violet");
+  const [customBgUri, setCustomBgUri] = useState<string | null>(null);
+
+  // Scrubber & Sleep States
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubbingTime, setScrubbingTime] = useState(0);
-  const [discShape, setDiscShape] = useState<"circle" | "square">("circle");
-  const [showLyrics, setShowLyrics] = useState(false);
+  const [showLyricsOnDisc, setShowLyricsOnDisc] = useState(false);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const progressBarRef = useRef<View>(null);
   const progressLayout = useRef({ pageX: 0, width: 0 });
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const initialLetter = useMemo(() => {
-    const raw = currentItem?.title?.trim() || "";
-    return raw ? raw.charAt(0).toUpperCase() : "♫";
-  }, [currentItem?.title]);
+  // Load saved theme and custom background on mount
+  useEffect(() => {
+    void getStoredPlayerTheme().then(({ themeId, customImageUri }) => {
+      setActiveThemeId(themeId);
+      setCustomBgUri(customImageUri);
+    });
+  }, []);
 
-  // Current track index in queue
+  const activeThemePreset: PlayerThemePreset = useMemo(() => {
+    return (
+      PRESET_THEMES.find((theme) => theme.id === activeThemeId) ?? PRESET_THEMES[0]
+    );
+  }, [activeThemeId]);
+
+  const effectiveBgUri = useMemo(() => {
+    if (customBgUri) return customBgUri;
+    return activeThemePreset.imageUri ?? null;
+  }, [customBgUri, activeThemePreset]);
+
+  // Track Index in Playback Queue
   const currentIndex = useMemo(() => {
     if (!currentItem || !playbackQueue.length) return -1;
     return playbackQueue.findIndex((item) => item.uri === currentItem.uri);
   }, [currentItem, playbackQueue]);
 
   const hasPrevious = currentIndex > 0 || repeatMode === "all" || shuffle;
-  const hasNext = (currentIndex >= 0 && currentIndex < playbackQueue.length - 1) || repeatMode === "all" || shuffle;
+  const hasNext =
+    (currentIndex >= 0 && currentIndex < playbackQueue.length - 1) ||
+    repeatMode === "all" ||
+    shuffle;
+
+  const isFavorite = Boolean(currentItem?.isFavorite);
 
   const exitAudio = useCallback(() => {
-    if (menuOpen) {
-      setMenuOpen(false);
+    if (popupMenuVisible) {
+      setPopupMenuVisible(false);
+      return;
+    }
+    if (themeModalVisible) {
+      setThemeModalVisible(false);
       return;
     }
     if (router.canGoBack()) {
@@ -77,9 +135,9 @@ export default function AudioPlayerScreen() {
     } else {
       router.replace(musicLibraryRoute as never);
     }
-  }, [menuOpen, router, musicLibraryRoute]);
+  }, [popupMenuVisible, themeModalVisible, router, musicLibraryRoute]);
 
-  // Android hardware back handler integrated with sequential exit
+  // Android hardware back handler
   useEffect(() => {
     const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
       exitAudio();
@@ -108,6 +166,7 @@ export default function AudioPlayerScreen() {
     };
   }, [sleepTimer, stop]);
 
+  // Progress Bar Layout & Scrubber Gesture
   const updateProgressLayout = useCallback(() => {
     progressBarRef.current?.measure((_x, _y, width, _height, pageX) => {
       if (width > 0) {
@@ -173,6 +232,15 @@ export default function AudioPlayerScreen() {
     updateProgressLayout();
   };
 
+  // Jump forwards or backwards 10 seconds
+  const seekRelative = (secondsDelta: number) => {
+    if (!duration || duration <= 0) return;
+    const current = isScrubbing ? scrubbingTime : currentTime;
+    const target = Math.max(0, Math.min(duration, current + secondsDelta));
+    seekTo(target);
+  };
+
+  // Share track
   const shareTrack = async () => {
     if (!currentItem?.uri) return;
     try {
@@ -189,22 +257,115 @@ export default function AudioPlayerScreen() {
     }
   };
 
-  const openEqualizer = () => {
-    setMenuOpen(false);
-    router.push("/player/equalizer");
+  // Toggle Favorite
+  const handleToggleFavorite = async () => {
+    if (!currentItem) return;
+    const nextState = !isFavorite;
+    await updateMediaItem(currentItem.id, { isFavorite: nextState });
+    Alert.alert(
+      nextState ? "أُضيفت إلى المفضلة" : "أُزيلت من المفضلة",
+      nextState ? "تمت إضافة الأغنية إلى قائمة المفضلة بنجاح." : "تمت إزالة الأغنية من المفضلة."
+    );
   };
 
-  const chooseSleep = (minutes: number) => {
-    setSleepTimer(minutes);
-    setMenuOpen(false);
-    Alert.alert("مؤقت النوم", `تم ضبط مؤقت النوم على ${minutes} دقيقة`);
+  // Change Album Artwork
+  const handleChangeCoverArt = async () => {
+    if (!currentItem) return;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("إذن الوصول", "يرجى منح الإذن للوصول للصور لتغيير صورة الغلاف.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const pickedUri = result.assets[0].uri;
+      await updateMediaItem(currentItem.id, { thumbnailUri: pickedUri });
+      Alert.alert("تم تغيير الغلاف", "تم تحديث صورة الغلاف بنجاح.");
+    } catch {
+      Alert.alert("خطأ", "تعذر تغيير صورة الغلاف.");
+    }
   };
 
-  const cancelSleep = () => {
-    setSleepTimer(null);
-    if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
-    setMenuOpen(false);
-    Alert.alert("مؤقت النوم", "تم إلغاء مؤقت النوم");
+  // Use as Ringtone
+  const handleSetAsRingtone = () => {
+    Alert.alert(
+      "استخدام كنغمة رنين",
+      `يمكنك استخدام "${currentItem?.title || "الأغنية"}" كنغمة رنين لهاتفك:\n\n1. اذهب إلى إعدادات الهاتف > الأصوات والاهتزاز > نغمة الرنين.\n2. اختر إضافة نغمة مخصصة وحدد هذا الملف.\nمسار الملف:\n${currentItem?.uri || ""}`,
+      [{ text: "حسناً" }]
+    );
+  };
+
+  // Open Properties Dialog
+  const handleOpenProperties = async () => {
+    if (!currentItem) return;
+    let sizeStr = "غير متاح";
+    const path = currentItem.uri || "";
+    try {
+      if (path.startsWith("file://")) {
+        const info = await FileSystem.getInfoAsync(path);
+        if (info.exists && info.size) {
+          sizeStr = `${(info.size / (1024 * 1024)).toFixed(2)} ميجابايت`;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    setFileDetails({ sizeStr, path });
+    setPropertiesModalVisible(true);
+  };
+
+  // Pick Custom Background from Device Gallery
+  const handlePickCustomBackground = async () => {
+    const pickedUri = await pickPlayerBackgroundImage();
+    if (pickedUri) {
+      setCustomBgUri(pickedUri);
+      setActiveThemeId("custom");
+      setThemeModalVisible(false);
+      Alert.alert("تم تعيين الثيم", "تم ضبط صورتك الخاصة كخلفية لمشغل الموسيقى بنجاح.");
+    }
+  };
+
+  // Select Preset Theme
+  const handleSelectPresetTheme = async (presetId: string) => {
+    setActiveThemeId(presetId);
+    setCustomBgUri(null);
+    await saveCustomPlayerBg(null);
+    await savePlayerThemeId(presetId);
+    setThemeModalVisible(false);
+  };
+
+  // Save Edited Lyrics
+  const handleSaveLyrics = async () => {
+    if (!currentItem) return;
+    await updateMediaItem(currentItem.id, { lyrics: editedLyrics.trim() });
+    setLyricsModalVisible(false);
+    Alert.alert("تم الحفظ", "تم حفظ الكلمات بنجاح.");
+  };
+
+  // Add Track to Selected Playlist
+  const handleAddToPlaylist = async (playlistId: string) => {
+    if (!currentItem) return;
+    await addItemToPlaylist(playlistId, currentItem.id);
+    setPlaylistModalVisible(false);
+    Alert.alert("تمت الإضافة", "تمت إضافة الأغنية إلى قائمة التشغيل بنجاح.");
+  };
+
+  // Create New Playlist & Add
+  const handleCreateNewPlaylist = async () => {
+    if (!newPlaylistName.trim() || !currentItem) return;
+    const created = await createPlaylist(newPlaylistName.trim());
+    if (created) {
+      await addItemToPlaylist(created.id, currentItem.id);
+      setNewPlaylistName("");
+      setPlaylistModalVisible(false);
+      Alert.alert("تمت الإضافة", `تم إنشاء قائمة "${created.name}" وإضافة الأغنية إليها.`);
+    }
   };
 
   if (!currentItem) {
@@ -225,744 +386,1325 @@ export default function AudioPlayerScreen() {
 
   return (
     <ScreenContainer>
-      <LinearGradient
-        colors={["#0B1119", "#131C26", "#1A2532"]}
-        style={styles.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        {/* Header - Back button on left, shape toggle & menu on right */}
-        <View style={styles.header}>
-          <Pressable onPress={exitAudio} style={styles.headerIcon} accessibilityLabel="رجوع">
-            <MaterialIcons name="arrow-forward" size={24} color={colors.text} />
-          </Pressable>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            مشغل الموسيقى
-          </Text>
-          <View style={styles.headerRightActions}>
-            <Pressable onPress={() => setDiscShape(s => s === "circle" ? "square" : "circle")} style={styles.headerIcon} accessibilityLabel="تبديل شكل الغلاف">
-              <MaterialIcons name={discShape === "circle" ? "crop-square" : "radio-button-unchecked"} size={22} color={colors.text} />
+      <View style={styles.container}>
+        {/* Background Image or Gradient */}
+        {effectiveBgUri ? (
+          <ImageBackground
+            source={{ uri: effectiveBgUri }}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode="cover"
+          >
+            {/* Deep translucent overlay veil matching the screenshot */}
+            <LinearGradient
+              colors={["rgba(10, 2, 25, 0.45)", "rgba(18, 5, 36, 0.82)", "rgba(10, 1, 20, 0.96)"]}
+              style={StyleSheet.absoluteFillObject}
+            />
+          </ImageBackground>
+        ) : (
+          <LinearGradient
+            colors={activeThemePreset.gradientColors}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+        )}
+
+        {/* Top Header Bar */}
+        <View style={styles.topHeader}>
+          {/* Left Action Buttons */}
+          <View style={styles.headerLeftIcons}>
+            {/* 3 Vertical Dots (Popup Menu) */}
+            <Pressable
+              onPress={() => setPopupMenuVisible(true)}
+              style={({ pressed }) => [styles.topIconButton, pressed && styles.pressedIcon]}
+              accessibilityLabel="خيارات إضافية"
+            >
+              <MaterialIcons name="more-vert" size={24} color="#FFFFFF" />
             </Pressable>
-            <Pressable onPress={() => setMenuOpen(true)} style={styles.headerIcon} accessibilityLabel="خيارات القائمة">
-              <MaterialIcons name="more-vert" size={24} color={colors.text} />
+
+            {/* Sleep Timer */}
+            <Pressable
+              onPress={() => setSleepModalVisible(true)}
+              style={({ pressed }) => [styles.topIconButton, pressed && styles.pressedIcon]}
+              accessibilityLabel="مؤقت النوم"
+            >
+              <MaterialIcons
+                name="schedule"
+                size={22}
+                color={sleepTimer !== null ? "#FF007F" : "#FFFFFF"}
+              />
+            </Pressable>
+
+            {/* Settings */}
+            <Pressable
+              onPress={() => router.push("/(tabs)/settings")}
+              style={({ pressed }) => [styles.topIconButton, pressed && styles.pressedIcon]}
+              accessibilityLabel="الإعدادات"
+            >
+              <MaterialIcons name="settings" size={22} color="#FFFFFF" />
+            </Pressable>
+
+            {/* Theme & Wallpaper Gallery */}
+            <Pressable
+              onPress={() => setThemeModalVisible(true)}
+              style={({ pressed }) => [styles.topIconButton, pressed && styles.pressedIcon]}
+              accessibilityLabel="تغيير الثيم وخلفية المشغل"
+            >
+              <MaterialIcons name="image" size={22} color="#FFFFFF" />
             </Pressable>
           </View>
+
+          {/* Right Action Button (Back Arrow) */}
+          <Pressable
+            onPress={exitAudio}
+            style={({ pressed }) => [styles.topIconButton, pressed && styles.pressedIcon]}
+            accessibilityLabel="رجوع"
+          >
+            <MaterialIcons name="arrow-forward" size={26} color="#FFFFFF" />
+          </Pressable>
         </View>
 
+        {/* Floating White Popup Menu (Exact match to the user screenshot) */}
+        <Modal
+          visible={popupMenuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPopupMenuVisible(false)}
+        >
+          <Pressable style={styles.popupOverlay} onPress={() => setPopupMenuVisible(false)}>
+            <View style={styles.popupCard} onStartShouldSetResponder={() => true}>
+              {/* Item 1: إضافة إلى قائمة التشغيل */}
+              <PopupMenuItem
+                label="إضافة إلى قائمة التشغيل"
+                iconName="add-circle-outline"
+                iconColor="#E91E63"
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  setPlaylistModalVisible(true);
+                }}
+              />
+
+              {/* Item 2: إضافة إلى المفضلة */}
+              <PopupMenuItem
+                label={isFavorite ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}
+                iconName={isFavorite ? "favorite" : "favorite-border"}
+                iconColor="#E91E63"
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  void handleToggleFavorite();
+                }}
+              />
+
+              {/* Item 3: تغيير صورة الغلاف */}
+              <PopupMenuItem
+                label="تغيير صورة الغلاف"
+                iconName="local-offer"
+                iconColor="#E91E63"
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  void handleChangeCoverArt();
+                }}
+              />
+
+              {/* Item 4: تحرير كلمات */}
+              <PopupMenuItem
+                label="تحرير كلمات"
+                iconName="local-offer"
+                iconColor="#E91E63"
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  setEditedLyrics(currentItem.lyrics || "");
+                  setLyricsModalVisible(true);
+                }}
+              />
+
+              {/* Item 5: استخدام كنغمة رنين */}
+              <PopupMenuItem
+                label="استخدام كنغمة رنين"
+                iconName="notifications-active"
+                iconColor="#E91E63"
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  handleSetAsRingtone();
+                }}
+              />
+
+              {/* Item 6: مؤثرات صوتية */}
+              <PopupMenuItem
+                label="مؤثرات صوتية"
+                iconName="tune"
+                iconColor="#E91E63"
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  router.push("/player/equalizer");
+                }}
+              />
+
+              {/* Item 7: مشاركة */}
+              <PopupMenuItem
+                label="مشاركة"
+                iconName="share"
+                iconColor="#E91E63"
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  void shareTrack();
+                }}
+              />
+
+              {/* Item 8: الخصائص */}
+              <PopupMenuItem
+                label="الخصائص"
+                iconName="info-outline"
+                iconColor="#00BCD4"
+                isLast
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  void handleOpenProperties();
+                }}
+              />
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Main Body */}
         <View style={styles.body}>
-          {/* Disc Art & Interactive Lyrics View */}
-          <Pressable
-            onPress={() => setShowLyrics((prev) => !prev)}
-            style={({ pressed }) => [
-              styles.discWrap,
-              discShape === "circle" ? styles.discCircleWrap : styles.discSquareWrap,
-              showLyrics && styles.discWrapLyrics,
-              pressed && { opacity: 0.94 },
-            ]}
-            accessibilityLabel={showLyrics ? "العودة لصورة الغلاف" : "عرض كلمات الأغنية"}
-            accessibilityHint="اضغط للتبديل بين صورة الموسيقى والكلمات المرفقة"
-          >
-            {showLyrics ? (
-              <View style={styles.lyricsContainer}>
-                <View style={styles.lyricsHeader}>
-                  <MaterialIcons name="lyrics" size={18} color={colors.cyan} />
-                  <Text style={styles.lyricsHeaderTitle}>الكلمات المرفقة</Text>
-                  <MaterialIcons name="touch-app" size={16} color={colors.muted} />
-                </View>
-                {currentItem.lyrics ? (
+          {/* Circular Vinyl / Album Disc Artwork */}
+          <View style={styles.discSection}>
+            <Pressable
+              onPress={() => setShowLyricsOnDisc((prev) => !prev)}
+              style={({ pressed }) => [styles.circularDiscWrapper, pressed && { opacity: 0.95 }]}
+            >
+              {showLyricsOnDisc ? (
+                <View style={styles.lyricsDiscContainer}>
+                  <Text style={styles.lyricsDiscTitle}>كلمات الأغنية</Text>
                   <ScrollView
                     nestedScrollEnabled
                     showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.lyricsScroll}
+                    contentContainerStyle={styles.lyricsScrollContent}
                   >
-                    <Text style={styles.lyricsContentText}>{currentItem.lyrics}</Text>
+                    <Text style={styles.lyricsBodyText}>
+                      {currentItem.lyrics || "لا توجد كلمات مرفقة حالياً.\nانقر على الخيارات لإضافة الكلمات."}
+                    </Text>
                   </ScrollView>
-                ) : (
-                  <View style={styles.lyricsEmpty}>
-                    <Text style={styles.lyricsEmptyTitle}>لا توجد كلمات مرفقة</Text>
-                    <Text style={styles.lyricsEmptyDesc}>اضغط لإضافة كلمات لهذه الأغنية</Text>
-                    <Pressable
-                      onPress={() => router.push("/player/edit-audio" as never)}
-                      style={styles.lyricsAddButton}
-                    >
-                      <Text style={styles.lyricsAddButtonText}>إضافة الكلمات</Text>
-                    </Pressable>
-                  </View>
-                )}
-                <Text style={styles.lyricsHint}>انقر للعودة لصورة الغلاف</Text>
-              </View>
-            ) : (
-              <View style={styles.discInnerContainer}>
-                {currentItem.thumbnailUri ? (
-                  <Image
-                    source={{ uri: currentItem.thumbnailUri }}
-                    style={[styles.discImage, discShape === "circle" ? styles.discCircle : styles.discSquare]}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={[styles.discFallback, discShape === "circle" ? styles.discCircle : styles.discSquare]}>
-                    <View style={styles.discVinylRing} />
-                    <Text style={styles.discInitial}>{initialLetter}</Text>
-                    <MaterialIcons name="music-note" size={32} color={colors.cyan} style={styles.discMiniNote} />
-                  </View>
-                )}
-                <View style={styles.lyricsBadgeOverlay}>
-                  <MaterialIcons name="lyrics" size={14} color="#FFFFFF" />
-                  <Text style={styles.lyricsBadgeText}>انقر للكلمات</Text>
+                  <Text style={styles.lyricsBackHint}>انقر للعودة لصورة الغلاف</Text>
                 </View>
-              </View>
-            )}
-          </Pressable>
+              ) : currentItem.thumbnailUri ? (
+                <Image
+                  source={{ uri: currentItem.thumbnailUri }}
+                  style={styles.circularDiscImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.circularDiscFallback}>
+                  <View style={styles.circularDiscRingOuter} />
+                  <View style={styles.circularDiscRingInner} />
+                  <MaterialIcons name="music-note" size={54} color="#FFFFFF" />
+                </View>
+              )}
+            </Pressable>
 
-          {/* Title & Artist */}
-          <View style={styles.metaRow}>
-            <Text style={styles.title} numberOfLines={2}>
-              {currentItem.title || "بدون عنوان"}
-            </Text>
-            <Text style={styles.artist} numberOfLines={1}>
-              {currentItem.artist || "فنان غير معروف"}
-            </Text>
-            {currentItem.album ? (
-              <Text style={styles.album} numberOfLines={1}>
-                {currentItem.album}
+            {/* Pill Button: كلمات الأغنية (As in screenshot) */}
+            <Pressable
+              onPress={() => setShowLyricsOnDisc((prev) => !prev)}
+              style={({ pressed }) => [styles.lyricsPillButton, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.lyricsPillText}>
+                {showLyricsOnDisc ? "عرض صورة الغلاف" : "كلمات الأغنية"}
               </Text>
-            ) : null}
+            </Pressable>
           </View>
 
-          {/* Progress Bar & Timestamps */}
-          <View style={styles.progressSection}>
-            <View
-              ref={progressBarRef}
-              style={styles.progressTouch}
-              onLayout={onProgressBarLayout}
-              {...progressResponder.panHandlers}
-            >
-              <View style={styles.progressTrack} pointerEvents="none">
-                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-                <View style={[styles.progressThumb, { left: `${progressPercent}%` }]} />
-              </View>
-            </View>
+          {/* Track Info Row */}
+          <View style={styles.metaContainer}>
+            <View style={styles.metaRow}>
+              {/* Quick Add To Playlist Button (+) on the left */}
+              <Pressable
+                onPress={() => setPlaylistModalVisible(true)}
+                style={({ pressed }) => [styles.quickActionIcon, pressed && styles.pressedIcon]}
+                accessibilityLabel="إضافة لقائمة التشغيل"
+              >
+                <MaterialIcons name="add" size={28} color="#FFFFFF" />
+              </Pressable>
 
+              {/* Title & Artist Signature */}
+              <View style={styles.metaCenter}>
+                <Text style={styles.songTitle} numberOfLines={1}>
+                  {currentItem.title || "Over the Horizon"}
+                </Text>
+                <Text style={styles.developerSignature} numberOfLines={1}>
+                  {currentItem.artist || "برمجه وتطوير المطور محمد الحزمي"}
+                </Text>
+              </View>
+
+              {/* Favorite Heart Button (♡/♥) on the right */}
+              <Pressable
+                onPress={handleToggleFavorite}
+                style={({ pressed }) => [styles.quickActionIcon, pressed && styles.pressedIcon]}
+                accessibilityLabel="المفضلة"
+              >
+                <MaterialIcons
+                  name={isFavorite ? "favorite" : "favorite-border"}
+                  size={26}
+                  color={isFavorite ? "#FF007F" : "#FFFFFF"}
+                />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Scrubber & Progress Bar */}
+          <View style={styles.progressSection}>
             <View style={styles.timeRow}>
+              {/* Current Time on the Left (RTL context) */}
               <Text style={styles.timeText}>{formatDuration(effectiveTime)}</Text>
+
+              {/* Scrubber Line */}
+              <View
+                ref={progressBarRef}
+                style={styles.progressTouch}
+                onLayout={onProgressBarLayout}
+                {...progressResponder.panHandlers}
+              >
+                <View style={styles.progressTrack} pointerEvents="none">
+                  <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                  <View style={[styles.progressThumb, { left: `${progressPercent}%` }]} />
+                </View>
+              </View>
+
+              {/* Total Duration on the Right */}
               <Text style={styles.timeText}>{formatDuration(duration)}</Text>
             </View>
           </View>
 
-          {/* Secondary Controls: Repeat & Shuffle */}
-          <View style={styles.secondaryControls}>
-            <Pressable onPress={toggleRepeat} style={styles.subControlButton}>
-              <MaterialIcons
-                name={repeatMode === "one" ? "repeat-one" : "repeat"}
-                size={24}
-                color={repeatMode !== "off" ? colors.cyan : colors.muted}
-              />
+          {/* Bottom Playback Controls Row (Exact sequence from screenshot) */}
+          <View style={styles.playbackControlsRow}>
+            {/* 1. Rewind 10 Seconds */}
+            <Pressable
+              onPress={() => seekRelative(-10)}
+              style={({ pressed }) => [styles.controlSmallButton, pressed && styles.pressedIcon]}
+              accessibilityLabel="ترجيع 10 ثوان"
+            >
+              <MaterialIcons name="replay-10" size={28} color="#FFFFFF" />
             </Pressable>
 
-            <Pressable onPress={openEqualizer} style={styles.subControlButton}>
-              <MaterialIcons name="equalizer" size={24} color={colors.muted} />
-            </Pressable>
-
-            <Pressable onPress={toggleShuffle} style={styles.subControlButton}>
+            {/* 2. Shuffle Toggle */}
+            <Pressable
+              onPress={toggleShuffle}
+              style={({ pressed }) => [styles.controlSmallButton, pressed && styles.pressedIcon]}
+              accessibilityLabel="خلط عشوائي"
+            >
               <MaterialIcons
                 name="shuffle"
                 size={24}
-                color={shuffle ? colors.cyan : colors.muted}
+                color={shuffle ? "#00F2FE" : "#FFFFFF"}
               />
             </Pressable>
-          </View>
 
-          {/* Primary Controls: Previous, Play/Pause, Next */}
-          <View style={styles.primaryControls}>
+            {/* 3. Previous Track */}
             <Pressable
-              onPress={() => playPrevious()}
-              style={styles.controlButton}
+              onPress={playPrevious}
               disabled={!hasPrevious}
+              style={({ pressed }) => [
+                styles.controlButton,
+                !hasPrevious && { opacity: 0.35 },
+                pressed && styles.pressedIcon,
+              ]}
+              accessibilityLabel="المسار السابق"
             >
-              <MaterialIcons
-                name="skip-previous"
-                size={42}
-                color={!hasPrevious ? "rgba(255,255,255,0.25)" : colors.text}
-              />
+              <MaterialIcons name="skip-previous" size={38} color="#FFFFFF" />
             </Pressable>
 
-            <Pressable onPress={togglePlayback} style={styles.playButton}>
+            {/* 4. Big Round Hot Pink Play/Pause Button */}
+            <Pressable
+              onPress={togglePlayback}
+              style={({ pressed }) => [styles.playPauseRoundButton, pressed && { transform: [{ scale: 0.94 }] }]}
+              accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}
+            >
               <MaterialIcons
                 name={isPlaying ? "pause" : "play-arrow"}
-                size={44}
-                color="#04121F"
+                size={40}
+                color="#FFFFFF"
               />
             </Pressable>
 
+            {/* 5. Next Track */}
             <Pressable
-              onPress={() => playNext()}
-              style={styles.controlButton}
+              onPress={playNext}
               disabled={!hasNext}
+              style={({ pressed }) => [
+                styles.controlButton,
+                !hasNext && { opacity: 0.35 },
+                pressed && styles.pressedIcon,
+              ]}
+              accessibilityLabel="المسار التالي"
+            >
+              <MaterialIcons name="skip-next" size={38} color="#FFFFFF" />
+            </Pressable>
+
+            {/* 6. Repeat Toggle */}
+            <Pressable
+              onPress={toggleRepeat}
+              style={({ pressed }) => [styles.controlSmallButton, pressed && styles.pressedIcon]}
+              accessibilityLabel="تكرار"
             >
               <MaterialIcons
-                name="skip-next"
-                size={42}
-                color={!hasNext ? "rgba(255,255,255,0.25)" : colors.text}
+                name={repeatMode === "one" ? "repeat-one" : "repeat"}
+                size={24}
+                color={repeatMode !== "off" ? "#00F2FE" : "#FFFFFF"}
               />
             </Pressable>
-          </View>
 
-          {/* Sleep Timer Indicator */}
-          {sleepTimer !== null && (
-            <Pressable onPress={() => setMenuOpen(true)} style={styles.sleepIndicator}>
-              <MaterialIcons name="timer" size={16} color={colors.cyan} />
-              <Text style={styles.sleepText}>إيقاف التشغيل بعد {sleepTimer} دقيقة</Text>
+            {/* 7. Forward 10 Seconds */}
+            <Pressable
+              onPress={() => seekRelative(10)}
+              style={({ pressed }) => [styles.controlSmallButton, pressed && styles.pressedIcon]}
+              accessibilityLabel="تقديم 10 ثوان"
+            >
+              <MaterialIcons name="forward-10" size={28} color="#FFFFFF" />
             </Pressable>
-          )}
+          </View>
         </View>
-      </LinearGradient>
 
-      {/* Options Menu Modal */}
-      <PlayerMenu
-        visible={menuOpen}
-        sleepTimer={sleepTimer}
-        onClose={() => setMenuOpen(false)}
-        onEdit={() => {
-          setMenuOpen(false);
-          router.push("/player/edit-audio");
-        }}
-        onLyrics={() => {
-          setMenuOpen(false);
-          router.push("/player/lyrics");
-        }}
-        onShare={() => {
-          setMenuOpen(false);
-          shareTrack();
-        }}
-        onEqualizer={openEqualizer}
-        onSleep={chooseSleep}
-        onCancelSleep={cancelSleep}
-      />
+        {/* Theme & Background Image Picker Modal */}
+        <Modal
+          visible={themeModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setThemeModalVisible(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setThemeModalVisible(false)}>
+            <View style={styles.themeSheet} onStartShouldSetResponder={() => true}>
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>ثيم وخلفية مشغل الموسيقى</Text>
+                <Pressable onPress={() => setThemeModalVisible(false)}>
+                  <MaterialIcons name="close" size={24} color="#FFFFFF" />
+                </Pressable>
+              </View>
+
+              {/* Prominent Custom Image Upload Button */}
+              <Pressable
+                onPress={() => void handlePickCustomBackground()}
+                style={({ pressed }) => [styles.pickCustomImageButton, pressed && { opacity: 0.9 }]}
+              >
+                <LinearGradient
+                  colors={["#E91E63", "#9C27B0"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.pickCustomGradient}
+                >
+                  <MaterialIcons name="add-photo-alternate" size={24} color="#FFFFFF" />
+                  <View style={styles.pickCustomTextWrap}>
+                    <Text style={styles.pickCustomTitle}>رفع صورة من الجهاز</Text>
+                    <Text style={styles.pickCustomSubtitle}>
+                      اضبط أي صورة من هاتفك كثيم وخلفية لمشغل الموسيقى
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </Pressable>
+
+              {/* Preset Themes List */}
+              <Text style={styles.presetsLabel}>أو اختر من الثيمات الجاهزة:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetsScroll}>
+                {PRESET_THEMES.map((theme) => (
+                  <Pressable
+                    key={theme.id}
+                    onPress={() => void handleSelectPresetTheme(theme.id)}
+                    style={[
+                      styles.presetThemeCard,
+                      activeThemeId === theme.id && !customBgUri && styles.presetThemeActive,
+                    ]}
+                  >
+                    <LinearGradient
+                      colors={theme.gradientColors}
+                      style={styles.presetThemeGradient}
+                    >
+                      {theme.imageUri ? (
+                        <Image source={{ uri: theme.imageUri }} style={styles.presetThemeThumb} />
+                      ) : (
+                        <MaterialIcons name="palette" size={28} color="#FFFFFF" />
+                      )}
+                      <Text style={styles.presetThemeName} numberOfLines={1}>
+                        {theme.name}
+                      </Text>
+                      {activeThemeId === theme.id && !customBgUri && (
+                        <View style={styles.activeCheckBadge}>
+                          <MaterialIcons name="check" size={14} color="#FFFFFF" />
+                        </View>
+                      )}
+                    </LinearGradient>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
+              {customBgUri && (
+                <Pressable
+                  onPress={() => void handleSelectPresetTheme("anime-violet")}
+                  style={styles.resetThemeButton}
+                >
+                  <MaterialIcons name="restart-alt" size={18} color="#FF5252" />
+                  <Text style={styles.resetThemeText}>إلغاء الصورة المخصصة والعودة للافتراضي</Text>
+                </Pressable>
+              )}
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Add to Playlist Modal */}
+        <Modal
+          visible={playlistModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPlaylistModalVisible(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setPlaylistModalVisible(false)}>
+            <View style={styles.dialogCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.dialogTitle}>إضافة إلى قائمة التشغيل</Text>
+
+              {/* Create New Playlist Input */}
+              <View style={styles.newPlaylistRow}>
+                <TextInput
+                  value={newPlaylistName}
+                  onChangeText={setNewPlaylistName}
+                  placeholder="اسم قائمة تشغيل جديدة..."
+                  placeholderTextColor="#8E8E93"
+                  style={styles.newPlaylistInput}
+                />
+                <Pressable
+                  onPress={() => void handleCreateNewPlaylist()}
+                  style={styles.newPlaylistAddBtn}
+                >
+                  <MaterialIcons name="add" size={22} color="#FFFFFF" />
+                </Pressable>
+              </View>
+
+              {/* Playlists List */}
+              <ScrollView style={styles.playlistsScrollView}>
+                {playlists.length > 0 ? (
+                  playlists.map((playlist) => (
+                    <Pressable
+                      key={playlist.id}
+                      onPress={() => void handleAddToPlaylist(playlist.id)}
+                      style={styles.playlistItem}
+                    >
+                      <MaterialIcons name="queue-music" size={24} color="#E91E63" />
+                      <Text style={styles.playlistItemName}>{playlist.name}</Text>
+                    </Pressable>
+                  ))
+                ) : (
+                  <Text style={styles.noPlaylistsText}>لا توجد قوائم تشغيل. اكتب اسماً وأنشئ واحدة الآن!</Text>
+                )}
+              </ScrollView>
+
+              <Pressable onPress={() => setPlaylistModalVisible(false)} style={styles.dialogCancelButton}>
+                <Text style={styles.dialogCancelText}>إلغاء</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Edit Lyrics Modal */}
+        <Modal
+          visible={lyricsModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setLyricsModalVisible(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setLyricsModalVisible(false)}>
+            <View style={styles.dialogCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.dialogTitle}>تحرير كلمات الأغنية</Text>
+              <TextInput
+                value={editedLyrics}
+                onChangeText={setEditedLyrics}
+                placeholder="ألصق أو اكتب كلمات الأغنية هنا..."
+                placeholderTextColor="#8E8E93"
+                multiline
+                style={styles.lyricsTextInput}
+              />
+              <View style={styles.dialogActionRow}>
+                <Pressable onPress={() => setLyricsModalVisible(false)} style={styles.dialogBtnCancel}>
+                  <Text style={styles.dialogBtnCancelText}>إلغاء</Text>
+                </Pressable>
+                <Pressable onPress={() => void handleSaveLyrics()} style={styles.dialogBtnSave}>
+                  <Text style={styles.dialogBtnSaveText}>حفظ الكلمات</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Track Properties Modal */}
+        <Modal
+          visible={propertiesModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPropertiesModalVisible(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setPropertiesModalVisible(false)}>
+            <View style={styles.dialogCard} onStartShouldSetResponder={() => true}>
+              <View style={styles.propertiesHead}>
+                <MaterialIcons name="info-outline" size={26} color="#00BCD4" />
+                <Text style={styles.dialogTitle}>خصائص الملف الصوتي</Text>
+              </View>
+
+              <View style={styles.propRow}>
+                <Text style={styles.propLabel}>العنوان:</Text>
+                <Text style={styles.propValue} numberOfLines={1}>{currentItem.title || "غير معروف"}</Text>
+              </View>
+              <View style={styles.propRow}>
+                <Text style={styles.propLabel}>الفنان:</Text>
+                <Text style={styles.propValue} numberOfLines={1}>{currentItem.artist || "فنان غير معروف"}</Text>
+              </View>
+              <View style={styles.propRow}>
+                <Text style={styles.propLabel}>الألبوم:</Text>
+                <Text style={styles.propValue} numberOfLines={1}>{currentItem.album || "المكتبة الموسيقية"}</Text>
+              </View>
+              <View style={styles.propRow}>
+                <Text style={styles.propLabel}>المدة:</Text>
+                <Text style={styles.propValue}>{formatDuration(duration)}</Text>
+              </View>
+              <View style={styles.propRow}>
+                <Text style={styles.propLabel}>الحجم:</Text>
+                <Text style={styles.propValue}>{fileDetails.sizeStr}</Text>
+              </View>
+              <View style={styles.propRow}>
+                <Text style={styles.propLabel}>المسار:</Text>
+                <Text style={[styles.propValue, styles.propPath]} numberOfLines={2}>{fileDetails.path}</Text>
+              </View>
+
+              <Pressable onPress={() => setPropertiesModalVisible(false)} style={styles.dialogCancelButton}>
+                <Text style={styles.dialogCancelText}>إغلاق</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Sleep Timer Modal */}
+        <Modal
+          visible={sleepModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSleepModalVisible(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setSleepModalVisible(false)}>
+            <View style={styles.dialogCard} onStartShouldSetResponder={() => true}>
+              <Text style={styles.dialogTitle}>مؤقت النوم</Text>
+              <Text style={styles.sleepDialogDesc}>
+                {sleepTimer !== null
+                  ? `مؤقت النوم نشط: سيتوقف التشغيل بعد ${sleepTimer} دقيقة.`
+                  : "حدد مدة الإيقاف التلقائي للمشغل:"}
+              </Text>
+
+              <View style={styles.sleepOptionsGrid}>
+                {[5, 15, 30, 45, 60].map((minutes) => (
+                  <Pressable
+                    key={minutes}
+                    onPress={() => {
+                      setSleepTimer(minutes);
+                      setSleepModalVisible(false);
+                      Alert.alert("مؤقت النوم", `تم ضبط مؤقت النوم على ${minutes} دقيقة.`);
+                    }}
+                    style={[
+                      styles.sleepButton,
+                      sleepTimer === minutes && styles.sleepButtonActive,
+                    ]}
+                  >
+                    <Text style={[styles.sleepButtonText, sleepTimer === minutes && styles.sleepButtonTextActive]}>
+                      {minutes} دقيقة
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {sleepTimer !== null && (
+                <Pressable
+                  onPress={() => {
+                    setSleepTimer(null);
+                    if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
+                    setSleepModalVisible(false);
+                    Alert.alert("مؤقت النوم", "تم إلغاء مؤقت النوم.");
+                  }}
+                  style={styles.cancelSleepBtn}
+                >
+                  <Text style={styles.cancelSleepBtnText}>إلغاء المؤقت</Text>
+                </Pressable>
+              )}
+
+              <Pressable onPress={() => setSleepModalVisible(false)} style={styles.dialogCancelButton}>
+                <Text style={styles.dialogCancelText}>إغلاق</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+      </View>
     </ScreenContainer>
   );
 }
 
-function PlayerMenu({
-  visible,
-  sleepTimer,
-  onClose,
-  onEdit,
-  onLyrics,
-  onShare,
-  onEqualizer,
-  onSleep,
-  onCancelSleep,
-}: {
-  visible: boolean;
-  sleepTimer: number | null;
-  onClose: () => void;
-  onEdit: () => void;
-  onLyrics: () => void;
-  onShare: () => void;
-  onEqualizer: () => void;
-  onSleep: (minutes: number) => void;
-  onCancelSleep: () => void;
-}) {
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-          <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>خيارات المسار الصوتي</Text>
-
-          <MenuAction icon="edit" label="تعديل بيانات المسار والغلاف" onPress={onEdit} />
-          <MenuAction icon="lyrics" label="عرض كلمات الأغنية" onPress={onLyrics} />
-          <MenuAction icon="equalizer" label="المعادل والمؤثرات الصوتية" onPress={onEqualizer} />
-          <MenuAction icon="share" label="مشاركة المسار" onPress={onShare} />
-
-          <View style={styles.sleepSection}>
-            <View style={styles.sleepSectionHeader}>
-              <Text style={styles.sleepLabel}>مؤقت النوم</Text>
-              {sleepTimer !== null && (
-                <Pressable onPress={onCancelSleep}>
-                  <Text style={styles.cancelSleepText}>إلغاء المؤقت</Text>
-                </Pressable>
-              )}
-            </View>
-            <View style={styles.sleepOptions}>
-              {[5, 15, 30, 45, 60].map((minutes) => (
-                <Pressable
-                  key={minutes}
-                  onPress={() => onSleep(minutes)}
-                  style={[
-                    styles.sleepOption,
-                    sleepTimer === minutes && styles.sleepOptionActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sleepOptionText,
-                      sleepTimer === minutes && styles.sleepOptionTextActive,
-                    ]}
-                  >
-                    {minutes} د
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          <Pressable onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>إغلاق</Text>
-          </Pressable>
-        </View>
-      </Pressable>
-    </Modal>
-  );
-}
-
-function MenuAction({
-  icon,
+/**
+ * Single Row for the Floating White Popup Menu (Exact layout from user screenshot)
+ */
+function PopupMenuItem({
   label,
+  iconName,
+  iconColor,
+  isLast = false,
   onPress,
 }: {
-  icon: keyof typeof MaterialIcons.glyphMap;
   label: string;
+  iconName: keyof typeof MaterialIcons.glyphMap;
+  iconColor: string;
+  isLast?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.menuAction, pressed && styles.dimmed]}
+      style={({ pressed }) => [
+        styles.popupMenuItem,
+        !isLast && styles.popupMenuItemBorder,
+        pressed && styles.popupMenuItemPressed,
+      ]}
     >
-      <MaterialIcons name={icon} size={22} color={colors.cyan} />
-      <Text style={styles.menuLabel}>{label}</Text>
-      <MaterialIcons name="chevron-left" size={20} color={colors.muted} />
+      <Text style={styles.popupMenuItemLabel}>{label}</Text>
+      <View style={[styles.popupMenuIconCircle, { borderColor: `${iconColor}66` }]}>
+        <MaterialIcons name={iconName} size={20} color={iconColor} />
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRightActions: { flexDirection: "row-reverse", alignItems: "center", gap: 4 },
-  discCircle: { borderRadius: 140 },
-  discSquare: { borderRadius: 24 },
-  discCircleWrap: { borderRadius: 115 },
-  discSquareWrap: { borderRadius: 24 },
-  discWrapLyrics: {
-    backgroundColor: "#111E2E",
-    borderColor: colors.cyan,
-    borderWidth: 2,
-    padding: 12,
+  container: {
+    flex: 1,
+    backgroundColor: "#0F031C",
   },
-  lyricsContainer: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  lyricsHeader: {
-    flexDirection: "row-reverse",
+  centerContainer: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingBottom: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.12)",
-    width: "100%",
+    padding: 24,
+    backgroundColor: "#0B1119",
   },
-  lyricsHeaderTitle: {
-    color: colors.cyan,
-    fontSize: 12,
-    fontWeight: "700",
+  errorText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    marginBottom: 16,
+    textAlign: "center",
   },
-  lyricsScroll: {
-    paddingVertical: 10,
+  backButton: {
+    backgroundColor: "#2EC5FF",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  backButtonText: {
+    color: "#06101A",
+    fontWeight: "bold",
+  },
+
+  // Top Header Bar
+  topHeader: {
+    height: 56,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    zIndex: 10,
   },
-  lyricsContentText: {
-    color: colors.text,
+  headerLeftIcons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  topIconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pressedIcon: {
+    opacity: 0.6,
+  },
+
+  // Floating White Popup Menu (Exact styling from screenshot)
+  popupOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    paddingTop: 54,
+    paddingLeft: 14,
+  },
+  popupCard: {
+    width: 250,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    overflow: "hidden",
+    elevation: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+  },
+  popupMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+  },
+  popupMenuItemBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E0E0E0",
+  },
+  popupMenuItemPressed: {
+    backgroundColor: "#F5F5F5",
+  },
+  popupMenuItemLabel: {
+    color: "#212121",
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "right",
+    flex: 1,
+    marginRight: 12,
+  },
+  popupMenuIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.2,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+
+  // Main Body
+  body: {
+    flex: 1,
+    justifyContent: "space-between",
+    paddingBottom: 28,
+  },
+
+  // Circular Vinyl / Disc Artwork
+  discSection: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 10,
+  },
+  circularDiscWrapper: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    overflow: "hidden",
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    backgroundColor: "#160728",
+    borderWidth: 3,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+  },
+  circularDiscImage: {
+    width: "100%",
+    height: "100%",
+  },
+  circularDiscFallback: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1C0D30",
+  },
+  circularDiscRingOuter: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  circularDiscRingInner: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  lyricsDiscContainer: {
+    flex: 1,
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(20, 5, 35, 0.95)",
+  },
+  lyricsDiscTitle: {
+    color: "#00F2FE",
+    fontSize: 14,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  lyricsScrollContent: {
+    paddingVertical: 10,
+  },
+  lyricsBodyText: {
+    color: "#FFFFFF",
     fontSize: 14,
     lineHeight: 22,
     textAlign: "center",
   },
-  lyricsEmpty: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 8,
-  },
-  lyricsEmptyTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  lyricsEmptyDesc: {
-    color: colors.muted,
+  lyricsBackHint: {
+    color: "rgba(255,255,255,0.5)",
     fontSize: 11,
-    textAlign: "center",
-    marginTop: 4,
-    marginBottom: 8,
+    marginTop: 6,
   },
-  lyricsAddButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: colors.cyan,
-  },
-  lyricsAddButtonText: {
-    color: colors.background,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  lyricsHint: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: 10,
-    marginTop: 4,
-    textAlign: "center",
-  },
-  discInnerContainer: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
-  discVinylRing: {
-    position: "absolute",
-    width: "70%",
-    height: "70%",
-    borderRadius: 100,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  discInitial: {
-    color: "#FFFFFF",
-    fontSize: 64,
-    fontWeight: "900",
-    textShadowColor: "rgba(0,0,0,0.4)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
-  },
-  discMiniNote: {
-    position: "absolute",
-    bottom: 24,
-  },
-  lyricsBadgeOverlay: {
-    position: "absolute",
-    bottom: 8,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(10, 25, 45, 0.85)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(117, 230, 218, 0.4)",
-  },
-  lyricsBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  scrubbingTooltip: { position: "absolute", top: -38, transform: [{ translateX: "-50%" }], backgroundColor: "rgba(15, 23, 42, 0.95)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", zIndex: 40 },
-  scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
-  gradient: {
-    flex: 1,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 24,
-  },
-  errorText: {
-    color: colors.text,
-    fontSize: 16,
-    textAlign: "center",
-    marginBottom: 20,
-    lineHeight: 24,
-  },
-  backButton: {
-    backgroundColor: colors.cyan,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-  },
-  backButtonText: {
-    color: "#04121F",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-  header: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  headerIcon: {
-    padding: 8,
+
+  // Pill Button: كلمات الأغنية (Under the circular disc)
+  lyricsPillButton: {
+    marginTop: 18,
+    paddingVertical: 8,
+    paddingHorizontal: 22,
     borderRadius: 20,
+    backgroundColor: "rgba(42, 18, 68, 0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
-  headerTitle: {
-    color: colors.text,
-    fontSize: 17,
+  lyricsPillText: {
+    color: "#E2D9F3",
+    fontSize: 14,
     fontWeight: "600",
   },
-  body: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 32,
-  },
-  discWrap: {
-    width: 230,
-    height: 230,
-    borderRadius: 115,
-    overflow: "hidden",
-    backgroundColor: "#16202C",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 12,
-    borderWidth: 3,
-    borderColor: "rgba(117, 230, 218, 0.25)",
-  },
-  discImage: {
-    width: "100%",
-    height: "100%",
-  },
-  discFallback: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#111822",
+
+  // Track Info Row
+  metaContainer: {
+    paddingHorizontal: 22,
+    marginTop: 10,
+    marginBottom: 8,
   },
   metaRow: {
+    flexDirection: "row",
     alignItems: "center",
-    width: "100%",
-    paddingHorizontal: 16,
-    marginTop: 8,
+    justifyContent: "space-between",
   },
-  title: {
-    color: colors.text,
-    fontSize: 20,
+  quickActionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  metaCenter: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 12,
+  },
+  songTitle: {
+    color: "#FFFFFF",
+    fontSize: 22,
     fontWeight: "bold",
     textAlign: "center",
+    marginBottom: 4,
+    letterSpacing: 0.3,
   },
-  artist: {
-    color: colors.cyan,
+  developerSignature: {
+    color: "#D1C4E9",
     fontSize: 15,
-    marginTop: 6,
+    fontWeight: "bold",
     textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.8)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
-  album: {
-    color: colors.muted,
-    fontSize: 13,
-    marginTop: 3,
-    textAlign: "center",
-  },
+
+  // Scrubber & Progress Bar
   progressSection: {
-    width: "100%",
-    marginTop: 8,
+    paddingHorizontal: 20,
+    marginVertical: 12,
+  },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  timeText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: "monospace",
+    fontWeight: "500",
+    minWidth: 46,
+    textAlign: "center",
   },
   progressTouch: {
-    width: "100%",
+    flex: 1,
     height: 36,
     justifyContent: "center",
   },
   progressTrack: {
-    width: "100%",
-    height: 5,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderRadius: 3,
+    height: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.28)",
+    borderRadius: 2,
     position: "relative",
   },
   progressFill: {
     height: "100%",
-    backgroundColor: colors.cyan,
-    borderRadius: 3,
+    backgroundColor: "#00F2FE",
+    borderRadius: 2,
   },
   progressThumb: {
     position: "absolute",
     top: -6,
-    width: 17,
-    height: 17,
-    borderRadius: 9,
-    backgroundColor: "#FFFFFF",
-    marginLeft: -8.5,
-    shadowColor: "#000",
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#00F2FE",
+    marginLeft: -8,
+    elevation: 4,
+    shadowColor: "#00F2FE",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
   },
-  timeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 2,
-    paddingHorizontal: 2,
-  },
-  timeText: {
-    color: colors.muted,
-    fontSize: 12,
-    fontVariant: ["tabular-nums"],
-  },
-  secondaryControls: {
+
+  // Bottom Playback Controls Row (Exact sequence from screenshot)
+  playbackControlsRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-around",
-    width: "70%",
-    marginTop: 4,
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingTop: 8,
   },
-  subControlButton: {
-    padding: 10,
+  controlSmallButton: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-  },
-  primaryControls: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 32,
-    marginTop: 8,
   },
   controlButton: {
-    padding: 10,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  playButton: {
-    backgroundColor: colors.cyan,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+  playPauseRoundButton: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#E91E63", // Hot Pink / Magenta from screenshot
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 8,
+    shadowColor: "#E91E63",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+  },
+
+  // Modals & Bottom Sheets
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: colors.cyan,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    elevation: 10,
+    padding: 20,
   },
-  sleepIndicator: {
+  themeSheet: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#1B0D2E",
+    borderRadius: 24,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+  },
+  sheetHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 12,
-    backgroundColor: "rgba(117, 230, 218, 0.12)",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(117, 230, 218, 0.2)",
-  },
-  sleepText: {
-    color: colors.cyan,
-    fontSize: 12,
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: "#16202C",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 36,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 16,
+    justifyContent: "space-between",
+    marginBottom: 18,
   },
   sheetTitle: {
-    color: colors.text,
-    fontSize: 17,
+    color: "#FFFFFF",
+    fontSize: 18,
     fontWeight: "bold",
-    marginBottom: 16,
-    textAlign: "center",
   },
-  menuAction: {
+  pickCustomImageButton: {
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 20,
+  },
+  pickCustomGradient: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    padding: 16,
+    gap: 14,
   },
-  menuLabel: {
-    color: colors.text,
-    fontSize: 15,
+  pickCustomTextWrap: {
     flex: 1,
+  },
+  pickCustomTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  pickCustomSubtitle: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  presetsLabel: {
+    color: "#E2D9F3",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 12,
     textAlign: "right",
   },
-  sleepSection: {
-    marginTop: 18,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+  presetsScroll: {
+    marginBottom: 16,
   },
-  sleepSectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+  presetThemeCard: {
+    width: 100,
+    height: 120,
+    borderRadius: 14,
+    overflow: "hidden",
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: "transparent",
   },
-  sleepLabel: {
-    color: colors.muted,
-    fontSize: 14,
+  presetThemeActive: {
+    borderColor: "#00F2FE",
   },
-  cancelSleepText: {
-    color: "#FF6B6B",
-    fontSize: 13,
-  },
-  sleepOptions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  sleepOption: {
+  presetThemeGradient: {
     flex: 1,
-    backgroundColor: "#0D141E",
-    paddingVertical: 10,
-    borderRadius: 8,
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    justifyContent: "center",
+    padding: 8,
   },
-  sleepOptionActive: {
-    backgroundColor: "rgba(117, 230, 218, 0.15)",
-    borderColor: colors.cyan,
+  presetThemeThumb: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    marginBottom: 8,
   },
-  sleepOptionText: {
-    color: colors.text,
+  presetThemeName: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  activeCheckBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#00F2FE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  resetThemeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+  },
+  resetThemeText: {
+    color: "#FF5252",
     fontSize: 13,
   },
-  sleepOptionTextActive: {
-    color: colors.cyan,
+
+  // General Dialog Card
+  dialogCard: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#1A1028",
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+  },
+  dialogTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
     fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 16,
   },
-  closeButton: {
-    marginTop: 18,
-    backgroundColor: "#0D141E",
-    paddingVertical: 12,
+  newPlaylistRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
+  newPlaylistInput: {
+    flex: 1,
+    height: 42,
     borderRadius: 10,
-    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 12,
+    color: "#FFFFFF",
+    fontSize: 14,
+    textAlign: "right",
   },
-  closeButtonText: {
-    color: colors.muted,
+  newPlaylistAddBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: "#E91E63",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  playlistsScrollView: {
+    maxHeight: 200,
+    marginBottom: 14,
+  },
+  playlistItem: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255, 255, 255, 0.1)",
+  },
+  playlistItemName: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  noPlaylistsText: {
+    color: "#A098B2",
+    fontSize: 13,
+    textAlign: "center",
+    paddingVertical: 16,
+  },
+  dialogCancelButton: {
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  dialogCancelText: {
+    color: "#A098B2",
     fontSize: 15,
   },
-  dimmed: {
-    opacity: 0.6,
+
+  // Lyrics Input
+  lyricsTextInput: {
+    minHeight: 140,
+    maxHeight: 220,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    padding: 12,
+    color: "#FFFFFF",
+    fontSize: 14,
+    textAlign: "right",
+    textAlignVertical: "top",
+    marginBottom: 16,
+  },
+  dialogActionRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  dialogBtnCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+  },
+  dialogBtnCancelText: {
+    color: "#A098B2",
+    fontSize: 14,
+  },
+  dialogBtnSave: {
+    backgroundColor: "#E91E63",
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    borderRadius: 10,
+  },
+  dialogBtnSaveText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+
+  // Properties Dialog
+  propertiesHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 16,
+  },
+  propRow: {
+    flexDirection: "row-reverse",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255, 255, 255, 0.08)",
+  },
+  propLabel: {
+    color: "#A098B2",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  propValue: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+    textAlign: "left",
+    marginLeft: 8,
+  },
+  propPath: {
+    fontSize: 11,
+    color: "#00BCD4",
+  },
+
+  // Sleep Timer Dialog
+  sleepDialogDesc: {
+    color: "#D1C4E9",
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  sleepOptionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  sleepButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  sleepButtonActive: {
+    backgroundColor: "#E91E63",
+    borderColor: "#E91E63",
+  },
+  sleepButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  sleepButtonTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  cancelSleepBtn: {
+    alignItems: "center",
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  cancelSleepBtnText: {
+    color: "#FF5252",
+    fontSize: 14,
   },
 });

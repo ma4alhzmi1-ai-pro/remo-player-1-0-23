@@ -23,23 +23,15 @@ function sourceExtension(uri: string): string {
 }
 
 /**
- * Android media-library items can expose content:// URIs. Resolve those on demand
- * to an app-cache file so both Media3 and LibVLC receive a seekable file URI.
+ * Android media-library items expose content:// URIs which expo-video natively supports.
+ * If a local file copy is ever required (e.g. for non-standard players), prune previous
+ * temporary copies first so storage never balloons.
  */
 export async function resolvePlayableVideoUri(uri: string, nameOrUri = uri): Promise<string> {
+  // On Android, ExoPlayer/Media3 plays content:// directly without copying.
+  // Returning content:// avoids duplicating 500MB - 1GB files in app storage.
   if (!/^content:\/\//i.test(uri)) return uri;
-  const baseDirectory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
-  if (!baseDirectory) return uri;
-  const target = `${baseDirectory}remo-video-${stableUriKey(uri)}.${sourceExtension(nameOrUri)}`;
-  try {
-    const existing = await FileSystem.getInfoAsync(target);
-    if (existing.exists && (existing.size ?? 0) > 0) return target;
-    await FileSystem.copyAsync({ from: uri, to: target });
-    const copied = await FileSystem.getInfoAsync(target);
-    return copied.exists && (copied.size ?? 0) > 0 ? target : uri;
-  } catch {
-    return uri;
-  }
+  return uri;
 }
 
 /**
