@@ -701,7 +701,7 @@ export default function AudioPlayerScreen() {
 
             {/* 3. Previous Track */}
             <Pressable
-              onPress={playPrevious}
+              onPress={() => void playPrevious()}
               disabled={!hasPrevious}
               style={({ pressed }) => [
                 styles.controlButton,
@@ -728,7 +728,7 @@ export default function AudioPlayerScreen() {
 
             {/* 5. Next Track */}
             <Pressable
-              onPress={playNext}
+              onPress={() => void playNext()}
               disabled={!hasNext}
               style={({ pressed }) => [
                 styles.controlButton,

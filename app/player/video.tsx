@@ -364,50 +364,6 @@ export default function VideoPlayerScreen() {
     return () => subscription?.remove?.();
   }, [player, playNext, playPrevious, repeatMode]);
 
-  // System MediaSession handlers for Web, Picture-in-Picture, lock-screen & Bluetooth controls
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("mediaSession" in navigator) || !currentItem) return;
-
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: currentItem.title,
-        artist: currentItem.artist || "REMO PLAYER",
-        album: currentItem.album || "فيديو",
-      });
-
-      navigator.mediaSession.setActionHandler("previoustrack", () => {
-        void playPrevious();
-      });
-      navigator.mediaSession.setActionHandler("nexttrack", () => {
-        void playNext(repeatMode === "all");
-      });
-      navigator.mediaSession.setActionHandler("play", () => {
-        if (usingCompatibilityEngine) {
-          void vlcViewRef.current?.play();
-        } else {
-          player.play();
-        }
-        setIsPlaying(true);
-      });
-      navigator.mediaSession.setActionHandler("pause", () => {
-        if (usingCompatibilityEngine) {
-          void vlcViewRef.current?.pause();
-        } else {
-          player.pause();
-        }
-        setIsPlaying(false);
-      });
-      navigator.mediaSession.setActionHandler("seekbackward", () => {
-        void safeSeekBy(-10);
-      });
-      navigator.mediaSession.setActionHandler("seekforward", () => {
-        void safeSeekBy(10);
-      });
-    } catch {
-      // ignore
-    }
-  }, [currentItem, playNext, playPrevious, repeatMode, usingCompatibilityEngine, player, safeSeekBy]);
-
   useEffect(() => {
     if (!currentVideoUri) return;
     let disposed = false;
@@ -631,6 +587,50 @@ export default function VideoPlayerScreen() {
       return false;
     }
   }, [playbackDuration, playbackTime, player, usingCompatibilityEngine]);
+
+  // System MediaSession handlers for Web, Picture-in-Picture, lock-screen & Bluetooth controls
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator) || !currentItem) return;
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentItem.title,
+        artist: currentItem.artist || "REMO PLAYER",
+        album: currentItem.album || "فيديو",
+      });
+
+      navigator.mediaSession.setActionHandler("previoustrack", () => {
+        void playPrevious();
+      });
+      navigator.mediaSession.setActionHandler("nexttrack", () => {
+        void playNext(repeatMode === "all");
+      });
+      navigator.mediaSession.setActionHandler("play", () => {
+        if (usingCompatibilityEngine) {
+          void vlcViewRef.current?.play();
+        } else {
+          player.play();
+        }
+        setIsPlaying(true);
+      });
+      navigator.mediaSession.setActionHandler("pause", () => {
+        if (usingCompatibilityEngine) {
+          void vlcViewRef.current?.pause();
+        } else {
+          player.pause();
+        }
+        setIsPlaying(false);
+      });
+      navigator.mediaSession.setActionHandler("seekbackward", () => {
+        void safeSeekBy(-10);
+      });
+      navigator.mediaSession.setActionHandler("seekforward", () => {
+        void safeSeekBy(10);
+      });
+    } catch {
+      // ignore
+    }
+  }, [currentItem, playNext, playPrevious, repeatMode, usingCompatibilityEngine, player, safeSeekBy]);
   const revealControls = useCallback(() => {
     setControlsVisible(true);
     setControlsActivity((activity) => activity + 1);

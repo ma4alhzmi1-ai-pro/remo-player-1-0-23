@@ -169,6 +169,7 @@ export default function ConverterScreen() {
         mediaType: "audio",
         album: "REMO Audio",
         isFavorite: false,
+        addedAt: Date.now(),
       };
 
       await playItem(audioItem);
@@ -183,6 +184,7 @@ export default function ConverterScreen() {
         mediaType: "video",
         album: "REMO Converted",
         isFavorite: false,
+        addedAt: Date.now(),
       };
 
       await playItem(videoItem);
