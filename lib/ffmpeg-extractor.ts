@@ -328,7 +328,7 @@ export async function extractAndPrepareVideo(
           stage: "إعادة ترميز الفيديو والصوت لضمان التوافق الكامل مع ExoPlayer (H.264 / AAC)...",
         });
 
-        const transcodeCommand = `-y -i "${sourceUri}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -g 48 -keyint_min 48 -sc_threshold 0 -c:a aac -b:a 128k -movflags +faststart "${outputUri}"`;
+        const transcodeCommand = `-y -i "${sourceUri}" -map 0:v:0? -map 0:a? -c:v libx264 -preset ultrafast -crf 24 -pix_fmt yuv420p -vsync cfr -r 30 -avoid_negative_ts make_zero -c:a aac -b:a 128k -ar 44100 -movflags +faststart "${outputUri}"`;
         const transcodeSuccess = await new Promise<boolean>((resolve) => {
           nativeFfmpegModule.FFmpegKit.executeAsync(
             transcodeCommand,

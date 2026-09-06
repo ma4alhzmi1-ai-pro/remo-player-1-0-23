@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 
 import { cleanOrphanedCacheFiles } from "@/lib/cache-cleaner";
 import { inferMediaKind, mergeMediaItems, parseArtistAndTitle } from "@/lib/media-utils";
+import { resolveAudioThumbnail } from "@/lib/audio-artwork";
 import { createPlaylistBackup, mergeRestoredPlaylists, parsePlaylistBackup } from "@/lib/playlist-backup";
 import { PLAYLIST_TEMPLATES, playlistTemplateItems, type PlaylistTemplateId } from "@/lib/playlist-templates";
 import type { MediaItem, Playlist } from "@/types/media";
@@ -162,7 +163,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           duration: Math.max(0, asset.duration ?? 0),
           mediaType: isVideo ? "video" : "audio",
           addedAt: asset.modificationTime || asset.creationTime || Date.now(),
-          thumbnailUri: isVideo ? await createVideoThumbnail(uri, asset.duration ?? 0) : undefined,
+          thumbnailUri: isVideo
+            ? await createVideoThumbnail(uri, asset.duration ?? 0)
+            : await resolveAudioThumbnail(asset.id, uri),
         };
       };
 

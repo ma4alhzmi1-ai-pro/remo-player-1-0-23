@@ -25,6 +25,7 @@ import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { usePlayer } from "@/lib/player-context";
 import { useLibrary } from "@/lib/library-context";
+import { resolveAudioThumbnail, saveCustomAudioArtwork } from "@/lib/audio-artwork";
 import {
   getStoredPlayerTheme,
   savePlayerThemeId,
@@ -86,7 +87,32 @@ export default function AudioPlayerScreen() {
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const progressBarRef = useRef<View>(null);
   const progressLayout = useRef({ pageX: 0, width: 0 });
+  const gestureStartXRef = useRef(0);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
+  const [coverImageFailed, setCoverImageFailed] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    setCoverImageFailed(false);
+    if (!currentItem) {
+      setResolvedCoverArt(null);
+      return;
+    }
+    if (currentItem.id) {
+      void resolveAudioThumbnail(currentItem.id, currentItem.uri).then((found) => {
+        if (isMounted) {
+          setResolvedCoverArt(found || currentItem.thumbnailUri || null);
+        }
+      });
+    } else {
+      setResolvedCoverArt(currentItem.thumbnailUri || null);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [currentItem?.id, currentItem?.thumbnailUri, currentItem?.uri]);
 
   // Load saved theme and custom background on mount
   useEffect(() => {
@@ -176,31 +202,6 @@ export default function AudioPlayerScreen() {
     });
   }, []);
 
-  const seekFromGesture = useCallback(
-    (pageX: number, isFinal = false) => {
-      if (!duration || duration <= 0) return;
-      const { pageX: barX, width: barW } = progressLayout.current;
-      const effectiveWidth = barW > 0 ? barW : progressBarWidth;
-      if (effectiveWidth <= 0) return;
-
-      let ratio = 0;
-      if (barX > 0 && Number.isFinite(pageX)) {
-        ratio = Math.max(0, Math.min(1, (pageX - barX) / effectiveWidth));
-      } else {
-        return;
-      }
-
-      const targetTime = ratio * duration;
-      setScrubbingTime(targetTime);
-      setIsScrubbing(true);
-      if (isFinal) {
-        setIsScrubbing(false);
-        seekTo(targetTime);
-      }
-    },
-    [progressBarWidth, duration, seekTo]
-  );
-
   const progressResponder = useMemo(
     () =>
       PanResponder.create({
@@ -208,19 +209,60 @@ export default function AudioPlayerScreen() {
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
           updateProgressLayout();
-          seekFromGesture(evt.nativeEvent.pageX, false);
+          const barW =
+            progressLayout.current.width > 0
+              ? progressLayout.current.width
+              : progressBarWidth > 0
+              ? progressBarWidth
+              : 280;
+          const touchX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
+          gestureStartXRef.current = touchX;
+          const ratio = barW > 0 ? touchX / barW : 0;
+          const targetTime = Number((ratio * (duration || 0)).toFixed(2));
+          setScrubbingTime(targetTime);
+          setIsScrubbing(true);
         },
-        onPanResponderMove: (evt) => {
-          seekFromGesture(evt.nativeEvent.pageX, false);
+        onPanResponderMove: (_evt, gestureState) => {
+          const barW =
+            progressLayout.current.width > 0
+              ? progressLayout.current.width
+              : progressBarWidth > 0
+              ? progressBarWidth
+              : 280;
+          const currentX = Math.max(0, Math.min(barW, gestureStartXRef.current + gestureState.dx));
+          const ratio = barW > 0 ? currentX / barW : 0;
+          const targetTime = Number((ratio * (duration || 0)).toFixed(2));
+          setScrubbingTime(targetTime);
+          setIsScrubbing(true);
         },
-        onPanResponderRelease: (evt) => {
-          seekFromGesture(evt.nativeEvent.pageX, true);
+        onPanResponderRelease: (_evt, gestureState) => {
+          const barW =
+            progressLayout.current.width > 0
+              ? progressLayout.current.width
+              : progressBarWidth > 0
+              ? progressBarWidth
+              : 280;
+          const finalX = Math.max(0, Math.min(barW, gestureStartXRef.current + gestureState.dx));
+          const ratio = barW > 0 ? finalX / barW : 0;
+          const targetTime = Number((ratio * (duration || 0)).toFixed(2));
+          setIsScrubbing(false);
+          seekTo(targetTime);
         },
-        onPanResponderTerminate: (evt) => {
-          seekFromGesture(evt.nativeEvent.pageX, true);
+        onPanResponderTerminate: (_evt, gestureState) => {
+          const barW =
+            progressLayout.current.width > 0
+              ? progressLayout.current.width
+              : progressBarWidth > 0
+              ? progressBarWidth
+              : 280;
+          const finalX = Math.max(0, Math.min(barW, gestureStartXRef.current + gestureState.dx));
+          const ratio = barW > 0 ? finalX / barW : 0;
+          const targetTime = Number((ratio * (duration || 0)).toFixed(2));
+          setIsScrubbing(false);
+          seekTo(targetTime);
         },
       }),
-    [seekFromGesture, updateProgressLayout]
+    [duration, progressBarWidth, seekTo, updateProgressLayout]
   );
 
   const onProgressBarLayout = (event: LayoutChangeEvent) => {
@@ -286,6 +328,9 @@ export default function AudioPlayerScreen() {
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const pickedUri = result.assets[0].uri;
       await updateMediaItem(currentItem.id, { thumbnailUri: pickedUri });
+      await saveCustomAudioArtwork(currentItem.id, pickedUri);
+      setResolvedCoverArt(pickedUri);
+      setCoverImageFailed(false);
       Alert.alert("تم تغيير الغلاف", "تم تحديث صورة الغلاف بنجاح.");
     } catch {
       Alert.alert("خطأ", "تعذر تغيير صورة الغلاف.");
@@ -588,11 +633,12 @@ export default function AudioPlayerScreen() {
                   </ScrollView>
                   <Text style={styles.lyricsBackHint}>انقر للعودة لصورة الغلاف</Text>
                 </View>
-              ) : currentItem.thumbnailUri ? (
+              ) : (resolvedCoverArt || currentItem.thumbnailUri) && !coverImageFailed ? (
                 <Image
-                  source={{ uri: currentItem.thumbnailUri }}
+                  source={{ uri: (resolvedCoverArt || currentItem.thumbnailUri)! }}
                   style={styles.circularDiscImage}
                   resizeMode="cover"
+                  onError={() => setCoverImageFailed(true)}
                 />
               ) : (
                 <View style={styles.circularDiscFallback}>
@@ -603,15 +649,26 @@ export default function AudioPlayerScreen() {
               )}
             </Pressable>
 
-            {/* Pill Button: كلمات الأغنية (As in screenshot) */}
-            <Pressable
-              onPress={() => setShowLyricsOnDisc((prev) => !prev)}
-              style={({ pressed }) => [styles.lyricsPillButton, pressed && { opacity: 0.85 }]}
-            >
-              <Text style={styles.lyricsPillText}>
-                {showLyricsOnDisc ? "عرض صورة الغلاف" : "كلمات الأغنية"}
-              </Text>
-            </Pressable>
+            {/* Sub-disc Action Buttons: Lyrics and Change Cover Art */}
+            <View style={styles.discButtonsRow}>
+              <Pressable
+                onPress={() => setShowLyricsOnDisc((prev) => !prev)}
+                style={({ pressed }) => [styles.lyricsPillButton, pressed && { opacity: 0.85 }]}
+              >
+                <Text style={styles.lyricsPillText}>
+                  {showLyricsOnDisc ? "عرض صورة الغلاف" : "كلمات الأغنية"}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => void handleChangeCoverArt()}
+                style={({ pressed }) => [styles.changeCoverBadgeButton, pressed && { opacity: 0.85 }]}
+                accessibilityLabel="تغيير صورة الغلاف"
+              >
+                <MaterialIcons name="image" size={16} color="#00F2FE" />
+                <Text style={styles.changeCoverBadgeText}>تغيير الغلاف</Text>
+              </Pressable>
+            </View>
           </View>
 
           {/* Track Info Row */}
@@ -1181,7 +1238,7 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     justifyContent: "space-between",
-    paddingBottom: 28,
+    paddingBottom: 46, // Raised upwards comfortably from the bottom edge
   },
 
   // Circular Vinyl / Disc Artwork
@@ -1260,11 +1317,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 
-  // Pill Button: كلمات الأغنية (Under the circular disc)
+  // Sub-disc action row: Lyrics & Change Cover
+  discButtonsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginTop: 16,
+  },
   lyricsPillButton: {
-    marginTop: 18,
-    paddingVertical: 8,
-    paddingHorizontal: 22,
+    paddingVertical: 7,
+    paddingHorizontal: 18,
     borderRadius: 20,
     backgroundColor: "rgba(42, 18, 68, 0.75)",
     borderWidth: 1,
@@ -1272,7 +1335,23 @@ const styles = StyleSheet.create({
   },
   lyricsPillText: {
     color: "#E2D9F3",
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  changeCoverBadgeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: "rgba(0, 242, 254, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(0, 242, 254, 0.35)",
+  },
+  changeCoverBadgeText: {
+    color: "#00F2FE",
+    fontSize: 13,
     fontWeight: "600",
   },
 
@@ -1373,7 +1452,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 18,
-    paddingTop: 8,
+    paddingTop: 6,
+    paddingBottom: 16, // Lifted higher from the bottom edge
   },
   controlSmallButton: {
     width: 40,
