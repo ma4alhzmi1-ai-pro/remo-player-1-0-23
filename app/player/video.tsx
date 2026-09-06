@@ -24,7 +24,7 @@ import { readVideoForTranslation } from "@/lib/translation-upload";
 import { trpc } from "@/lib/trpc";
 import { resolvePlayableVideoUri } from "@/lib/video-uri";
 import { resolveLocalBrightness, resolveLocalVolume, resolveVideoGesture, shouldActivateVideoGesture } from "@/lib/video-gesture";
-import { getVideoBackgroundPlaybackSetting, nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
+import { getVideoBackgroundPlaybackSetting, setVideoBackgroundPlaybackSetting, nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
 import { resolveSafeVideoSeek } from "@/lib/video-seek";
 import { shouldPauseVideoForBackground } from "@/lib/video-background-policy";
@@ -513,10 +513,6 @@ export default function VideoPlayerScreen() {
     player.staysActiveInBackground = next;
     player.showNowPlayingNotification = next;
     await setVideoBackgroundPlaybackSetting(next).catch(() => undefined);
-    setFeedbackMessage(
-      next ? "تشغيل الفيديو كصوت بالخلفية: مفعل" : "تشغيل الفيديو بالخلفية: معطل"
-    );
-    setFeedbackHud(true);
   }, [backgroundPlaybackEnabled, player]);
 
   useEffect(() => { player.loop = repeatMode === "one"; }, [player, repeatMode]);
