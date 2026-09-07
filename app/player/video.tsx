@@ -155,6 +155,10 @@ export default function VideoPlayerScreen() {
   const extractionCanceledRef = useRef(false);
   const extractionAttemptedUrisRef = useRef<Set<string>>(new Set());
   const videoGestureStartXRef = useRef(0);
+  const [resumePrompt, setResumePrompt] = useState<{ seconds: number; visible: boolean } | null>(null);
+  const resumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoScrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoScrubbingTimeRef = useRef(0);
   const isSwitchingEngineRef = useRef(false);
   const playbackErrorRef = useRef<string | null>(null);
   useEffect(() => {
@@ -406,8 +410,19 @@ export default function VideoPlayerScreen() {
       setVlcSubtitleId(undefined);
       const memory = currentItem?.id ? await getPlaybackMemory(currentItem.id) : null;
       const resumeAt = resumePosition(memory, currentItem?.duration);
-      vlcResumeSeekRef.current = resumeAt;
-      lastSavedSecondRef.current = resumeAt;
+      lastSavedSecondRef.current = 0;
+      if (resumeAt > 4) {
+        // Show mini-prompt asking user to resume or restart from beginning
+        setResumePrompt({ seconds: resumeAt, visible: true });
+        if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = setTimeout(() => {
+          setResumePrompt((prev) => (prev ? { ...prev, visible: false } : null));
+        }, 8500);
+        vlcResumeSeekRef.current = 0;
+      } else {
+        setResumePrompt(null);
+        vlcResumeSeekRef.current = 0;
+      }
 
       let playableUri = currentVideoUri;
       try {
@@ -450,9 +465,6 @@ export default function VideoPlayerScreen() {
           player.replace(sourcePayload);
         }
         if (disposed) return;
-        if (resumeAt > 0) {
-          player.currentTime = resumeAt;
-        }
         player.play();
         setIsPlaying(true);
       } catch (error) {
@@ -478,6 +490,8 @@ export default function VideoPlayerScreen() {
     void loadForegroundVideo();
     return () => {
       disposed = true;
+      if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+      if (videoScrubCooldownRef.current) clearTimeout(videoScrubCooldownRef.current);
       cancelActiveExtraction();
       try {
         player.pause();
@@ -799,69 +813,109 @@ export default function VideoPlayerScreen() {
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
         onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (event) => {
+          if (videoScrubCooldownRef.current) {
+            clearTimeout(videoScrubCooldownRef.current);
+            videoScrubCooldownRef.current = null;
+          }
+          setIsScrubbing(true);
           updateProgressTrackLayout();
           revealControls();
+
           const trackW =
-            progressTrackWidth.current > 0 ? progressTrackWidth.current : 320;
-          const touchX = Math.max(0, Math.min(trackW, event.nativeEvent.locationX));
-          videoGestureStartXRef.current = touchX;
+            progressTrackLayout.current.width > 0
+              ? progressTrackLayout.current.width
+              : progressTrackWidth.current > 0
+              ? progressTrackWidth.current
+              : 320;
+          const trackX = progressTrackLayout.current.pageX;
+
+          let touchX: number;
+          if (trackX > 0 && event.nativeEvent.pageX !== undefined) {
+            touchX = Math.max(0, Math.min(trackW, event.nativeEvent.pageX - trackX));
+          } else {
+            touchX = Math.max(0, Math.min(trackW, event.nativeEvent.locationX));
+          }
+
           const fraction = trackW > 0 ? touchX / trackW : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const target = Number((dur * fraction).toFixed(2));
+          const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(1))));
+          videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);
-          setIsScrubbing(true);
         },
-        onPanResponderMove: (_event, gestureState) => {
+        onPanResponderMove: (event) => {
           revealControls();
           const trackW =
-            progressTrackWidth.current > 0 ? progressTrackWidth.current : 320;
-          const currentX = Math.max(
-            0,
-            Math.min(trackW, videoGestureStartXRef.current + gestureState.dx)
-          );
-          const fraction = trackW > 0 ? currentX / trackW : 0;
+            progressTrackLayout.current.width > 0
+              ? progressTrackLayout.current.width
+              : progressTrackWidth.current > 0
+              ? progressTrackWidth.current
+              : 320;
+          const trackX = progressTrackLayout.current.pageX;
+
+          let touchX: number;
+          if (trackX > 0 && event.nativeEvent.pageX !== undefined) {
+            touchX = Math.max(0, Math.min(trackW, event.nativeEvent.pageX - trackX));
+          } else {
+            touchX = Math.max(0, Math.min(trackW, event.nativeEvent.locationX));
+          }
+
+          const fraction = trackW > 0 ? touchX / trackW : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const target = Number((dur * fraction).toFixed(2));
+          const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(1))));
+          videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);
-          setIsScrubbing(true);
         },
-        onPanResponderRelease: (_event, gestureState) => {
+        onPanResponderRelease: (event) => {
           const trackW =
-            progressTrackWidth.current > 0 ? progressTrackWidth.current : 320;
-          const finalX = Math.max(
-            0,
-            Math.min(trackW, videoGestureStartXRef.current + gestureState.dx)
-          );
-          const fraction = trackW > 0 ? finalX / trackW : 0;
+            progressTrackLayout.current.width > 0
+              ? progressTrackLayout.current.width
+              : progressTrackWidth.current > 0
+              ? progressTrackWidth.current
+              : 320;
+          const trackX = progressTrackLayout.current.pageX;
+
+          let touchX: number;
+          if (trackX > 0 && event.nativeEvent.pageX !== undefined) {
+            touchX = Math.max(0, Math.min(trackW, event.nativeEvent.pageX - trackX));
+          } else {
+            touchX = Math.max(0, Math.min(trackW, event.nativeEvent.locationX));
+          }
+
+          const fraction = trackW > 0 ? touchX / trackW : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const target = Number((dur * fraction).toFixed(2));
-          setIsScrubbing(false);
+          const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(1))));
+          videoScrubbingTimeRef.current = target;
+          setScrubbingTime(target);
+
           if (usingCompatibilityEngine) {
             void vlcViewRef.current?.seek(target * 1000, "time");
             setVlcTime(target);
           } else {
             player.currentTime = target;
           }
+
+          if (videoScrubCooldownRef.current) clearTimeout(videoScrubCooldownRef.current);
+          videoScrubCooldownRef.current = setTimeout(() => {
+            setIsScrubbing(false);
+          }, 350);
         },
-        onPanResponderTerminate: (_event, gestureState) => {
-          const trackW =
-            progressTrackWidth.current > 0 ? progressTrackWidth.current : 320;
-          const finalX = Math.max(
-            0,
-            Math.min(trackW, videoGestureStartXRef.current + gestureState.dx)
-          );
-          const fraction = trackW > 0 ? finalX / trackW : 0;
-          const dur = playbackDuration || currentItem?.duration || 0;
-          const target = Number((dur * fraction).toFixed(2));
-          setIsScrubbing(false);
+        onPanResponderTerminate: () => {
+          const target = videoScrubbingTimeRef.current;
           if (usingCompatibilityEngine) {
             void vlcViewRef.current?.seek(target * 1000, "time");
             setVlcTime(target);
           } else {
             player.currentTime = target;
           }
+          if (videoScrubCooldownRef.current) clearTimeout(videoScrubCooldownRef.current);
+          videoScrubCooldownRef.current = setTimeout(() => {
+            setIsScrubbing(false);
+          }, 350);
         },
       }),
     [currentItem?.duration, playbackDuration, player, revealControls, updateProgressTrackLayout, usingCompatibilityEngine]
@@ -1248,8 +1302,66 @@ export default function VideoPlayerScreen() {
               <Text style={styles.scrubbingTooltipText}>{formatDuration(scrubbingTime)}</Text>
             </View>
           ) : null}
-          <View style={styles.progressTrack} pointerEvents="none"><View style={[styles.progressFill, { width: `${progress}%` }]} /><View style={[playerOverlayStyles.progressThumb, { left: `${Math.max(0, Math.min(100, progress))}%` }]} /></View></View><Text style={styles.time}>{formatDuration(playbackDuration || currentItem.duration)}</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickIcons}><Pressable onPress={exitVideo} style={styles.quickIcon} accessibilityLabel="العودة للفيديوهات"><MaterialIcons name="arrow-forward" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(-10)} style={styles.quickIcon} accessibilityLabel="تأخير عشر ثوان"><MaterialIcons name="replay-10" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.quickIcon} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={22} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={styles.quickIcon} accessibilityLabel="تقديم عشر ثوان"><MaterialIcons name="forward-10" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleBackgroundAudio} style={[styles.quickIcon, backgroundPlaybackEnabled && styles.quickIconActive]} accessibilityLabel={backgroundPlaybackEnabled ? "تشغيل الفيديو كصوت بالخلفية: مفعل" : "تشغيل الفيديو بالخلفية: معطل"}><MaterialIcons name="headset" size={20} color={backgroundPlaybackEnabled ? colors.background : colors.text} /></Pressable>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}<Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={rotateVideo} style={styles.quickIcon}><MaterialIcons name="screen-rotation" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></ScrollView></View></View></View> : null}
+          <View style={styles.progressTrack} pointerEvents="none"><View style={[styles.progressFill, { width: `${progress}%` }]} /><View style={[playerOverlayStyles.progressThumb, isScrubbing && playerOverlayStyles.progressThumbActive, { left: `${Math.max(0, Math.min(100, progress))}%` }]} /></View></View><Text style={styles.time}>{formatDuration(playbackDuration || currentItem.duration)}</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickIcons}><Pressable onPress={exitVideo} style={styles.quickIcon} accessibilityLabel="العودة للفيديوهات"><MaterialIcons name="arrow-forward" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(-10)} style={styles.quickIcon} accessibilityLabel="تأخير عشر ثوان"><MaterialIcons name="replay-10" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.quickIcon} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={22} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(10)} style={styles.quickIcon} accessibilityLabel="تقديم عشر ثوان"><MaterialIcons name="forward-10" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleBackgroundAudio} style={[styles.quickIcon, backgroundPlaybackEnabled && styles.quickIconActive]} accessibilityLabel={backgroundPlaybackEnabled ? "تشغيل الفيديو كصوت بالخلفية: مفعل" : "تشغيل الفيديو بالخلفية: معطل"}><MaterialIcons name="headset" size={20} color={backgroundPlaybackEnabled ? colors.background : colors.text} /></Pressable>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}<Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={rotateVideo} style={styles.quickIcon}><MaterialIcons name="screen-rotation" size={20} color={colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></ScrollView></View></View></View> : null}
         {fitPanelOpen && !controlsLocked ? <View style={styles.fitPanel}><View style={styles.fitPanelHeader}><Pressable onPress={() => setFitPanelOpen(false)} style={styles.fitPanelClose}><MaterialIcons name="close" size={20} color={colors.text} /></Pressable><Text style={styles.fitPanelTitle}>الشاشة</Text></View><Text style={styles.fitPanelLabel}>طريقة العرض</Text><View style={styles.fitModeRow}>{fitModes.map((mode) => <Pressable key={mode.id} onPress={() => setVideoFit(mode.id)} style={[styles.fitModeButton, videoFit === mode.id && styles.fitModeButtonActive]}><MaterialIcons name={mode.icon} size={24} color={videoFit === mode.id ? colors.background : colors.text} /><Text style={[styles.fitModeText, videoFit === mode.id && styles.fitModeTextActive]}>{mode.label}</Text></Pressable>)}</View><Text style={styles.fitPanelLabel}>قياسي</Text><View style={styles.frameAspectRow}>{frameAspects.map((aspect) => <Pressable key={aspect.id} onPress={() => setSelectedFrameAspect(aspect.id)} style={[styles.frameAspectButton, frameAspect === aspect.id && styles.frameAspectButtonActive]}><Text style={[styles.frameAspectText, frameAspect === aspect.id && styles.frameAspectTextActive]}>{aspect.label}</Text></Pressable>)}</View></View> : null}
+        {/* Mini Resume Prompt Card */}
+        {resumePrompt?.visible ? (
+          <View style={styles.resumePromptFloatingCard}>
+            <View style={styles.resumePromptHeader}>
+              <View style={styles.resumePromptIconCircle}>
+                <MaterialIcons name="history" size={20} color={colors.cyan} />
+              </View>
+              <View style={styles.resumePromptTextWrap}>
+                <Text style={styles.resumePromptTitle}>متابعة المشاهدة؟</Text>
+                <Text style={styles.resumePromptSubtitle}>
+                  توقفت سابقاً عند <Text style={styles.resumePromptHighlight}>{formatDuration(resumePrompt.seconds)}</Text>
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setResumePrompt((prev) => (prev ? { ...prev, visible: false } : null))}
+                style={styles.resumePromptClose}
+                hitSlop={8}
+                accessibilityLabel="إغلاق الإشعار"
+              >
+                <MaterialIcons name="close" size={18} color={colors.muted} />
+              </Pressable>
+            </View>
+            <View style={styles.resumePromptActions}>
+              <Pressable
+                onPress={() => {
+                  const target = resumePrompt.seconds;
+                  setResumePrompt(null);
+                  if (usingCompatibilityEngine) {
+                    void vlcViewRef.current?.seek(target * 1000, "time");
+                    setVlcTime(target);
+                  } else {
+                    player.currentTime = target;
+                  }
+                }}
+                style={({ pressed }) => [styles.resumeButtonPrimary, pressed && { opacity: 0.75 }]}
+              >
+                <MaterialIcons name="play-arrow" size={19} color="#08111F" />
+                <Text style={styles.resumeButtonPrimaryText}>مواصلة ({formatDuration(resumePrompt.seconds)})</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setResumePrompt(null);
+                  if (usingCompatibilityEngine) {
+                    void vlcViewRef.current?.seek(0, "time");
+                    setVlcTime(0);
+                  } else {
+                    player.currentTime = 0;
+                  }
+                }}
+                style={({ pressed }) => [styles.resumeButtonSecondary, pressed && { opacity: 0.75 }]}
+              >
+                <MaterialIcons name="replay" size={16} color={colors.text} />
+                <Text style={styles.resumeButtonSecondaryText}>من البداية</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
         {subtitlePanelOpen ? (
           <View style={styles.subtitleMenuOverlay}>
             <Pressable style={styles.subtitleMenuBackdrop} onPress={() => setSubtitlePanelOpen(false)} />
@@ -1536,12 +1648,111 @@ const styles = StyleSheet.create({
   emptyText: { color: colors.muted, fontSize: 15 },
   backButton: { height: 42, paddingHorizontal: 16, borderRadius: 13, backgroundColor: colors.cyan, justifyContent: "center" },
   backText: { color: colors.background, fontWeight: "800" },
+  resumePromptFloatingCard: {
+    position: "absolute",
+    bottom: 110,
+    alignSelf: "center",
+    width: "92%",
+    maxWidth: 420,
+    backgroundColor: "rgba(11, 22, 38, 0.95)",
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(46, 197, 255, 0.45)",
+    zIndex: 99,
+    elevation: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+  },
+  resumePromptHeader: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  resumePromptIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(46, 197, 255, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  resumePromptTextWrap: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+  resumePromptTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+  resumePromptSubtitle: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 2,
+    textAlign: "right",
+  },
+  resumePromptHighlight: {
+    color: colors.cyan,
+    fontWeight: "800",
+  },
+  resumePromptClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  resumePromptActions: {
+    flexDirection: "row-reverse",
+    gap: 8,
+  },
+  resumeButtonPrimary: {
+    flex: 1.3,
+    minHeight: 38,
+    borderRadius: 12,
+    backgroundColor: colors.cyan,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+  },
+  resumeButtonPrimaryText: {
+    color: "#08111F",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  resumeButtonSecondary: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+  },
+  resumeButtonSecondaryText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "800",
+  },
 });
 
 const playerOverlayStyles = StyleSheet.create({
   tenSecondControl: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.28)" },
-  progressTouch: { flex: 1, minHeight: 30, justifyContent: "center" },
-  progressThumb: { position: "absolute", top: -5, marginLeft: -7, width: 14, height: 14, borderRadius: 7, backgroundColor: colors.cyan },
+  progressTouch: { flex: 1, minHeight: 40, justifyContent: "center", position: "relative" },
+  progressThumb: { position: "absolute", top: -6.5, marginLeft: -9, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.cyan, borderWidth: 2, borderColor: "#FFFFFF", elevation: 6 },
+  progressThumbActive: { top: -9.5, marginLeft: -12, width: 24, height: 24, borderRadius: 12, borderWidth: 3, borderColor: "#FFFFFF", elevation: 8 },
 });
 
 const sheetStyles = StyleSheet.create({
