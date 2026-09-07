@@ -71,28 +71,6 @@ jobs:
         working-directory: android
         run: ./gradlew app:assembleRelease --no-daemon --stacktrace
 
-      - name: Optimize and categorize APKs
-        working-directory: android
-        run: |
-          set -euo pipefail
-          apk_dir="app/build/outputs/apk/release"
-          echo "=== Generated build outputs ==="
-          ls -lh "$apk_dir"
-
-          if [ -f "$apk_dir/app-universal-release.apk" ]; then
-            cp -f "$apk_dir/app-universal-release.apk" "$apk_dir/app-release.apk"
-            cp -f "$apk_dir/app-universal-release.apk" "$apk_dir/app-universal.apk"
-          fi
-          if [ -f "$apk_dir/app-armeabi-v7a-release.apk" ]; then
-            cp -f "$apk_dir/app-armeabi-v7a-release.apk" "$apk_dir/app-lite-v7a.apk"
-          fi
-          if [ -f "$apk_dir/app-arm64-v8a-release.apk" ]; then
-            cp -f "$apk_dir/app-arm64-v8a-release.apk" "$apk_dir/app-arm64-v8a.apk"
-          fi
-
-          echo "=== Final APKs for distribution ==="
-          ls -lh "$apk_dir"/*.apk
-
       - name: Verify media playback background permissions
         working-directory: android
         run: |
@@ -109,21 +87,21 @@ jobs:
 
       - name: Verify embedded JavaScript bundle
         run: |
-          apk_file=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          apk_file="$(find android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
           unzip -l "$apk_file" | grep -E 'assets/index\.android\.(bundle|hbc)'
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: REMO-PLAYER-Android-Standalone-APK
-          path: android/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/release/
           if-no-files-found: error
           retention-days: 14
 
   publish-public-update:
     name: Publish public update feed
     needs: build-apk
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/remo-player-lite' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -151,69 +129,41 @@ jobs:
           version=$(node -e "const s=require('fs').readFileSync('app.config.ts','utf8'); const m=s.match(/version:\s*\"([^\"]+)\"/); if(!m) process.exit(1); process.stdout.write(m[1])")
           version_code=$(node -e "const s=require('fs').readFileSync('app.config.ts','utf8'); const m=s.match(/versionCode:\s*(\d+)/); if(!m) process.exit(1); process.stdout.write(m[1])")
           tag="v${version}"
-          
-          # Discover APK variants
-          lite_apk="$(find release -type f -name '*lite*.apk' -o -name '*v7a*.apk' | head -n 1)"
-          arm64_apk="$(find release -type f -name '*arm64*.apk' | head -n 1)"
-          universal_apk="$(find release -type f -name '*universal*.apk' -o -name 'app-release.apk' | head -n 1)"
-          
-          # Default primary APK (prefer universal or lite)
-          primary_apk="${universal_apk:-${lite_apk:-$(find release -type f -name '*.apk' | head -n 1)}}"
-          test -n "$primary_apk"
-          
-          digest=$(sha256sum "$primary_apk" | awk '{print $1}')
+          apk="$(find release -type f -name '*.apk' | head -n 1)"
+          test -n "$apk"
+          asset_name="REMO-PLAYER-Lite-${version}.apk"
+          digest=$(sha256sum "$apk" | awk '{print $1}')
           release_url="https://github.com/${RELEASE_REPOSITORY}/releases/tag/${tag}"
-          asset_name="REMO-PLAYER-${version}.apk"
           apk_url="https://github.com/${RELEASE_REPOSITORY}/releases/download/${tag}/${asset_name}"
           export VERSION="$version"
           export VERSION_CODE="$version_code"
           export RELEASE_URL="$release_url"
           export APK_URL="$apk_url"
           export DIGEST="$digest"
-
-          notes="إصدار REMO PLAYER ${version} فائق الخفة والمحسن للهواتف ذات الذاكرة الضعيفة:
-- تقليص الحجم بنسبة تتجاوز 60% بفضل ضغط المكتبات وفصل المعماريات.
-- نسخة مخففة (Lite v7a) بحجم ~34 ميجابايت للأجهزة الضعيفة والاقتصادية.
-- نسخة فائقة السرعة (arm64) بحجم ~38 ميجابايت للأجهزة الحديثة.
-- نسخة شاملة (Universal) لجميع أنواع المعالجات.
-- وضع توفير التخزين التلقائي لمنع تراكم الملفات المؤقتة."
-
-          if ! gh release view "$tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$tag" "$primary_apk#$asset_name" --repo "$RELEASE_REPOSITORY" --title "REMO PLAYER ${version} (Lite & Storage Optimized)" --notes "$notes"
+          if gh release view "$tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk#$asset_name" --repo "$RELEASE_REPOSITORY" --clobber
           else
-            gh release upload "$tag" "$primary_apk#$asset_name" --repo "$RELEASE_REPOSITORY" --clobber
+            gh release create "$tag" "$apk#$asset_name" --repo "$RELEASE_REPOSITORY" --title "REMO PLAYER Lite ${version}" --notes "نسخة REMO PLAYER Lite خفيفة ومحسنة للأجهزة ذات الذاكرة المحدودة."
           fi
-
-          if [ -n "$lite_apk" ] && [ -f "$lite_apk" ]; then
-            gh release upload "$tag" "$lite_apk#REMO-PLAYER-${version}-Lite-v7a.apk" --repo "$RELEASE_REPOSITORY" --clobber || true
-          fi
-          if [ -n "$arm64_apk" ] && [ -f "$arm64_apk" ]; then
-            gh release upload "$tag" "$arm64_apk#REMO-PLAYER-${version}-arm64.apk" --repo "$RELEASE_REPOSITORY" --clobber || true
-          fi
-          if [ -n "$universal_apk" ] && [ -f "$universal_apk" ]; then
-            gh release upload "$tag" "$universal_apk#REMO-PLAYER-${version}-Universal.apk" --repo "$RELEASE_REPOSITORY" --clobber || true
-          fi
-
           node - <<'NODE'
           const fs = require('fs');
           const data = {
             schemaVersion: 1,
-            appName: 'REMO PLAYER',
+            appName: 'REMO PLAYER Lite',
             version: process.env.VERSION,
             versionCode: Number(process.env.VERSION_CODE),
             publishedAt: new Date().toISOString(),
             releaseUrl: process.env.RELEASE_URL,
             apkUrl: process.env.APK_URL,
             sha256: process.env.DIGEST,
-            notes: 'إصدار مستقل مبني ومتحقق منه عبر GitHub Actions.'
+            notes: 'إصدار REMO PLAYER Lite خفيف ومحسن للأجهزة ذات الذاكرة المحدودة.'
           };
           fs.writeFileSync('latest.json', `${JSON.stringify(data, null, 2)}\n`);
           NODE
-
           content=$(base64 -w 0 latest.json)
           existing_sha=$(gh api "repos/${RELEASE_REPOSITORY}/contents/latest.json" --jq .sha 2>/dev/null || true)
           if [ -n "$existing_sha" ]; then
-            gh api --method PUT "repos/${RELEASE_REPOSITORY}/contents/latest.json" -f message="Publish REMO PLAYER ${version} update feed" -f content="$content" -f sha="$existing_sha"
+            gh api --method PUT "repos/${RELEASE_REPOSITORY}/contents/latest.json" -f message="Publish REMO PLAYER Lite ${version} update feed" -f content="$content" -f sha="$existing_sha"
           else
-            gh api --method PUT "repos/${RELEASE_REPOSITORY}/contents/latest.json" -f message="Publish REMO PLAYER ${version} update feed" -f content="$content"
+            gh api --method PUT "repos/${RELEASE_REPOSITORY}/contents/latest.json" -f message="Publish REMO PLAYER Lite ${version} update feed" -f content="$content"
           fi
