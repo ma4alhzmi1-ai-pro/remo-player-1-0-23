@@ -4,7 +4,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "re
 
 import { colors } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
-import { cleanOrphanedCacheFiles, getCacheSizeInfo } from "@/lib/cache-cleaner";
+import { cleanOrphanedCacheFiles, getCacheSizeInfo, getLowStorageModeEnabled, setLowStorageModeEnabled } from "@/lib/cache-cleaner";
 import { checkGithubForUpdate, currentAppVersion, openOfficialUpdate } from "@/lib/github-update-checker";
 import { useLanguage, APP_LANGUAGE_OPTIONS } from "@/lib/language-provider";
 import { useLibrary } from "@/lib/library-context";
@@ -17,14 +17,27 @@ export default function SettingsScreen() {
   const { accentTheme, setAccentTheme } = useThemeContext();
   const { language, setLanguage, t, isRTL } = useLanguage();
   const [videoBackgroundEnabled, setVideoBackgroundEnabled] = useState(true);
+  const [lowStorageMode, setLowStorageMode] = useState(false);
 
   useEffect(() => {
     void getVideoBackgroundPlaybackSetting().then(setVideoBackgroundEnabled);
+    void getLowStorageModeEnabled().then(setLowStorageMode);
   }, []);
 
   const handleToggleVideoBackground = async (value: boolean) => {
     setVideoBackgroundEnabled(value);
     await setVideoBackgroundPlaybackSetting(value);
+  };
+
+  const handleToggleLowStorageMode = async (value: boolean) => {
+    setLowStorageMode(value);
+    await setLowStorageModeEnabled(value);
+    if (value) {
+      Alert.alert(
+        "وضع توفير التخزين",
+        "تم تفعيل وضع توفير التخزين بنجاح. سيقوم المشغل بحذف ملفات المعالجة المؤقتة فوراً بعد التشغيل لتوفير أقصى مساحة ممكنة للهواتف ذات الذاكرة الضعيفة."
+      );
+    }
   };
 
   const refresh = async () => { const complete = await refreshDeviceLibrary(); if (!complete) Alert.alert("REMO PLAYER", "Grant media permission from Android settings or import selected files."); };
@@ -68,6 +81,26 @@ export default function SettingsScreen() {
           value={videoBackgroundEnabled}
           onValueChange={(val) => void handleToggleVideoBackground(val)}
           thumbColor={videoBackgroundEnabled ? colors.cyan : "#8A9BA8"}
+          trackColor={{ false: "#1B3042", true: "rgba(117, 230, 218, 0.35)" }}
+        />
+      </View>
+    </View>
+    <View style={styles.settingCard}>
+      <View style={styles.settingCardHead}>
+        <View style={styles.settingIconWrap}><MaterialIcons name="storage" size={22} color={colors.cyan} /></View>
+        <View style={styles.settingTextWrap}>
+          <Text style={styles.settingTitle}>وضع توفير التخزين (للأجهزة الضعيفة)</Text>
+          <Text style={styles.settingDesc}>مخصص للهواتف ذات ذاكرة التخزين الصغيرة: يقوم تلقائياً بمسح ملفات المعالجة المؤقتة فور انتهاء التشغيل، وتقليص الذاكرة المؤقتة لمنع امتلاء الهاتف.</Text>
+        </View>
+      </View>
+      <View style={styles.switchRow}>
+        <Text style={[styles.switchStatus, { color: lowStorageMode ? colors.cyan : colors.muted }]}>
+          {lowStorageMode ? "مفعل (توفير أقصى مساحة تخزين)" : "معطل (الوضع القياسي)"}
+        </Text>
+        <Switch
+          value={lowStorageMode}
+          onValueChange={(val) => void handleToggleLowStorageMode(val)}
+          thumbColor={lowStorageMode ? colors.cyan : "#8A9BA8"}
           trackColor={{ false: "#1B3042", true: "rgba(117, 230, 218, 0.35)" }}
         />
       </View>

@@ -28,8 +28,8 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "REMO PLAYER",
-  appSlug: "remo-player",
+  appName: "REMO PLAYER Lite",
+  appSlug: "remo-player-lite",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
   logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663906474911/ocmxUaNaAqOweSnC.png",
@@ -42,7 +42,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "alhzmi",
-  version: "1.0.60",
+  version: "1.0.0-lite",
   orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -65,7 +65,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    versionCode: 62,
+    versionCode: 1,
     permissions: [
       "READ_EXTERNAL_STORAGE",
       "WRITE_EXTERNAL_STORAGE",
@@ -154,6 +154,14 @@ const config: ExpoConfig = {
           minSdkVersion: 24,
           enableMinifyInReleaseBuilds: true,
           enableShrinkResourcesInReleaseBuilds: true,
+          extraProguardRules: `
+-keep class org.videolan.** { *; }
+-dontwarn org.videolan.**
+-keep class com.facebook.react.** { *; }
+-keep class com.swmansion.reanimated.** { *; }
+-keep class expo.modules.** { *; }
+-dontwarn expo.modules.**
+          `,
         },
       },
     ],
