@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - v1.0.60
 
 permissions:
   contents: read
@@ -91,7 +92,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: REMO-PLAYER-Android-Standalone-APK
+          name: REMO-PLAYER-v1.0.60-Full-APK
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -99,7 +100,7 @@ jobs:
   publish-public-update:
     name: Publish public update feed
     needs: build-apk
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/v1.0.60' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -113,7 +114,7 @@ jobs:
       - name: Download verified APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: REMO-PLAYER-Android-Standalone-APK
+          name: REMO-PLAYER-v1.0.60-Full-APK
           path: release
 
       - name: Publish GitHub release and update feed
