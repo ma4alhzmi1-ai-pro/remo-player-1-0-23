@@ -129,10 +129,12 @@ export default function VideoScreen() {
 }
 
 function FolderDetail({ folder, onBack, onOpenVideo }: { folder: Folder; onBack: () => void; onOpenVideo: (item: MediaItem) => void }) {
+  const { currentItem, isPlaying } = usePlayer();
   return <ScreenContainer className="px-0"><DetailHeader title={folder.name} subtitle={`${folder.items.length} مقاطع فيديو · ${folder.path}`} onBack={onBack} /><FlatList data={folder.items} keyExtractor={(item) => item.id} renderItem={({ item }) => <MediaRow item={item} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onPress={() => onOpenVideo(item)} />} contentContainerStyle={styles.detailList} /></ScreenContainer>;
 }
 
 function PlaylistDetail({ playlist, onBack, onOpenVideo }: { playlist: VideoPlaylist; onBack: () => void; onOpenVideo: (item: MediaItem) => void }) {
+  const { currentItem, isPlaying } = usePlayer();
   return <ScreenContainer className="px-0"><DetailHeader title={playlist.name} subtitle={`${playlist.items.length} مقاطع فيديو`} onBack={onBack} /><FlatList data={playlist.items} keyExtractor={(item) => item.id} renderItem={({ item }) => <MediaRow item={item} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onPress={() => onOpenVideo(item)} />} contentContainerStyle={styles.detailList} /></ScreenContainer>;
 }
 
