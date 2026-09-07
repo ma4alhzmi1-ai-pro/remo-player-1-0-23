@@ -58,6 +58,7 @@ public class KeyboardSettingsActivity extends Activity {
         int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
         try { getContentResolver().takePersistableUriPermission(uri, flags); } catch (SecurityException ignored) { }
         preferences.edit().putString("background_uri", uri.toString()).remove("background_asset").apply();
+        notifyThemeChanged();
         Toast.makeText(this, "تم اختيار الخلفية من الاستوديو", Toast.LENGTH_SHORT).show();
         showPanel(Panel.APPEARANCE);
     }
@@ -345,9 +346,22 @@ public class KeyboardSettingsActivity extends Activity {
         addSection(root, "خلفيات إسلامية");
         addThemeCard(root, "فوانيس رمضانية", "هلال وفوانيس ذهبية", "ramadan", "remo_islamic_lanterns", Color.rgb(16, 41, 36), Color.rgb(78, 89, 66));
         addThemeCard(root, "مسجد الغروب", "كحلي، هلال، ونجوم هادئة", "ramadan", "remo_islamic_mosque_dusk", Color.rgb(18, 27, 61), Color.rgb(61, 72, 106));
+        addSection(root, "ثيمات نسائية كيوت");
+        addThemeCard(root, "سكر ووردي", "وردي حلو وقلوب ناعمة", "cute", "", Color.rgb(255, 231, 241), Color.rgb(255, 173, 204));
+        addThemeCard(root, "لافندر كيوت", "بنفسجي هادئ ولمسة لؤلؤية", "cute", "", Color.rgb(238, 229, 255), Color.rgb(191, 164, 235));
+        addSection(root, "ثيمات طبيعية ورياضية");
+        addThemeCard(root, "غابة طبيعية", "أخضر أوراق ولمسة ترابية", "nature", "", Color.rgb(20, 48, 31), Color.rgb(67, 119, 74));
+        addThemeCard(root, "محيط هادئ", "أزرق مائي وهواء منعش", "nature", "", Color.rgb(12, 45, 66), Color.rgb(36, 117, 150));
+        addThemeCard(root, "ملعب الطاقة", "أحمر رياضي وأصفر حيوي", "sport", "", Color.rgb(25, 31, 40), Color.rgb(210, 70, 67));
+        addThemeCard(root, "سباق ليلي", "كحلي سريع ولمسات برتقالية", "sport", "", Color.rgb(17, 26, 42), Color.rgb(238, 111, 45));
+        addSection(root, "ثيمات أعلام الدول");
+        addThemeCard(root, "علم السعودية", "أخضر وكتابة بيضاء", "flag_sa", "", Color.rgb(7, 54, 31), Color.rgb(30, 116, 67));
+        addThemeCard(root, "علم فلسطين", "أسود وأبيض وأخضر وأحمر", "flag_ps", "", Color.rgb(28, 30, 32), Color.rgb(173, 45, 51));
+        addThemeCard(root, "علم الإمارات", "أخضر وأبيض وأسود وأحمر", "flag_ae", "", Color.rgb(22, 32, 30), Color.rgb(179, 55, 55));
+        addThemeCard(root, "علم الأردن", "أسود وأبيض وأخضر وأحمر", "flag_jo", "", Color.rgb(30, 30, 34), Color.rgb(143, 48, 48));
         addSection(root, "تخصيص الخلفية والألوان");
         addAction(root, "اختيار صورة من الاستوديو", "استخدم صورة من معرض الجهاز كخلفية للكيبورد", this::chooseBackgroundFromStudio);
-        addAction(root, "إزالة صورة الخلفية", "العودة إلى الخلفية اللونية للثيم", () -> { preferences.edit().remove("background_uri").remove("background_asset").apply(); Toast.makeText(this, "تمت إزالة الخلفية", Toast.LENGTH_SHORT).show(); });
+        addAction(root, "إزالة صورة الخلفية", "العودة إلى الخلفية اللونية للثيم", () -> { preferences.edit().remove("background_uri").remove("background_asset").apply(); notifyThemeChanged(); Toast.makeText(this, "تمت إزالة الخلفية", Toast.LENGTH_SHORT).show(); });
         addAction(root, "لوحات ألوان جاهزة", "ليلي، وردي، زمردي، أو أزرق تقني", this::showColorPresets);
         addAction(root, "لون الخلفية", currentColor("custom_background_color", "#101010"), () -> editColor("custom_background_color", "لون الخلفية", "#101010"));
         addAction(root, "لون المفاتيح", currentColor("custom_key_color", "#777777"), () -> editColor("custom_key_color", "لون المفاتيح", "#777777"));
@@ -451,7 +465,14 @@ public class KeyboardSettingsActivity extends Activity {
 
     private void selectTheme(String theme, String asset, String title) {
         preferences.edit().putString("theme", theme).putString("background_asset", asset).remove("background_uri").apply();
+        notifyThemeChanged();
         Toast.makeText(this, "تم اختيار ثيم " + title, Toast.LENGTH_SHORT).show();
+    }
+
+    private void notifyThemeChanged() {
+        Intent update = new Intent(RemoInputMethodService.ACTION_THEME_CHANGED);
+        update.setPackage(getPackageName());
+        sendBroadcast(update);
     }
 
     private String currentColor(String key, String fallback) {
@@ -482,6 +503,7 @@ public class KeyboardSettingsActivity extends Activity {
                         .putString("custom_surface_color", currentColor("custom_surface_color", "#161616"))
                         .putString("custom_special_key_color", currentColor("custom_special_key_color", "#343434"))
                         .apply();
+                    notifyThemeChanged();
                     Toast.makeText(this, "تم تطبيق اللون على لوحة المفاتيح", Toast.LENGTH_SHORT).show();
                 } catch (IllegalArgumentException error) {
                     Toast.makeText(this, "صيغة اللون غير صحيحة", Toast.LENGTH_SHORT).show();
@@ -508,6 +530,7 @@ public class KeyboardSettingsActivity extends Activity {
                 .putString("custom_surface_color", colors[4])
                 .putString("custom_special_key_color", colors[5])
                 .apply();
+            notifyThemeChanged();
             Toast.makeText(this, "تم تطبيق " + names[index], Toast.LENGTH_SHORT).show();
         }).show();
     }

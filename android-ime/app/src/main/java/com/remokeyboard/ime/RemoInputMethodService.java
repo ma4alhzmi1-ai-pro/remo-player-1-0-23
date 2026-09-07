@@ -1,10 +1,12 @@
 package com.remokeyboard.ime;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.inputmethodservice.InputMethodService;
@@ -24,12 +26,18 @@ import java.util.Locale;
 
 /** خدمة إدخال حقيقية: تكتب مباشرة في الحقل النشط لدى أي تطبيق أندرويد. */
 public class RemoInputMethodService extends InputMethodService {
+    static final String ACTION_THEME_CHANGED = "com.remokeyboard.ime.THEME_CHANGED";
     private SharedPreferences preferences;
     private ClipboardRepository clipboard;
     private RemoKeyboardView keyboardView;
     private SpeechRecognizer speechRecognizer;
     private ClipboardManager systemClipboard;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
+    private final BroadcastReceiver themeReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (keyboardView != null) keyboardView.reloadTheme();
+        }
+    };
 
     @Override public void onCreate() {
         super.onCreate();
@@ -38,6 +46,13 @@ public class RemoInputMethodService extends InputMethodService {
         systemClipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         clipboardListener = this::captureSystemClipboard;
         if (systemClipboard != null) systemClipboard.addPrimaryClipChangedListener(clipboardListener);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(themeReceiver, new IntentFilter(ACTION_THEME_CHANGED), Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(themeReceiver, new IntentFilter(ACTION_THEME_CHANGED));
+    }
+
+    @Override public void onWindowShown() {
+        super.onWindowShown();
+        if (keyboardView != null) keyboardView.resetWindowPosition();
     }
 
     @Override public android.view.View onCreateInputView() {
@@ -194,6 +209,7 @@ public class RemoInputMethodService extends InputMethodService {
     @Override public void onDestroy() {
         endVoiceInput();
         if (systemClipboard != null && clipboardListener != null) systemClipboard.removePrimaryClipChangedListener(clipboardListener);
+        try { unregisterReceiver(themeReceiver); } catch (IllegalArgumentException ignored) { }
         super.onDestroy();
     }
 }

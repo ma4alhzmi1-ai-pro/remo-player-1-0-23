@@ -79,6 +79,32 @@ final class RemoKeyboardView extends LinearLayout {
     private void rebuildPalette() {
         palette = KeyboardPalette.from(preferences);
         applyKeyboardBackground();
+        resetKeyboardPosition();
+    }
+
+    void reloadTheme() {
+        resetKeyboardPosition();
+        renderKeys();
+        refreshSuggestions();
+        post(() -> {
+            resetKeyboardPosition();
+            requestLayout();
+            invalidate();
+        });
+    }
+
+    private void resetKeyboardPosition() {
+        setTranslationX(0f);
+        setTranslationY(0f);
+        clearAnimation();
+    }
+
+    void resetWindowPosition() {
+        post(() -> {
+            resetKeyboardPosition();
+            requestLayout();
+            invalidate();
+        });
     }
 
     private void applyKeyboardBackground() {
@@ -347,7 +373,7 @@ final class RemoKeyboardView extends LinearLayout {
         if (primary.equals("ا")) key.setOnLongClickListener(v -> { showAlternatives(key, new String[]{"ا", "أ", "إ", "آ", "ٱ"}); return true; });
         if (primary.equals("ل")) key.setOnLongClickListener(v -> { showAlternatives(key, new String[]{"ل", "لا", "لأ", "لإ", "لآ"}); return true; });
         if (primary.equals("ة")) key.setOnLongClickListener(v -> { showAlternatives(key, new String[]{"ة", "ةَ", "ةً", "ةُ", "ةٌ", "ةِ", "ةٍ", "ةْ", "ةّ", "ةٰ"}, new String[]{"ة", "َ", "ً", "ُ", "ٌ", "ِ", "ٍ", "ْ", "ّ", "ٰ"}); return true; });
-        if (primary.equals("ت")) key.setOnLongClickListener(v -> { showAlternatives(key, new String[]{"ت", "تـ", "تـت", "ـت", "ۃ"}, new String[]{"ت", "ـ", "تـ", "ـت", "ۃ"}); return true; });
+        if (primary.equals("ت")) key.setOnLongClickListener(v -> { showAlternatives(key, new String[]{"ت", "ـ", "تـ", "ـت", "تـت", "ۃ"}, new String[]{"ت", "ـ", "تـ", "ـت", "تـت", "ۃ"}); return true; });
         if (primary.equals("123")) key.setOnLongClickListener(v -> { service.beginVoiceInput(); return true; });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, weight);
         params.setMargins(dp(1), 0, dp(1), 0);
@@ -504,24 +530,60 @@ final class RemoKeyboardView extends LinearLayout {
     private void showClipboardPopup() {
         List<String> entries = service.getClipboard().getAll();
         if (entries.isEmpty()) { showMessage("الحافظة فارغة"); return; }
+        LinearLayout panel = new LinearLayout(getContext());
+        panel.setOrientation(VERTICAL);
+        panel.setPadding(dp(7), dp(7), dp(7), dp(7));
+        panel.setBackground(rounded(palette.surface, dp(8), false));
+        TextView heading = textButton("الحافظة — " + entries.size() + " عنصرًا", 14, palette.text, palette.surface, dp(4));
+        heading.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        panel.addView(heading, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(34)));
+        TextView clear = textButton("مسح غير المثبت", 12, palette.muted, palette.keySpecial, dp(6));
+        clear.setGravity(Gravity.CENTER);
+        panel.addView(clear, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(34)));
+        ScrollView scroll = new ScrollView(getContext());
         LinearLayout list = new LinearLayout(getContext());
         list.setOrientation(VERTICAL);
-        list.setPadding(dp(7), dp(7), dp(7), dp(7));
-        list.setBackground(rounded(palette.surface, dp(4), false));
-        PopupWindow popup = new PopupWindow(list, dp(312), LayoutParams.WRAP_CONTENT, true);
-        int count = Math.min(entries.size(), 5);
-        for (int index = 0; index < count; index++) {
-            String entry = entries.get(index);
+        list.setPadding(dp(2), dp(3), dp(2), dp(3));
+        scroll.addView(list, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        panel.addView(scroll, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
+        PopupWindow popup = new PopupWindow(panel, dp(330), dp(360), true);
+        clear.setOnClickListener(v -> {
+            service.getClipboard().clearUnpinned();
+            popup.dismiss();
+            showMessage("تم مسح العناصر غير المثبتة");
+        });
+        for (String entry : entries) {
+            boolean pinned = service.getClipboard().isPinned(entry);
             String preview = entry.length() > 90 ? entry.substring(0, 90) + "…" : entry;
-            TextView item = textButton(preview, 15, palette.text, palette.key, dp(9));
+            LinearLayout line = new LinearLayout(getContext());
+            line.setGravity(Gravity.CENTER_VERTICAL);
+            line.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+            TextView item = textButton((pinned ? "★ " : "") + preview, 15, palette.text, palette.key, dp(9));
             item.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+            item.setContentDescription("النقر للإدراج، الضغط المطول للتثبيت");
             item.setOnClickListener(v -> { service.pasteClipboardItem(entry); popup.dismiss(); });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(47));
-            params.setMargins(0, dp(2), 0, dp(2));
-            list.addView(item, params);
+            item.setOnLongClickListener(v -> {
+                service.getClipboard().togglePinned(entry);
+                popup.dismiss();
+                showClipboardPopup();
+                return true;
+            });
+            TextView remove = textButton("×", 19, palette.text, palette.keySpecial, dp(5));
+            remove.setGravity(Gravity.CENTER);
+            remove.setContentDescription("حذف العنصر");
+            remove.setOnClickListener(v -> {
+                service.getClipboard().remove(entry);
+                popup.dismiss();
+                showClipboardPopup();
+            });
+            line.addView(item, new LinearLayout.LayoutParams(0, dp(48), 1f));
+            line.addView(remove, new LinearLayout.LayoutParams(dp(42), dp(48)));
+            LinearLayout.LayoutParams lineParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(50));
+            lineParams.setMargins(0, dp(2), 0, dp(2));
+            list.addView(line, lineParams);
         }
         popup.setElevation(dp(8));
-        popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(248));
+        popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(76));
     }
 
     private void showDecorationPopup() {
