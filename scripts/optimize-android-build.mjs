@@ -5,7 +5,7 @@ import path from 'path';
  * Optimizes the generated Android project for minimum APK download size
  * and minimal device storage consumption.
  * - Enables ABI splits (armeabi-v7a for low-end / budget devices, arm64-v8a for modern devices)
- * - Enables native library compression (useLegacyPackaging = true & extractNativeLibs = true)
+ * - Enables native library compression (useLegacyPackaging = true)
  * - Prevents generating bloated universal APKs (universalApk = false)
  * - Adds R8 optimizations and resource exclusions
  */
@@ -13,28 +13,16 @@ function optimizeAndroidBuild() {
   const androidAppDir = path.resolve(process.cwd(), 'android', 'app');
   const buildGradlePath = path.join(androidAppDir, 'build.gradle');
   const gradlePropertiesPath = path.resolve(process.cwd(), 'android', 'gradle.properties');
-  const manifestPath = path.join(androidAppDir, 'src', 'main', 'AndroidManifest.xml');
 
   if (!fs.existsSync(buildGradlePath)) {
     console.warn(`[optimize-build] build.gradle not found at ${buildGradlePath}, skipping...`);
     return;
   }
 
-  // 1. Update AndroidManifest.xml to force native lib compression
-  if (fs.existsSync(manifestPath)) {
-    console.log('[optimize-build] Updating AndroidManifest.xml for native lib compression...');
-    let manifest = fs.readFileSync(manifestPath, 'utf8');
-    if (!manifest.includes('android:extractNativeLibs')) {
-      manifest = manifest.replace('<application', '<application android:extractNativeLibs="true"');
-      fs.writeFileSync(manifestPath, manifest, 'utf8');
-      console.log('[optimize-build] Injected android:extractNativeLibs="true" into AndroidManifest.xml');
-    }
-  }
-
   console.log('[optimize-build] Reading android/app/build.gradle...');
   let gradleContent = fs.readFileSync(buildGradlePath, 'utf8');
 
-  // 2. Enable separate architecture builds if standard variable exists
+  // 1. Enable separate architecture builds if standard variable exists
   if (gradleContent.includes('def enableSeparateBuildPerCPUArchitecture = false')) {
     gradleContent = gradleContent.replace(
       'def enableSeparateBuildPerCPUArchitecture = false',
@@ -43,9 +31,10 @@ function optimizeAndroidBuild() {
     console.log('[optimize-build] Enabled enableSeparateBuildPerCPUArchitecture = true');
   }
 
-  // 3. Ensure packaging { jniLibs { useLegacyPackaging = true } }
+  // 2. Ensure packaging { jniLibs { useLegacyPackaging = true } }
   // This compresses native .so libraries inside the APK, slashing size to ~38MB!
   const packagingConfig = `
+    // [Optimized for low-storage devices: compress native libs]
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -60,18 +49,18 @@ function optimizeAndroidBuild() {
                 "kotlin-tooling-metadata.json"
             ]
         }
-    }
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging = true
-        }
     }`;
 
   if (!gradleContent.includes('useLegacyPackaging = true')) {
-    if (gradleContent.includes('packaging {') || gradleContent.includes('packagingOptions {')) {
+    if (gradleContent.includes('packaging {')) {
       gradleContent = gradleContent.replace(
-        /(packaging(Options)?\s*\{)/,
-        `$1\n        jniLibs { useLegacyPackaging = true }`
+        'packaging {',
+        `packaging {\n        jniLibs { useLegacyPackaging = true }`
+      );
+    } else if (gradleContent.includes('packagingOptions {')) {
+      gradleContent = gradleContent.replace(
+        'packagingOptions {',
+        `packagingOptions {\n        jniLibs { useLegacyPackaging = true }`
       );
     } else {
       gradleContent = gradleContent.replace(
@@ -82,7 +71,7 @@ function optimizeAndroidBuild() {
     console.log('[optimize-build] Injected useLegacyPackaging = true to compress .so libraries');
   }
 
-  // 4. Ensure splits { abi { ... universalApk false } } is configured
+  // 3. Ensure splits { abi { ... universalApk false } } is configured
   // universalApk false prevents generating the huge ~140MB duplicate APK
   const splitsConfig = `
     splits {
@@ -112,7 +101,7 @@ function optimizeAndroidBuild() {
   fs.writeFileSync(buildGradlePath, gradleContent, 'utf8');
   console.log('[optimize-build] Successfully updated android/app/build.gradle');
 
-  // 5. Update gradle.properties
+  // 4. Update gradle.properties
   if (fs.existsSync(gradlePropertiesPath)) {
     let props = fs.readFileSync(gradlePropertiesPath, 'utf8');
     let modified = false;
@@ -123,10 +112,6 @@ function optimizeAndroidBuild() {
     }
     if (!props.includes('android.enableR8.fullMode')) {
       props += 'android.enableR8.fullMode=true\n';
-      modified = true;
-    }
-    if (!props.includes('android.bundle.enableUncompressedNativeLibs')) {
-      props += 'android.bundle.enableUncompressedNativeLibs=false\n';
       modified = true;
     }
 
