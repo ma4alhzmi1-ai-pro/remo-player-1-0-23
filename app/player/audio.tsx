@@ -90,6 +90,7 @@ export default function AudioPlayerScreen() {
   const gestureStartXRef = useRef(0);
   const scrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubbingTimeRef = useRef(0);
+  const audioInitialTouchRef = useRef<{ startX: number; width: number }>({ startX: 0, width: 280 });
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
@@ -219,60 +220,30 @@ export default function AudioPlayerScreen() {
             scrubCooldownRef.current = null;
           }
           setIsScrubbing(true);
-          updateProgressLayout();
-          const barW =
-            progressLayout.current.width > 0
-              ? progressLayout.current.width
-              : progressBarWidth > 0
-              ? progressBarWidth
-              : 280;
-          const barX = progressLayout.current.pageX;
-          let touchX: number;
-          if (barX > 0 && evt.nativeEvent.pageX !== undefined) {
-            touchX = Math.max(0, Math.min(barW, evt.nativeEvent.pageX - barX));
-          } else {
-            touchX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
-          }
-          const ratio = barW > 0 ? touchX / barW : 0;
-          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(1))));
+          const barW = progressBarWidth > 0 ? progressBarWidth : 280;
+          const localX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
+          const ratio = barW > 0 ? localX / barW : 0;
+          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+
+          audioInitialTouchRef.current = { startX: localX, width: barW };
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
         },
-        onPanResponderMove: (evt) => {
-          const barW =
-            progressLayout.current.width > 0
-              ? progressLayout.current.width
-              : progressBarWidth > 0
-              ? progressBarWidth
-              : 280;
-          const barX = progressLayout.current.pageX;
-          let touchX: number;
-          if (barX > 0 && evt.nativeEvent.pageX !== undefined) {
-            touchX = Math.max(0, Math.min(barW, evt.nativeEvent.pageX - barX));
-          } else {
-            touchX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
-          }
-          const ratio = barW > 0 ? touchX / barW : 0;
-          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(1))));
+        onPanResponderMove: (_evt, gestureState) => {
+          const { startX, width: barW } = audioInitialTouchRef.current;
+          const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
+          const ratio = barW > 0 ? currentX / barW : 0;
+          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
         },
-        onPanResponderRelease: (evt) => {
-          const barW =
-            progressLayout.current.width > 0
-              ? progressLayout.current.width
-              : progressBarWidth > 0
-              ? progressBarWidth
-              : 280;
-          const barX = progressLayout.current.pageX;
-          let touchX: number;
-          if (barX > 0 && evt.nativeEvent.pageX !== undefined) {
-            touchX = Math.max(0, Math.min(barW, evt.nativeEvent.pageX - barX));
-          } else {
-            touchX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
-          }
-          const ratio = barW > 0 ? touchX / barW : 0;
-          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(1))));
+        onPanResponderRelease: (_evt, gestureState) => {
+          const { startX, width: barW } = audioInitialTouchRef.current;
+          const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
+          const ratio = barW > 0 ? currentX / barW : 0;
+          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
           void seekTo(targetTime);
@@ -280,7 +251,7 @@ export default function AudioPlayerScreen() {
           if (scrubCooldownRef.current) clearTimeout(scrubCooldownRef.current);
           scrubCooldownRef.current = setTimeout(() => {
             setIsScrubbing(false);
-          }, 350);
+          }, 250);
         },
         onPanResponderTerminate: () => {
           const targetTime = scrubbingTimeRef.current;
@@ -288,10 +259,10 @@ export default function AudioPlayerScreen() {
           if (scrubCooldownRef.current) clearTimeout(scrubCooldownRef.current);
           scrubCooldownRef.current = setTimeout(() => {
             setIsScrubbing(false);
-          }, 350);
+          }, 250);
         },
       }),
-    [duration, progressBarWidth, seekTo, updateProgressLayout]
+    [duration, progressBarWidth, seekTo]
   );
 
   const onProgressBarLayout = (event: LayoutChangeEvent) => {
@@ -761,17 +732,6 @@ export default function AudioPlayerScreen() {
                     ]}
                   />
                 </View>
-                {isScrubbing && (
-                  <View
-                    pointerEvents="none"
-                    style={[
-                      styles.scrubbingTooltip,
-                      { left: `${Math.max(10, Math.min(90, progressPercent))}%` },
-                    ]}
-                  >
-                    <Text style={styles.scrubbingTooltipText}>{formatDuration(effectiveTime)}</Text>
-                  </View>
-                )}
               </View>
 
               {/* Total Duration on the Right */}
