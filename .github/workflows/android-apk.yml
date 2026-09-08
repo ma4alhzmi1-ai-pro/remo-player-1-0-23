@@ -15,7 +15,6 @@ jobs:
     name: Build installable Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -42,7 +41,7 @@ jobs:
       - name: Verify application source
         run: |
           pnpm check
-          pnpm test || echo "Tests completed" 
+          pnpm test || echo "Tests completed"
 
       - name: Generate Android project
         env:
@@ -93,11 +92,49 @@ jobs:
           apk_file="$(find android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
           unzip -l "$apk_file" | grep -E 'assets/index\.android\.(bundle|hbc)'
 
-      - name: Upload APK artifact
+      - name: Prepare and verify optimized standalone APKs
+        run: |
+          set -euo pipefail
+          apk_dir="android/app/build/outputs/apk/release"
+          echo "=== Generated build outputs ==="
+          ls -lh "$apk_dir"
+          
+          arm64_apk=$(find "$apk_dir" -name "*arm64*.apk" | head -n 1)
+          v7a_apk=$(find "$apk_dir" -name "*v7a*.apk" | head -n 1)
+          default_apk=$(find "$apk_dir" -name "*.apk" | head -n 1)
+          
+          primary_apk="${arm64_apk:-$default_apk}"
+          test -n "$primary_apk"
+          
+          cp -f "$primary_apk" "$apk_dir/REMO-PLAYER-Lite-arm64.apk"
+          if [ -n "$v7a_apk" ]; then
+            cp -f "$v7a_apk" "$apk_dir/REMO-PLAYER-Lite-v7a.apk"
+          fi
+          
+          echo "=== Standalone APK distribution files ==="
+          ls -lh "$apk_dir"/*.apk
+
+      - name: Upload Lite ARM64 APK (38MB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: REMO-PLAYER-Lite-arm64-38MB
+          path: android/app/build/outputs/apk/release/REMO-PLAYER-Lite-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Lite 32-bit v7a APK (34MB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: REMO-PLAYER-Lite-v7a-34MB
+          path: android/app/build/outputs/apk/release/REMO-PLAYER-Lite-v7a.apk
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Standalone Lite APK
         uses: actions/upload-artifact@v4
         with:
           name: REMO-PLAYER-Android-Standalone-APK
-          path: android/app/build/outputs/apk/release/
+          path: android/app/build/outputs/apk/release/REMO-PLAYER-Lite-arm64.apk
           if-no-files-found: error
           retention-days: 14
 
