@@ -88,6 +88,9 @@ export default function AudioPlayerScreen() {
   const progressBarRef = useRef<View>(null);
   const progressLayout = useRef({ pageX: 0, width: 0 });
   const gestureStartXRef = useRef(0);
+  const scrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrubbingTimeRef = useRef(0);
+  const audioInitialTouchRef = useRef<{ startX: number; width: number }>({ startX: 0, width: 280 });
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
@@ -189,6 +192,7 @@ export default function AudioPlayerScreen() {
 
     return () => {
       if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
+      if (scrubCooldownRef.current) clearTimeout(scrubCooldownRef.current);
     };
   }, [sleepTimer, stop]);
 
@@ -206,63 +210,59 @@ export default function AudioPlayerScreen() {
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
         onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (evt) => {
-          updateProgressLayout();
-          const barW =
-            progressLayout.current.width > 0
-              ? progressLayout.current.width
-              : progressBarWidth > 0
-              ? progressBarWidth
-              : 280;
-          const touchX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
-          gestureStartXRef.current = touchX;
-          const ratio = barW > 0 ? touchX / barW : 0;
-          const targetTime = Number((ratio * (duration || 0)).toFixed(2));
-          setScrubbingTime(targetTime);
+          if (scrubCooldownRef.current) {
+            clearTimeout(scrubCooldownRef.current);
+            scrubCooldownRef.current = null;
+          }
           setIsScrubbing(true);
+          const barW = progressBarWidth > 0 ? progressBarWidth : 280;
+          const localX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
+          const ratio = barW > 0 ? localX / barW : 0;
+          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+
+          audioInitialTouchRef.current = { startX: localX, width: barW };
+          scrubbingTimeRef.current = targetTime;
+          setScrubbingTime(targetTime);
         },
         onPanResponderMove: (_evt, gestureState) => {
-          const barW =
-            progressLayout.current.width > 0
-              ? progressLayout.current.width
-              : progressBarWidth > 0
-              ? progressBarWidth
-              : 280;
-          const currentX = Math.max(0, Math.min(barW, gestureStartXRef.current + gestureState.dx));
+          const { startX, width: barW } = audioInitialTouchRef.current;
+          const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
           const ratio = barW > 0 ? currentX / barW : 0;
-          const targetTime = Number((ratio * (duration || 0)).toFixed(2));
+          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+
+          scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
-          setIsScrubbing(true);
         },
         onPanResponderRelease: (_evt, gestureState) => {
-          const barW =
-            progressLayout.current.width > 0
-              ? progressLayout.current.width
-              : progressBarWidth > 0
-              ? progressBarWidth
-              : 280;
-          const finalX = Math.max(0, Math.min(barW, gestureStartXRef.current + gestureState.dx));
-          const ratio = barW > 0 ? finalX / barW : 0;
-          const targetTime = Number((ratio * (duration || 0)).toFixed(2));
-          setIsScrubbing(false);
-          seekTo(targetTime);
+          const { startX, width: barW } = audioInitialTouchRef.current;
+          const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
+          const ratio = barW > 0 ? currentX / barW : 0;
+          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+
+          scrubbingTimeRef.current = targetTime;
+          setScrubbingTime(targetTime);
+          void seekTo(targetTime);
+
+          if (scrubCooldownRef.current) clearTimeout(scrubCooldownRef.current);
+          scrubCooldownRef.current = setTimeout(() => {
+            setIsScrubbing(false);
+          }, 250);
         },
-        onPanResponderTerminate: (_evt, gestureState) => {
-          const barW =
-            progressLayout.current.width > 0
-              ? progressLayout.current.width
-              : progressBarWidth > 0
-              ? progressBarWidth
-              : 280;
-          const finalX = Math.max(0, Math.min(barW, gestureStartXRef.current + gestureState.dx));
-          const ratio = barW > 0 ? finalX / barW : 0;
-          const targetTime = Number((ratio * (duration || 0)).toFixed(2));
-          setIsScrubbing(false);
-          seekTo(targetTime);
+        onPanResponderTerminate: () => {
+          const targetTime = scrubbingTimeRef.current;
+          void seekTo(targetTime);
+          if (scrubCooldownRef.current) clearTimeout(scrubCooldownRef.current);
+          scrubCooldownRef.current = setTimeout(() => {
+            setIsScrubbing(false);
+          }, 250);
         },
       }),
-    [duration, progressBarWidth, seekTo, updateProgressLayout]
+    [duration, progressBarWidth, seekTo]
   );
 
   const onProgressBarLayout = (event: LayoutChangeEvent) => {
@@ -714,16 +714,23 @@ export default function AudioPlayerScreen() {
               {/* Current Time on the Left (RTL context) */}
               <Text style={styles.timeText}>{formatDuration(effectiveTime)}</Text>
 
-              {/* Scrubber Line */}
+              {/* Scrubber Line - Smooth, Jitter-Free Seeking */}
               <View
                 ref={progressBarRef}
                 style={styles.progressTouch}
                 onLayout={onProgressBarLayout}
+                hitSlop={{ top: 16, bottom: 16, left: 12, right: 12 }}
                 {...progressResponder.panHandlers}
               >
                 <View style={styles.progressTrack} pointerEvents="none">
                   <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-                  <View style={[styles.progressThumb, { left: `${progressPercent}%` }]} />
+                  <View
+                    style={[
+                      styles.progressThumb,
+                      isScrubbing && styles.progressThumbActive,
+                      { left: `${progressPercent}%` },
+                    ]}
+                  />
                 </View>
               </View>
 
@@ -1417,33 +1424,64 @@ const styles = StyleSheet.create({
   },
   progressTouch: {
     flex: 1,
-    height: 36,
+    height: 44,
     justifyContent: "center",
+    position: "relative",
   },
   progressTrack: {
-    height: 4,
+    height: 5,
     backgroundColor: "rgba(255, 255, 255, 0.28)",
-    borderRadius: 2,
+    borderRadius: 3,
     position: "relative",
   },
   progressFill: {
     height: "100%",
     backgroundColor: "#00F2FE",
-    borderRadius: 2,
+    borderRadius: 3,
   },
   progressThumb: {
     position: "absolute",
-    top: -6,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    top: -6.5,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: "#00F2FE",
-    marginLeft: -8,
-    elevation: 4,
+    marginLeft: -9,
+    elevation: 6,
     shadowColor: "#00F2FE",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.8,
     shadowRadius: 4,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  progressThumbActive: {
+    top: -9.5,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginLeft: -12,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    elevation: 8,
+    backgroundColor: "#00F2FE",
+  },
+  scrubbingTooltip: {
+    position: "absolute",
+    top: -30,
+    transform: [{ translateX: -22 }],
+    backgroundColor: "rgba(0, 242, 254, 0.95)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 6,
+  },
+  scrubbingTooltipText: {
+    color: "#08111F",
+    fontSize: 11,
+    fontWeight: "900",
   },
 
   // Bottom Playback Controls Row (Exact sequence from screenshot)

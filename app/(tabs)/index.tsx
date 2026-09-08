@@ -13,7 +13,7 @@ import { usePlayer } from "@/lib/player-context";
 export default function HomeScreen() {
   const router = useRouter();
   const { items, isReady, importFiles, isRefreshing, refreshDeviceLibrary } = useLibrary();
-  const { currentItem, playItem } = usePlayer();
+  const { currentItem, playItem, isPlaying } = usePlayer();
   const updateCheckStarted = useRef(false);
   const latest = items.slice(0, 4);
   const audioCount = items.filter((item) => item.mediaType === "audio").length;
@@ -180,7 +180,7 @@ export default function HomeScreen() {
         </View>
         <View style={styles.recentList}>
           {latest.map((item) => (
-            <MediaRow key={item.id} item={item} onPress={() => void openItem(item)} />
+            <MediaRow key={item.id} item={item} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onPress={() => void openItem(item)} />
           ))}
         </View>
       </ScrollView>
