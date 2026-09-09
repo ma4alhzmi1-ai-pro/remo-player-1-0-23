@@ -68,6 +68,12 @@ final class KeyboardPalette {
             base = new KeyboardPalette(Color.rgb(74, 14, 46), Color.rgb(48, 8, 29), Color.rgb(112, 26, 69), Color.rgb(159, 18, 57), Color.WHITE, Color.rgb(254, 205, 211), Color.rgb(244, 63, 94));
         } else if ("girly_pastel_candy".equals(theme) || "cute".equals(theme)) {
             base = new KeyboardPalette(Color.rgb(255, 231, 241), Color.rgb(255, 245, 250), Color.rgb(255, 173, 204), Color.rgb(231, 139, 176), Color.rgb(78, 39, 58), Color.rgb(145, 91, 116), Color.rgb(214, 75, 132));
+        } else if ("nature".equals(theme)) {
+            base = new KeyboardPalette(Color.rgb(20, 48, 31), Color.rgb(14, 35, 23), Color.rgb(67, 119, 74), Color.rgb(39, 78, 52), Color.rgb(243, 255, 233), Color.rgb(184, 209, 179), Color.rgb(123, 203, 106));
+        } else if ("ramadan".equals(theme)) {
+            base = new KeyboardPalette(Color.rgb(13, 23, 21), Color.rgb(8, 15, 14), Color.rgb(67, 84, 75), Color.rgb(39, 47, 42), Color.rgb(252, 247, 230), Color.rgb(210, 198, 171), Color.rgb(213, 174, 85));
+        } else if ("light".equals(theme)) {
+            base = new KeyboardPalette(Color.rgb(226, 233, 239), Color.WHITE, Color.rgb(245, 247, 250), Color.rgb(204, 216, 227), Color.rgb(22, 35, 48), Color.rgb(77, 98, 120), Color.rgb(0, 119, 190));
         } else if ("girly_cotton_cloud".equals(theme)) {
             base = new KeyboardPalette(Color.rgb(30, 30, 56), Color.rgb(20, 20, 38), Color.rgb(44, 44, 84), Color.rgb(71, 71, 135), Color.WHITE, Color.rgb(196, 181, 253), Color.rgb(167, 139, 250));
         } else if ("default_amoled".equals(theme)) {

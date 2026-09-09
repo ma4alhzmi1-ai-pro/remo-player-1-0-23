@@ -338,7 +338,7 @@ public class KeyboardSettingsActivity extends Activity {
         addThemeCard(root, "حجري أنيق (Slate)", "رمادي أردوازي ناعم فائق الفخامة", "default_slate", "", Color.rgb(15, 23, 42), Color.rgb(51, 65, 85));
         addThemeCard(root, "لؤلؤي فاتح (Pearl Light)", "أبيض لؤلؤي هادئ وتباين مريح للعين", "default_pearl", "", Color.rgb(241, 245, 249), Color.WHITE);
         addThemeCard(root, "أزرق ملكي (Royal Blue)", "كحلي ملكي راقٍ مع لمسات أزرق سماوي", "default_royal_blue", "", Color.rgb(11, 25, 44), Color.rgb(30, 62, 98));
-        addSection(root, "خلفيات نسائية وفخمة");
+        addSection(root, "خلفيات نسائية");
         addThemeCard(root, "حرير وردي", "وردي ساتان ولمسة ذهبية", "rose", "remo_feminine_rose_silk", Color.rgb(68, 35, 55), Color.rgb(160, 103, 132));
         addThemeCard(root, "لافندر ملكي", "بنفسجي ناعم ولمسات ليلك مخملية", "feminine_lavender", "", Color.rgb(46, 16, 101), Color.rgb(88, 28, 135));
         addThemeCard(root, "زمردي فاخر", "أخضر زمردي ملكي مع ذهب هادئ", "feminine_emerald", "", Color.rgb(2, 44, 34), Color.rgb(4, 120, 87));
@@ -346,7 +346,7 @@ public class KeyboardSettingsActivity extends Activity {
         addThemeCard(root, "فراشات ليلكية", "ليلكي داكن وبريق ناعم", "rose", "remo_feminine_lilac_butterflies", Color.rgb(62, 40, 75), Color.rgb(136, 99, 157));
         addThemeCard(root, "زهر اللؤلؤ", "ورد فاتح وأناقة هادئة", "light", "remo_feminine_pearl_bloom", Color.rgb(242, 223, 228), Color.WHITE);
         addThemeCard(root, "رخام بنفسجي", "بنفسجي فاخر وعروق ذهبية", "rose", "remo_feminine_violet_marble", Color.rgb(54, 33, 68), Color.rgb(112, 79, 130));
-        addSection(root, "خلفيات وثيمات شبابية");
+        addSection(root, "خلفيات شبابية");
         addThemeCard(root, "سايبر نيون", "سيان كهربائي وجرافيت مستقبلي", "youth_cyber", "", Color.rgb(15, 23, 42), Color.rgb(30, 41, 59));
         addThemeCard(root, "درفت كربون", "ألياف كربون ووهج برتقالي ناري", "youth_drift", "", Color.rgb(9, 9, 11), Color.rgb(24, 24, 27));
         addThemeCard(root, "شفق كوني", "بنفسجي نيون ولمسات ليزرية عميقة", "youth_sunset", "", Color.rgb(30, 27, 75), Color.rgb(49, 46, 129));
@@ -354,12 +354,7 @@ public class KeyboardSettingsActivity extends Activity {
         addThemeCard(root, "فولاذ الجمر", "فولاذ أسود ووهج كهرماني", "navy", "remo_masculine_ember_steel", Color.rgb(24, 22, 21), Color.rgb(100, 75, 54));
         addThemeCard(root, "لهب أزرق", "كحلي داكن وتأثير تقني", "navy", "remo_masculine_blue_flame", Color.rgb(12, 24, 43), Color.rgb(48, 73, 108));
         addThemeCard(root, "كامو الغابة", "أخضر زيتوني وجرافيت", "navy", "remo_masculine_forest_camo", Color.rgb(29, 40, 30), Color.rgb(72, 90, 70));
-        addSection(root, "ثيمات رياضية وحماسية");
-        addThemeCard(root, "سباق السرعة (Racing)", "أحمر فيراري رياضي وألياف كربونية", "sport_racing", "", Color.rgb(24, 24, 27), Color.rgb(39, 39, 42));
-        addThemeCard(root, "عشب الملعب (Football)", "أخضر نجيل كروي وخطوط بيضاء حماسية", "sport_football", "", Color.rgb(6, 78, 59), Color.rgb(6, 95, 70));
-        addThemeCard(root, "ملعب الطاقة", "أحمر رياضي وأصفر حيوي", "sport", "", Color.rgb(25, 31, 40), Color.rgb(210, 70, 67));
-        addThemeCard(root, "سباق ليلي", "كحلي سريع ولمسات برتقالية", "sport", "", Color.rgb(17, 26, 42), Color.rgb(238, 111, 45));
-        addSection(root, "ثيمات بناتي وكيوت");
+        addSection(root, "ثيمات نسائية كيوت");
         addThemeCard(root, "باربي فوشيا", "فوشيا حيوي مع قلوب متوهجة", "girly_pink_glam", "", Color.rgb(74, 14, 46), Color.rgb(112, 26, 69));
         addThemeCard(root, "حلوى الباستيل", "غزل البنات ووردي ناعم باودر", "girly_pastel_candy", "", Color.rgb(255, 231, 241), Color.rgb(255, 173, 204));
         addThemeCard(root, "سحاب اللافندر", "سماء حالمة بنفسجية ناعمة", "girly_cotton_cloud", "", Color.rgb(30, 30, 56), Color.rgb(44, 44, 84));
@@ -368,9 +363,13 @@ public class KeyboardSettingsActivity extends Activity {
         addSection(root, "خلفيات إسلامية");
         addThemeCard(root, "فوانيس رمضانية", "هلال وفوانيس ذهبية", "ramadan", "remo_islamic_lanterns", Color.rgb(16, 41, 36), Color.rgb(78, 89, 66));
         addThemeCard(root, "مسجد الغروب", "كحلي، هلال، ونجوم هادئة", "ramadan", "remo_islamic_mosque_dusk", Color.rgb(18, 27, 61), Color.rgb(61, 72, 106));
-        addSection(root, "ثيمات طبيعية");
+        addSection(root, "ثيمات طبيعية ورياضية");
+        addThemeCard(root, "سباق السرعة (Racing)", "أحمر فيراري رياضي وألياف كربونية", "sport_racing", "", Color.rgb(24, 24, 27), Color.rgb(39, 39, 42));
+        addThemeCard(root, "عشب الملعب (Football)", "أخضر نجيل كروي وخطوط بيضاء حماسية", "sport_football", "", Color.rgb(6, 78, 59), Color.rgb(6, 95, 70));
         addThemeCard(root, "غابة طبيعية", "أخضر أوراق ولمسة ترابية", "nature", "", Color.rgb(20, 48, 31), Color.rgb(67, 119, 74));
         addThemeCard(root, "محيط هادئ", "أزرق مائي وهواء منعش", "nature", "", Color.rgb(12, 45, 66), Color.rgb(36, 117, 150));
+        addThemeCard(root, "ملعب الطاقة", "أحمر رياضي وأصفر حيوي", "sport", "", Color.rgb(25, 31, 40), Color.rgb(210, 70, 67));
+        addThemeCard(root, "سباق ليلي", "كحلي سريع ولمسات برتقالية", "sport", "", Color.rgb(17, 26, 42), Color.rgb(238, 111, 45));
         addSection(root, "ثيمات أعلام الدول");
         addThemeCard(root, "علم السعودية", "أخضر وكتابة بيضاء", "flag_sa", "", Color.rgb(7, 54, 31), Color.rgb(30, 116, 67));
         addThemeCard(root, "علم فلسطين", "أسود وأبيض وأخضر وأحمر", "flag_ps", "", Color.rgb(28, 30, 32), Color.rgb(173, 45, 51));
