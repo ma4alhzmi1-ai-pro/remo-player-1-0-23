@@ -55,11 +55,16 @@ final class RemoKeyboardView extends LinearLayout {
     private boolean desktopMeta = false;
     private boolean desktopShift = false;
     private String emojiGroupFilter = "";
+    private CalligraphyEngine.FontType currentFont = CalligraphyEngine.FontType.DEFAULT;
 
     RemoKeyboardView(Context context, RemoInputMethodService service, SharedPreferences preferences) {
         super(context);
         this.service = service;
         this.preferences = preferences;
+        try {
+            String savedFont = preferences.getString("calligraphy_font", "DEFAULT");
+            currentFont = CalligraphyEngine.FontType.valueOf(savedFont);
+        } catch (Exception ignored) {}
         setOrientation(VERTICAL);
         setPadding(dp(4), dp(3), dp(4), dp(4));
         rebuildPalette();
@@ -133,6 +138,7 @@ final class RemoKeyboardView extends LinearLayout {
         row.setGravity(Gravity.CENTER);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         row.setPadding(dp(4), 0, dp(4), dp(3));
+        addTool(row, "ع", "خطوط وزخرفة أزرار الكيبورد", this::showCalligraphyPickerPopup);
         addTool(row, "⌁", "الزخرفة", this::showDecorationPopup);
         addTool(row, "☺", "الإيموجي الحديث", () -> setPage(Page.EMOJI));
         addTool(row, "⌕", "بحث في مكتبة الإيموجي", this::showEmojiExplorerPopup);
@@ -341,13 +347,32 @@ final class RemoKeyboardView extends LinearLayout {
     private void addKey(LinearLayout row, String label, float weight) {
         String primary = primaryKey(label);
         boolean special = primary.equals("⌫") || primary.equals("Backspace") || primary.equals("تنفيذ") || primary.equals("Enter") || primary.startsWith("◀") || primary.equals("⇧") || primary.equals("Shift") || primary.equals("▣") || primary.equals("123") || primary.equals("#+=") || primary.equals("ABC") || isDesktopControl(primary);
-        TextView key = textButton(label, label.contains("\n") ? 21 : (label.length() > 8 ? 13 : 20), palette.text, special ? palette.keySpecial : palette.key, dp(8));
+
+        String displayedLabel = label;
+        if (page == Page.ARABIC && currentFont != CalligraphyEngine.FontType.DEFAULT && !special) {
+            if (label.contains("\n")) {
+                int breakAt = label.lastIndexOf('\n');
+                String secondary = label.substring(0, breakAt);
+                String base = label.substring(breakAt + 1);
+                displayedLabel = secondary + "\n" + CalligraphyEngine.transformText(base, currentFont);
+            } else {
+                displayedLabel = CalligraphyEngine.transformText(label, currentFont);
+            }
+        }
+
+        TextView key = textButton(displayedLabel, displayedLabel.contains("\n") ? 21 : (displayedLabel.length() > 8 ? 13 : 20), palette.text, special ? palette.keySpecial : palette.key, dp(8));
         key.setTypeface(Typeface.create("sans", special ? Typeface.BOLD : Typeface.NORMAL));
         key.setGravity(Gravity.CENTER);
         key.setOnClickListener(v -> {
             if (label.equals("مسافة\nالعربية")) service.commitText(" ");
             else if (label.equals("مسافة\nEnglish")) service.commitText(" ");
-            else handleKey(primary);
+            else {
+                if (page == Page.ARABIC && currentFont != CalligraphyEngine.FontType.DEFAULT && !special) {
+                    handleKey(CalligraphyEngine.transformText(primary, currentFont));
+                } else {
+                    handleKey(primary);
+                }
+            }
         });
         if (label.equals("مسافة\nالعربية") || label.equals("مسافة\nEnglish")) {
             key.setOnTouchListener(new OnTouchListener() {
@@ -718,6 +743,45 @@ final class RemoKeyboardView extends LinearLayout {
 
     private void showMessage(String value) {
         android.widget.Toast.makeText(getContext(), value, android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private void showCalligraphyPickerPopup() {
+        LinearLayout panel = new LinearLayout(getContext());
+        panel.setOrientation(VERTICAL);
+        panel.setPadding(dp(8), dp(8), dp(8), dp(8));
+        panel.setBackground(rounded(palette.surface, dp(10), false));
+        TextView heading = textButton("اختر خط وزخرفة أزرار الكيبورد", 14, palette.text, palette.surface, dp(6));
+        heading.setTypeface(Typeface.DEFAULT_BOLD);
+        heading.setGravity(Gravity.CENTER);
+        panel.addView(heading, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(35)));
+
+        ScrollView scroll = new ScrollView(getContext());
+        LinearLayout list = new LinearLayout(getContext());
+        list.setOrientation(VERTICAL);
+        scroll.addView(list, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        panel.addView(scroll, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(240)));
+
+        PopupWindow popup = new PopupWindow(panel, dp(300), LayoutParams.WRAP_CONTENT, true);
+
+        for (CalligraphyEngine.FontType type : CalligraphyEngine.FontType.values()) {
+            boolean active = currentFont == type;
+            String sample = CalligraphyEngine.transformText("ريمو", type);
+            TextView item = textButton(type.nameAr + " (" + sample + ")", 14, active ? palette.accent : palette.text, active ? palette.keySpecial : palette.key, dp(8));
+            item.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+            item.setOnClickListener(v -> {
+                currentFont = type;
+                preferences.edit().putString("calligraphy_font", type.name()).apply();
+                popup.dismiss();
+                renderKeys();
+                showMessage("تم تفعيل خط: " + type.nameAr);
+            });
+            LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(42));
+            itemParams.setMargins(0, dp(2), 0, dp(2));
+            list.addView(item, itemParams);
+        }
+
+        popup.setElevation(dp(10));
+        popup.showAtLocation(this, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(76));
     }
 
     private TextView textButton(String value, int size, int foreground, int background, int radius) {
