@@ -4,11 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - "main"
       - "remo-keyboard-v*"
-    paths:
-      - "android-ime/**"
-      - "scripts/check-native-ime.mjs"
-      - ".github/workflows/build-remo-keyboard-apk.yml"
 
 permissions:
   contents: read
