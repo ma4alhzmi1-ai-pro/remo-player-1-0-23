@@ -57,6 +57,7 @@ export default function AudioPlayerScreen() {
     shuffle,
     toggleShuffle,
     playbackQueue,
+    showMiniPlayer,
   } = usePlayer();
 
   const { playlists, addItemToPlaylist, createPlaylist, updateMediaItem } = useLibrary();
@@ -151,6 +152,7 @@ export default function AudioPlayerScreen() {
   const isFavorite = Boolean(currentItem?.isFavorite);
 
   const exitAudio = useCallback(() => {
+    showMiniPlayer();
     if (popupMenuVisible) {
       setPopupMenuVisible(false);
       return;
@@ -164,7 +166,7 @@ export default function AudioPlayerScreen() {
     } else {
       router.replace(musicLibraryRoute as never);
     }
-  }, [popupMenuVisible, themeModalVisible, router, musicLibraryRoute]);
+  }, [popupMenuVisible, themeModalVisible, router, musicLibraryRoute, showMiniPlayer]);
 
   // Android hardware back handler
   useEffect(() => {

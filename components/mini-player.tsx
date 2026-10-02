@@ -20,9 +20,9 @@ function isFullScreenPlayerRoute(pathname: string | null | undefined) {
 export function MiniPlayer() {
   const router = useRouter();
   const pathname = usePathname();
-  const { currentItem, isPlaying, togglePlayback } = usePlayer();
+  const { currentItem, isPlaying, togglePlayback, miniPlayerVisible, dismissMiniPlayer } = usePlayer();
 
-  if (!currentItem) return null;
+  if (!currentItem || !miniPlayerVisible) return null;
   if (isFullScreenPlayerRoute(pathname)) return null;
 
   return (
@@ -34,6 +34,7 @@ export function MiniPlayer() {
           <Text numberOfLines={1} style={styles.artist}>{currentItem.artist || (currentItem.mediaType === "video" ? "فيديو محلي" : "موسيقى محلية")}</Text>
         </View>
       </Pressable>
+      <Pressable onPress={dismissMiniPlayer} hitSlop={12} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]} accessibilityLabel="إغلاق المشغل المصغر"><MaterialIcons name="close" size={21} color={colors.muted} /></Pressable>
       <Pressable onPress={togglePlayback} hitSlop={12} style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}>
         <MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={28} color={colors.text} />
       </Pressable>
@@ -47,6 +48,7 @@ const styles = StyleSheet.create({
   textWrap: { flex: 1, alignItems: "flex-end" },
   title: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: "800", textAlign: "right" },
   artist: { color: colors.muted, fontSize: 11, lineHeight: 16, textAlign: "right" },
+  closeButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginLeft: 2 },
   playButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#243D60", alignItems: "center", justifyContent: "center", marginRight: 4 },
   pressed: { opacity: 0.65 },
 });

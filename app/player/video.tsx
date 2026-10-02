@@ -80,7 +80,7 @@ const subtitleBackgroundColors = [
 export default function VideoPlayerScreen() {
   const router = useRouter();
   const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
-  const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat } = usePlayer();
+  const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat, videoPlayer: sharedVideoPlayer, videoBackgroundUri, showMiniPlayer } = usePlayer();
   const viewRef = useRef<any>(null);
   const vlcViewRef = useRef<LibVlcPlayerViewRef | null>(null);
   const touchStartX = useRef(0);
@@ -161,6 +161,7 @@ export default function VideoPlayerScreen() {
   const videoScrubbingTimeRef = useRef(0);
   const videoInitialTouchRef = useRef<{ startX: number; width: number }>({ startX: 0, width: 320 });
   const isSwitchingEngineRef = useRef(false);
+  const keepVideoAliveRef = useRef(false);
   const playbackErrorRef = useRef<string | null>(null);
   useEffect(() => {
     playbackErrorRef.current = playbackError;
@@ -178,19 +179,13 @@ export default function VideoPlayerScreen() {
   const translateMutation = trpc.media.translateVideo.useMutation();
   const currentVideoUri = currentItem?.mediaType === "video" ? currentItem.uri : null;
   const usingCompatibilityEngine = playbackEngine === "libvlc";
-  const [backgroundPlaybackEnabled, setBackgroundPlaybackEnabled] = useState(true);
+  const [backgroundPlaybackEnabled, setBackgroundPlaybackEnabled] = useState(false);
 
   useEffect(() => {
     void getVideoBackgroundPlaybackSetting().then(setBackgroundPlaybackEnabled);
   }, []);
 
-  const player = useVideoPlayer(null, (videoPlayer) => {
-    videoPlayer.staysActiveInBackground = true;
-    videoPlayer.showNowPlayingNotification = true;
-    videoPlayer.audioMixingMode = "duckOthers";
-    videoPlayer.preservesPitch = true;
-    videoPlayer.timeUpdateEventInterval = 0.25;
-  });
+  const player = sharedVideoPlayer;
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -495,6 +490,7 @@ export default function VideoPlayerScreen() {
       if (videoScrubCooldownRef.current) clearTimeout(videoScrubCooldownRef.current);
       cancelActiveExtraction();
       try {
+        if (keepVideoAliveRef.current || videoBackgroundUri === currentVideoUri) return;
         player.pause();
         player.staysActiveInBackground = false;
         player.showNowPlayingNotification = false;
@@ -503,7 +499,7 @@ export default function VideoPlayerScreen() {
         // ignore
       }
     };
-  }, [currentVideoUri, currentItem?.id, currentItem?.duration, currentItem?.title, player, switchToLibVlc, usingCompatibilityEngine, cancelActiveExtraction, triggerFfmpegExtraction]);
+  }, [currentVideoUri, currentItem?.id, currentItem?.duration, currentItem?.title, player, switchToLibVlc, usingCompatibilityEngine, cancelActiveExtraction, triggerFfmpegExtraction, videoBackgroundUri]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
@@ -520,7 +516,7 @@ export default function VideoPlayerScreen() {
       }
     });
     return () => subscription.remove();
-  }, [player, usingCompatibilityEngine, backgroundPlaybackEnabled]);
+  }, [player, usingCompatibilityEngine, backgroundPlaybackEnabled, videoBackgroundUri]);
 
   const toggleBackgroundAudio = useCallback(async () => {
     const next = !backgroundPlaybackEnabled;
@@ -887,10 +883,6 @@ export default function VideoPlayerScreen() {
   );
 
   const videoLibraryRoute = folderPath ? `/(tabs)/video?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/video";
-  if (!currentItem || currentItem.mediaType !== "video") {
-    return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر فيديو من مكتبتك أولاً.</Text><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace(videoLibraryRoute as never)} style={styles.backButton}><Text style={styles.backText}>العودة للفيديوهات</Text></Pressable></View></ScreenContainer>;
-  }
-
   const activeCue = subtitleTrack?.cues.find((cue) => playbackTime >= cue.start && playbackTime <= cue.end);
   const effectivePlaybackTime = isScrubbing ? scrubbingTime : playbackTime;
   const progress = playbackDuration > 0 ? Math.min(100, (effectivePlaybackTime / playbackDuration) * 100) : 0;
@@ -914,16 +906,8 @@ export default function VideoPlayerScreen() {
     } catch {
       // ignore
     }
-    try {
-      player.pause();
-    } catch {
-      // ignore
-    }
-    try {
-      stop();
-    } catch {
-      // ignore
-    }
+    keepVideoAliveRef.current = true;
+    showMiniPlayer();
     if (Platform.OS !== "web") {
       void ScreenOrientation.unlockAsync().catch(() => undefined);
     }
@@ -954,6 +938,10 @@ export default function VideoPlayerScreen() {
     const subscription = BackHandler.addEventListener("hardwareBackPress", onHardwareBack);
     return () => subscription.remove();
   }, [controlsLocked, subtitlePanelOpen, fitPanelOpen, translationOpen, exitVideo]);
+
+  if (!currentItem || currentItem.mediaType !== "video") {
+    return <ScreenContainer><View style={styles.empty}><Text style={styles.emptyText}>اختر فيديو من مكتبتك أولاً.</Text><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace(videoLibraryRoute as never)} style={styles.backButton}><Text style={styles.backText}>العودة للفيديوهات</Text></Pressable></View></ScreenContainer>;
+  }
 
   const rotateVideo = () => {
     setAutoRotateEnabled(false);

@@ -11,6 +11,7 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { LibraryProvider } from "@/lib/library-context";
 import { PlayerProvider } from "@/lib/player-context";
 import { DeveloperCreditToast } from "@/components/developer-credit-toast";
+import { MiniPlayer } from "@/components/mini-player";
 import { AppSideMenuProvider } from "@/components/app-side-menu";
 import { IntroScreen } from "@/components/intro-screen";
 import { LanguageProvider } from "@/lib/language-provider";
@@ -103,6 +104,7 @@ export default function RootLayout() {
                   <Stack.Screen name="oauth/callback" />
                 </Stack>
                 <DeveloperCreditToast />
+                <MiniPlayer />
               </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}
               <StatusBar style="light" hidden={pathname === "/player/video"} />
               </PlayerProvider>

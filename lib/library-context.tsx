@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
 
 import { cleanOrphanedCacheFiles } from "@/lib/cache-cleaner";
@@ -178,6 +178,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       setIsRefreshing(false);
     }
   }, []);
+
+  const autoIndexStartedRef = useRef(false);
+  useEffect(() => {
+    if (!isReady || autoIndexStartedRef.current || Platform.OS === "web") return;
+    autoIndexStartedRef.current = true;
+    void refreshDeviceLibrary();
+  }, [isReady, refreshDeviceLibrary]);
 
   const importFiles = useCallback(async () => {
     const result = await DocumentPicker.getDocumentAsync({
