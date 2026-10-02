@@ -1,8 +1,9 @@
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, AppState, Platform } from "react-native";
+import { useVideoPlayer, type VideoPlayer } from "expo-video";
 
-import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
+import { savePlaybackMemory } from "@/lib/playback-memory";
 import { loadEqualizerSettings } from "@/lib/equalizer-storage";
 import { resolveMediaSessionPolicy } from "@/lib/media-session-policy";
 import { applyNativeAudioEffects } from "@/lib/native-audio-controls";
@@ -33,6 +34,11 @@ type PlayerContextValue = {
   toggleShuffle: () => void;
   stop: () => void;
   dismissMediaSession: () => void;
+  videoPlayer: VideoPlayer;
+  videoBackgroundUri: string | null;
+  miniPlayerVisible: boolean;
+  showMiniPlayer: () => void;
+  dismissMiniPlayer: () => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -64,6 +70,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const [shuffle, setShuffle] = useState(false);
   const [playbackQueue, setPlaybackQueue] = useState<MediaItem[]>([]);
+  const [videoBackgroundUri, setVideoBackgroundUri] = useState<string | null>(null);
+  const [miniPlayerVisible, setMiniPlayerVisible] = useState(false);
+  const videoPlayer = useVideoPlayer(null, (player) => {
+    player.staysActiveInBackground = false;
+    player.showNowPlayingNotification = false;
+    player.audioMixingMode = "duckOthers";
+    player.preservesPitch = true;
+    player.timeUpdateEventInterval = 0.1;
+  });
   const repeatModeRef = useRef<RepeatMode>("off");
   const autoAdvanceRef = useRef<(wrap: boolean) => Promise<boolean>>(async () => false);
   const remoteQueueActionRef = useRef<(action: "next" | "previous") => void>(() => undefined);
@@ -98,6 +113,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       console.warn("تعذر تهيئة جلسة الصوت", error);
     }
   }, []);
+
+  const releaseVideoPlayer = useCallback(() => {
+    setVideoBackgroundUri(null);
+    try {
+      videoPlayer.pause();
+      videoPlayer.replace(null);
+    } catch {
+      // The native player may already be releasing.
+    }
+  }, [videoPlayer]);
 
   const releaseAudioPlayer = useCallback(() => {
     const player = playerRef.current;
@@ -155,6 +180,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (item.mediaType === "video") {
       try {
         releaseAudioPlayer();
+        // تشغيل فيديو جديد يلغي أي مصغّر سابق للصوت أو الفيديو.
+        setMiniPlayerVisible(false);
         await prepareAudioSession(false);
         currentItemRef.current = item;
         setCurrentItem(item);
@@ -184,9 +211,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       player.loop = repeatMode === "one";
       player.setPlaybackRate(speed);
-      const memory = await getPlaybackMemory(item.id);
-      const resumeAt = resumePosition(memory, item.duration);
-      if (resumeAt > 0) await player.seekTo(resumeAt);
+      // كل تشغيل جديد يبدأ من البداية بدلاً من استعادة موضع قديم.
+      const resumeAt = 0;
+      await player.seekTo(0);
       currentItemRef.current = item;
       setCurrentItem(item);
       lastSnapshotSecondRef.current = resumeAt;
@@ -202,7 +229,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
-  }, [attachStatusListener, items, prepareAudioSession, releaseAudioPlayer, repeatMode, speed]);
+  }, [attachStatusListener, items, prepareAudioSession, releaseAudioPlayer, releaseVideoPlayer, repeatMode, speed]);
 
   const togglePlayback = useCallback(() => {
     const player = playerRef.current;
@@ -300,15 +327,47 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTime(0);
   }, []);
 
+  const showMiniPlayer = useCallback(() => {
+    if (!currentItemRef.current) return;
+    if (currentItemRef.current.mediaType === "video") {
+      setVideoBackgroundUri(currentItemRef.current.uri);
+      videoPlayer.staysActiveInBackground = false;
+      videoPlayer.showNowPlayingNotification = false;
+    }
+    setMiniPlayerVisible(true);
+  }, [videoPlayer]);
+
+  const dismissMiniPlayer = useCallback(() => {
+    setMiniPlayerVisible(false);
+    if (currentItemRef.current?.mediaType === "video") {
+      releaseVideoPlayer();
+      currentItemRef.current = null;
+      setCurrentItem(null);
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(false);
+    } else {
+      releaseAudioPlayer();
+      currentItemRef.current = null;
+      setCurrentItem(null);
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(false);
+      void prepareAudioSession(false);
+    }
+  }, [prepareAudioSession, releaseAudioPlayer, releaseVideoPlayer]);
+
   const dismissMediaSession = useCallback(() => {
     releaseAudioPlayer();
+    releaseVideoPlayer();
+    setMiniPlayerVisible(false);
     currentItemRef.current = null;
     setCurrentItem(null);
     setCurrentTime(0);
     setDuration(0);
     setIsPlaying(false);
     void prepareAudioSession(false);
-  }, [prepareAudioSession, releaseAudioPlayer]);
+  }, [prepareAudioSession, releaseAudioPlayer, releaseVideoPlayer]);
 
   const value = useMemo<PlayerContextValue>(() => ({
     currentItem,
@@ -319,6 +378,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     speed,
     repeatMode,
     shuffle,
+    videoPlayer,
+    videoBackgroundUri,
+    miniPlayerVisible,
+    showMiniPlayer,
+    dismissMiniPlayer,
     playItem,
     setCurrentItem,
     togglePlayback,
@@ -331,7 +395,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     toggleShuffle,
     stop,
     dismissMediaSession,
-  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession]);
+  }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, videoPlayer, videoBackgroundUri, miniPlayerVisible, showMiniPlayer, dismissMiniPlayer, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

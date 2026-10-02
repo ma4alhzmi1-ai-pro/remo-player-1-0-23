@@ -16,7 +16,7 @@ export default function AudioPlayerScreen() {
   const router = useRouter();
   const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
   const { updateMediaItem } = useLibrary();
-  const { currentItem, isPlaying, currentTime, duration, speed, repeatMode, shuffle, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession, setCurrentItem } = usePlayer();
+  const { currentItem, isPlaying, currentTime, duration, speed, repeatMode, shuffle, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession, setCurrentItem, showMiniPlayer } = usePlayer();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
@@ -36,12 +36,14 @@ export default function AudioPlayerScreen() {
     onPanResponderGrant: (event) => seekFromProgress(event.nativeEvent.locationX),
     onPanResponderMove: (event) => seekFromProgress(event.nativeEvent.locationX),
     onPanResponderRelease: (event) => seekFromProgress(event.nativeEvent.locationX),
+    onPanResponderTerminationRequest: () => false,
   }), [seekFromProgress]);
   const musicLibraryRoute = folderPath ? `/(tabs)/music?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/music";
   const goBackToMusic = useCallback(() => {
+    showMiniPlayer();
     if (router.canGoBack()) router.back();
     else router.replace(musicLibraryRoute as never);
-  }, [musicLibraryRoute, router]);
+  }, [musicLibraryRoute, router, showMiniPlayer]);
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {

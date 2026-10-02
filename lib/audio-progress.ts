@@ -4,5 +4,5 @@ export function resolveAudioProgressSeek(locationX: number, trackWidth: number, 
     return null;
   }
   const ratio = Math.max(0, Math.min(locationX / trackWidth, 1));
-  return ratio * duration;
+  return Number((ratio * duration).toFixed(3));
 }

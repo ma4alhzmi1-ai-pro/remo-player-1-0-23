@@ -7,6 +7,10 @@ describe("audio progress seeking", () => {
     expect(resolveAudioProgressSeek(75, 300, 240)).toBe(60);
   });
 
+  it("rounds fractional drag positions for stable high-precision seeking", () => {
+    expect(resolveAudioProgressSeek(100, 270, 100)).toBe(37.037);
+  });
+
   it("clamps drags before and after the visual track", () => {
     expect(resolveAudioProgressSeek(-12, 300, 240)).toBe(0);
     expect(resolveAudioProgressSeek(360, 300, 240)).toBe(240);
