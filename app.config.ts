@@ -6,7 +6,7 @@ import type { ExpoConfig } from "expo/config";
 // e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
 // Bundle ID can only contain letters, numbers, and dots
 // Android requires each dot-separated segment to start with a letter
-const rawBundleId = "com.app.remokeyboard";
+const rawBundleId = "com.app.remoplayer";
 const bundleId =
   rawBundleId
     .replace(/[-_]/g, ".") // Replace hyphens/underscores with dots
@@ -28,11 +28,11 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "ريموكيبورد مزخرف",
-  appSlug: "remo-keyboard",
+  appName: "REMO PLAYER",
+  appSlug: "remo-player",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "/manus-storage/remo-keyboard-icon_5a550efb.png",
+  logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663906474911/ocmxUaNaAqOweSnC.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -41,8 +41,9 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.15",
-  orientation: "portrait",
+  owner: "alhzmi",
+  version: "1.0.58",
+  orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
@@ -64,7 +65,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS"],
+    versionCode: 60,
     intentFilters: [
       {
         action: "VIEW",
@@ -86,6 +87,9 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "expo-asset",
+    "expo-font",
+    "expo-web-browser",
     [
       "expo-audio",
       {
@@ -93,9 +97,30 @@ const config: ExpoConfig = {
       },
     ],
     [
+      "expo-media-library",
+      {
+        "photosPermission": "السماح لـ $(PRODUCT_NAME) بالوصول إلى الوسائط المحلية.",
+        "granularPermissions": ["audio", "video"],
+      },
+    ],
+    "expo-document-picker",
+    "expo-image-picker",
+    [
+      "expo-screen-orientation",
+      {
+        initialOrientation: "DEFAULT",
+      },
+    ],
+    [
       "expo-video",
       {
-        supportsBackgroundPlayback: true,
+        supportsBackgroundPlayback: false,
+        supportsPictureInPicture: true,
+      },
+    ],
+    [
+      "expo-libvlc-player",
+      {
         supportsPictureInPicture: true,
       },
     ],
@@ -115,8 +140,12 @@ const config: ExpoConfig = {
       "expo-build-properties",
       {
         android: {
-          buildArchs: ["armeabi-v7a", "arm64-v8a"],
+          compileSdkVersion: 36,
+          targetSdkVersion: 36,
+          buildArchs: ["arm64-v8a"],
           minSdkVersion: 24,
+          enableMinifyInReleaseBuilds: true,
+          enableShrinkResourcesInReleaseBuilds: true,
         },
       },
     ],
@@ -124,6 +153,11 @@ const config: ExpoConfig = {
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
+  },
+  extra: {
+    eas: {
+      projectId: "bfcc2d52-f6ea-48af-9f3e-edb425e237bb",
+    },
   },
 };
 

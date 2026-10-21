@@ -1,6 +1,6 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -8,6 +8,13 @@ import "react-native-reanimated";
 import { Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
+import { LibraryProvider } from "@/lib/library-context";
+import { PlayerProvider } from "@/lib/player-context";
+import { DeveloperCreditToast } from "@/components/developer-credit-toast";
+import { MiniPlayer } from "@/components/mini-player";
+import { AppSideMenuProvider } from "@/components/app-side-menu";
+import { IntroScreen } from "@/components/intro-screen";
+import { LanguageProvider } from "@/lib/language-provider";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -27,11 +34,13 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
+  const pathname = usePathname();
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
+  const [introComplete, setIntroComplete] = useState(false);
 
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
@@ -85,14 +94,28 @@ export default function RootLayout() {
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="about" />
-            <Stack.Screen name="privacy" />
-            <Stack.Screen name="oauth/callback" />
-          </Stack>
-          <StatusBar style="auto" />
+          <LanguageProvider>
+            <LibraryProvider>
+              <PlayerProvider>
+              {introComplete ? <AppSideMenuProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="player/audio" />
+                  <Stack.Screen name="player/edit-audio" />
+                  <Stack.Screen name="player/lyrics" />
+                  <Stack.Screen name="player/video" />
+                  <Stack.Screen name="player/edit-video" />
+                  <Stack.Screen name="privacy" />
+                  <Stack.Screen name="support-developer" />
+                  <Stack.Screen name="oauth/callback" />
+                </Stack>
+                <DeveloperCreditToast />
+                <MiniPlayer />
+              </AppSideMenuProvider> : <IntroScreen onComplete={() => setIntroComplete(true)} />}
+              <StatusBar style="light" hidden={pathname === "/player/video"} />
+              </PlayerProvider>
+            </LibraryProvider>
+          </LanguageProvider>
         </QueryClientProvider>
       </trpc.Provider>
     </GestureHandlerRootView>
