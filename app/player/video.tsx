@@ -78,6 +78,7 @@ export default function VideoPlayerScreen() {
   const temporarySpeedActiveRef = useRef(false);
   const originalPlaybackRateRef = useRef(1);
   const progressTrackWidth = useRef(0);
+  const progressLastSeekRef = useRef({ target: -1, at: 0 });
   const gestureHudTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoAdvancingRef = useRef(false);
   const isNavigatingVideoRef = useRef(false);
@@ -495,9 +496,13 @@ export default function VideoPlayerScreen() {
     },
     onPanResponderTerminate: () => { restoreTemporarySpeed(); hideGestureHudSoon(); },
   }), [controlsLocked, hideGestureHudSoon, mediaSurfaceHeight, player, revealControls, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
-  const seekFromProgress = useCallback((locationX: number) => {
+  const seekFromProgress = useCallback((locationX: number, force = false) => {
     const target = resolveVideoProgressSeek(progressTrackWidth.current - locationX, progressTrackWidth.current, playbackDuration);
     if (target === null) return;
+    const now = Date.now();
+    const previous = progressLastSeekRef.current;
+    if (!force && (now - previous.at < 50 || Math.abs(target - previous.target) < 0.08)) return;
+    progressLastSeekRef.current = { target, at: now };
     if (usingCompatibilityEngine) {
       void vlcViewRef.current?.seek(target * 1000, "time");
       setVlcTime(target);
@@ -510,9 +515,9 @@ export default function VideoPlayerScreen() {
   const progressResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (event) => seekFromProgress(event.nativeEvent.locationX),
+    onPanResponderGrant: (event) => seekFromProgress(event.nativeEvent.locationX, true),
     onPanResponderMove: (event) => seekFromProgress(event.nativeEvent.locationX),
-    onPanResponderRelease: (event) => seekFromProgress(event.nativeEvent.locationX),
+    onPanResponderRelease: (event) => seekFromProgress(event.nativeEvent.locationX, true),
     onPanResponderTerminationRequest: () => false,
   }), [seekFromProgress]);
 
