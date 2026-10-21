@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Brightness from "expo-brightness";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Haptics from "expo-haptics";
 import * as MediaLibrary from "expo-media-library";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as Sharing from "expo-sharing";
@@ -418,6 +419,7 @@ export default function VideoPlayerScreen() {
     longPressTimerRef.current = setTimeout(() => {
       originalPlaybackRateRef.current = player.playbackRate || speed;
       player.playbackRate = videoSettings.longPressSpeed;
+      if (videoSettings.longPressVibrationEnabled) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
       temporarySpeedActiveRef.current = true;
       setTemporarySpeedActive(true);
       longPressTimerRef.current = null;
