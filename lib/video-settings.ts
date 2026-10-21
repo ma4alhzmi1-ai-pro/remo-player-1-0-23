@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type VideoSettings = {
+  decoderMode: "auto" | "hardware" | "software";
   seekInterval: number;
   doubleTapSeekEnabled: boolean;
   longPressSpeedEnabled: boolean;
@@ -12,6 +13,7 @@ export type VideoSettings = {
 };
 
 export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
+  decoderMode: "auto",
   seekInterval: 10,
   doubleTapSeekEnabled: true,
   longPressSpeedEnabled: true,
@@ -28,6 +30,7 @@ function normalize(value: Partial<VideoSettings> | null | undefined): VideoSetti
   const seekInterval = value?.seekInterval === 5 || value?.seekInterval === 10 || value?.seekInterval === 15 || value?.seekInterval === 30 ? value.seekInterval : DEFAULT_VIDEO_SETTINGS.seekInterval;
   const longPressSpeed = value?.longPressSpeed === 1.25 || value?.longPressSpeed === 1.5 || value?.longPressSpeed === 2 ? value.longPressSpeed : DEFAULT_VIDEO_SETTINGS.longPressSpeed;
   return {
+    decoderMode: value?.decoderMode === "hardware" || value?.decoderMode === "software" ? value.decoderMode : DEFAULT_VIDEO_SETTINGS.decoderMode,
     seekInterval,
     doubleTapSeekEnabled: value?.doubleTapSeekEnabled ?? DEFAULT_VIDEO_SETTINGS.doubleTapSeekEnabled,
     longPressSpeedEnabled: value?.longPressSpeedEnabled ?? DEFAULT_VIDEO_SETTINGS.longPressSpeedEnabled,
