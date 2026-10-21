@@ -42,6 +42,7 @@ export default function RootLayout() {
   const [frame, setFrame] = useState<Rect>(initialFrame);
   const [introComplete, setIntroComplete] = useState(false);
 
+  // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
     initManusRuntime();
   }, []);
@@ -57,12 +58,15 @@ export default function RootLayout() {
     return () => unsubscribe();
   }, [handleSafeAreaUpdate]);
 
+  // Create clients once and reuse them
   const [queryClient] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
           queries: {
+            // Disable automatic refetching on window focus for mobile
             refetchOnWindowFocus: false,
+            // Retry failed requests once
             retry: 1,
           },
         },
@@ -70,6 +74,7 @@ export default function RootLayout() {
   );
   const [trpcClient] = useState(() => createTRPCClient());
 
+  // Ensure minimum 8px padding for top and bottom on mobile
   const providerInitialMetrics = useMemo(() => {
     const metrics = initialWindowMetrics ?? { insets: initialInsets, frame: initialFrame };
     return {
@@ -86,6 +91,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
+          {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
+          {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
+          {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <LanguageProvider>
             <LibraryProvider>
               <PlayerProvider>
@@ -97,8 +105,7 @@ export default function RootLayout() {
                   <Stack.Screen name="player/lyrics" />
                   <Stack.Screen name="player/video" />
                   <Stack.Screen name="player/edit-video" />
-                  <Stack.Screen name="player/equalizer" />
-                  <Stack.Screen name="converter" />
+                  <Stack.Screen name="video-settings" />
                   <Stack.Screen name="privacy" />
                   <Stack.Screen name="support-developer" />
                   <Stack.Screen name="oauth/callback" />
