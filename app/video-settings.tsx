@@ -8,6 +8,7 @@ import { DEFAULT_VIDEO_SETTINGS, loadVideoSettings, saveVideoSettings, type Vide
 
 const SEEK_OPTIONS = [5, 10, 15, 30] as const;
 const SPEED_OPTIONS = [1.25, 1.5, 2] as const;
+const DECODER_OPTIONS = ["auto", "hardware", "software"] as const;
 
 export default function VideoSettingsScreen() {
   const router = useRouter();
@@ -39,6 +40,12 @@ export default function VideoSettingsScreen() {
       <SwitchRow title="تذكر التشغيل في الخلفية" value={settings.rememberBackgroundPlayback} onToggle={() => toggle("rememberBackgroundPlayback")} />
       <SwitchRow title="تذكر النسبة" description="يحفظ آخر نسبة عرض اختارها المستخدم للفيديو." value={settings.rememberAspectRatio} onToggle={() => toggle("rememberAspectRatio")} />
     </View>
+    <Text style={styles.sectionTitle}>متقدم</Text>
+    <View style={styles.group}>
+      <ValueRow title="وحدة فك الترميز الافتراضية" value={settings.decoderMode === "hardware" ? "HW" : settings.decoderMode === "software" ? "SW" : "تلقائي"} options={[...DECODER_OPTIONS]} selected={settings.decoderMode} onSelect={(value) => update({ decoderMode: value as VideoSettings["decoderMode"] })} />
+      <SwitchRow title="تعزيز الجودة" description="تطبيق على الفيديو الحالي فقط." value={false} onToggle={() => undefined} />
+      <SwitchRow title="لغة الصوت المفضلة" description="سيتم اختيار مسار الصوت المطابق عند توفره." value={false} onToggle={() => undefined} />
+    </View>
   </ScrollView></ScreenContainer>;
 }
 
@@ -47,7 +54,8 @@ function SwitchRow({ title, description, value, onToggle }: { title: string; des
 }
 
 function ValueRow({ title, value, options, selected, onSelect, disabled = false }: { title: string; value: string; options: string[]; selected: string; onSelect: (value: string) => void; disabled?: boolean }) {
-  return <View style={[styles.valueRow, disabled && styles.disabled]}><View style={styles.valueHeader}><Text style={styles.value}>{value}</Text><Text style={styles.rowTitle}>{title}</Text></View><View style={styles.options}>{options.map((option) => <Pressable key={option} disabled={disabled} onPress={() => onSelect(option)} style={[styles.option, selected === option && styles.optionActive]}><Text style={[styles.optionText, selected === option && styles.optionTextActive]}>{option}{title.includes("فاصل") ? "s" : "x"}</Text></Pressable>)}</View></View>;
+  const labels: Record<string, string> = { auto: "تلقائي", hardware: "HW", software: "SW" };
+  return <View style={[styles.valueRow, disabled && styles.disabled]}><View style={styles.valueHeader}><Text style={styles.value}>{value}</Text><Text style={styles.rowTitle}>{title}</Text></View><View style={styles.options}>{options.map((option) => <Pressable key={option} disabled={disabled} onPress={() => onSelect(option)} style={[styles.option, selected === option && styles.optionActive]}><Text style={[styles.optionText, selected === option && styles.optionTextActive]}>{labels[option] ?? option}{title.includes("فاصل") ? "s" : title.includes("سرعة") ? "x" : ""}</Text></Pressable>)}</View></View>;
 }
 
 const styles = StyleSheet.create({

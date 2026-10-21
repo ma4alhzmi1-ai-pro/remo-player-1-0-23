@@ -10,7 +10,8 @@ const compatibilityFirstExtensions = new Set([
   "vlc", "vro", "wtv", "xesc",
 ]);
 
-export function preferredVideoPlaybackEngine(uriOrName: string): VideoPlaybackEngine {
+export function preferredVideoPlaybackEngine(uriOrName: string, decoderMode: "auto" | "hardware" | "software" = "auto"): VideoPlaybackEngine {
+  if (decoderMode === "software") return "libvlc";
   return compatibilityFirstExtensions.has(extensionOf(uriOrName)) ? "libvlc" : "media3";
 }
 

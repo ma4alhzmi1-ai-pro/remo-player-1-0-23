@@ -239,7 +239,7 @@ export default function VideoPlayerScreen() {
         setIsPlaying(player.playing);
         return;
       }
-      const preferredEngine = preferredVideoPlaybackEngine(currentVideoUri);
+      const preferredEngine = preferredVideoPlaybackEngine(currentVideoUri, videoSettings.decoderMode);
       compatibilityErrorRef.current = false;
       compatibilityStartedRef.current = false;
       setPlaybackEngine(preferredEngine);
@@ -288,7 +288,7 @@ export default function VideoPlayerScreen() {
         // The player can already be released as the native screen closes.
       }
     };
-  }, [currentVideoUri, player, videoBackgroundUri]);
+  }, [currentVideoUri, player, videoBackgroundUri, videoSettings.decoderMode]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
@@ -745,7 +745,7 @@ export default function VideoPlayerScreen() {
               ref={vlcViewRef}
               style={styles.video}
               source={currentItem.uri}
-              options={["--file-caching=1000", "--network-caching=1000", "--avcodec-hw=any"]}
+              options={["--file-caching=1000", "--network-caching=1000", videoSettings.decoderMode === "software" ? "--avcodec-hw=none" : "--avcodec-hw=any"]}
               contentFit={effectiveFit}
               rate={Math.max(1, speed)}
               volume={100}
