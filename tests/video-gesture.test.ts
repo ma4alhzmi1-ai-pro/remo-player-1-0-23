@@ -4,15 +4,15 @@ import { resolveLocalBrightness, resolveLocalVolume, resolveVideoGesture, should
 
 describe("video gesture resolution", () => {
   it("seeks forward and backward for deliberate horizontal swipes", () => {
-    expect(resolveVideoGesture(70, 8, 50, 300)).toEqual({ type: "seek", seconds: 10 });
-    expect(resolveVideoGesture(-70, 8, 50, 300)).toEqual({ type: "seek", seconds: -10 });
+    expect(resolveVideoGesture(-70, 8, 50, 300)).toEqual({ type: "seek", seconds: 10 });
+    expect(resolveVideoGesture(70, 8, 50, 300)).toEqual({ type: "seek", seconds: -10 });
   });
 
-  it("uses the left side for volume and the right side for brightness", () => {
-    expect(resolveVideoGesture(6, -60, 50, 300)).toEqual({ type: "volume", delta: 0.1 });
-    expect(resolveVideoGesture(6, 60, 50, 300)).toEqual({ type: "volume", delta: -0.1 });
-    expect(resolveVideoGesture(6, -60, 250, 300)).toEqual({ type: "brightness", delta: 0.1 });
-    expect(resolveVideoGesture(6, 60, 250, 300)).toEqual({ type: "brightness", delta: -0.1 });
+  it("uses the right side for volume and the left side for brightness", () => {
+    expect(resolveVideoGesture(6, -60, 250, 300)).toEqual({ type: "volume", delta: 0.1 });
+    expect(resolveVideoGesture(6, 60, 250, 300)).toEqual({ type: "volume", delta: -0.1 });
+    expect(resolveVideoGesture(6, -60, 50, 300)).toEqual({ type: "brightness", delta: 0.1 });
+    expect(resolveVideoGesture(6, 60, 50, 300)).toEqual({ type: "brightness", delta: -0.1 });
   });
 
   it("ignores taps and short accidental movement", () => {

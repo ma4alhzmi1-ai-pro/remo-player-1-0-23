@@ -23,12 +23,12 @@ export function resolveVideoGesture(translationX: number, translationY: number, 
 
   if (horizontalDistance >= verticalDistance && horizontalDistance >= HORIZONTAL_SWIPE_THRESHOLD) {
     const seconds = Math.max(5, Math.min(45, Math.round(horizontalDistance / 7)));
-    return { type: "seek", seconds: translationX > 0 ? seconds : -seconds };
+    return { type: "seek", seconds: translationX < 0 ? seconds : -seconds };
   }
 
   if (verticalDistance >= VERTICAL_SWIPE_THRESHOLD) {
     const delta = translationY < 0 ? 0.1 : -0.1;
-    return touchX >= surfaceWidth / 2 ? { type: "brightness", delta } : { type: "volume", delta };
+    return touchX >= surfaceWidth / 2 ? { type: "volume", delta } : { type: "brightness", delta };
   }
 
   return null;
