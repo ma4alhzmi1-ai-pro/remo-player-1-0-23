@@ -3,7 +3,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 import { inferMediaKind, mergeMediaItems, parseArtistAndTitle } from "@/lib/media-utils";
 import { createPlaylistBackup, mergeRestoredPlaylists, parsePlaylistBackup } from "@/lib/playlist-backup";
@@ -85,6 +85,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [isReady, setIsReady] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshInFlightRef = useRef<Promise<boolean> | null>(null);
 
   useEffect(() => {
     const hydrate = async () => {
@@ -111,12 +112,15 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   }, [isReady, playlists]);
 
   const refreshDeviceLibrary = useCallback(async () => {
-    const MediaLibrary = getMediaLibrary();
-    if (!MediaLibrary) return false;
-    setIsRefreshing(true);
-    try {
-      const permission = await MediaLibrary.requestPermissionsAsync(false, ["audio", "video"]);
-      if (!permission.granted) return false;
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const task = (async () => {
+      const MediaLibrary = getMediaLibrary();
+      if (!MediaLibrary) return false;
+      setIsRefreshing(true);
+      try {
+        let permission = await MediaLibrary.getPermissionsAsync(false, ["audio", "video"]);
+        if (!permission.granted) permission = await MediaLibrary.requestPermissionsAsync(false, ["audio", "video"]);
+        if (!permission.granted) return false;
 
       const getAllAssets = async (mediaType: "audio" | "video") => {
         const collected: Awaited<ReturnType<typeof MediaLibrary.getAssetsAsync>>["assets"] = [];
@@ -165,21 +169,39 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         };
       };
 
-      const scanned = await mapWithConcurrency([...audioAssets, ...videoAssets], asMediaItem);
-      setItems((current) => mergeMediaItems(current, scanned));
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setIsRefreshing(false);
-    }
+        const scanned = await mapWithConcurrency([...audioAssets, ...videoAssets], asMediaItem);
+        // Device assets are authoritative. Replace the old device subset so deleted
+        // and moved files disappear from the old location immediately. Imported
+        // files remain because they are app-owned, not part of the device scan.
+        setItems((current) => mergeMediaItems(current.filter((item) => !item.id.startsWith("device:")), scanned));
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setIsRefreshing(false);
+        refreshInFlightRef.current = null;
+      }
+    })();
+    refreshInFlightRef.current = task;
+    return task;
   }, []);
 
-  const autoIndexStartedRef = useRef(false);
   useEffect(() => {
-    if (!isReady || autoIndexStartedRef.current || Platform.OS === "web") return;
-    autoIndexStartedRef.current = true;
-    void refreshDeviceLibrary();
+    if (!isReady || Platform.OS === "web") return;
+    const refreshWhenActive = () => {
+      if (AppState.currentState === "active") void refreshDeviceLibrary();
+    };
+    refreshWhenActive();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshDeviceLibrary();
+    });
+    // MediaLibrary has no reliable cross-device file watcher on all Android
+    // versions. A light active-app poll catches add/delete/move operations.
+    const interval = setInterval(refreshWhenActive, 8_000);
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
   }, [isReady, refreshDeviceLibrary]);
 
   const importFiles = useCallback(async () => {
