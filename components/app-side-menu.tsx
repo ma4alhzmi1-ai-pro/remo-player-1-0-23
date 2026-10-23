@@ -31,11 +31,15 @@ function SideMenu({ visible, onClose }: { visible: boolean; onClose: () => void 
     try { await WebBrowser.openBrowserAsync(url); } catch { Alert.alert("تعذر فتح الرابط", "تحقق من اتصال الإنترنت ثم حاول مرة أخرى."); }
   };
   const openSettings = () => { onClose(); router.push("/settings" as never); };
+  const openVideoToAudio = () => { onClose(); router.push("/converter?mode=audio" as never); };
   const openPrivacy = () => { onClose(); router.push("/privacy" as never); };
   const openSupport = () => { onClose(); router.push("/support-developer" as never); };
   const toggleTheme = () => setColorScheme(colorScheme === "dark" ? "light" : "dark");
   return <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}><View style={styles.modalRoot}><Pressable onPress={onClose} style={styles.backdrop} /><View style={styles.drawer}>
     <View style={styles.drawerHead}><View style={styles.logoMark}><MaterialIcons name="play-arrow" size={29} color={colors.background} /></View><View style={styles.headCopy}><Text style={styles.appName}>REMO PLAYER</Text><Text style={styles.appSub}>مشغل الوسائط المحلي</Text></View><Pressable onPress={onClose} style={styles.close}><MaterialIcons name="close" size={22} color={colors.text} /></Pressable></View>
+    <Text style={styles.section}>أدوات الوسائط والمحول</Text>
+    <MenuRow icon="audiotrack" title="تحويل الفيديو إلى صوت" description="استخراج الصوت بجميع الصيغ (MP3, M4A, WAV...) والجودات" onPress={openVideoToAudio} />
+    <MenuRow icon="transform" title="محول صيغ الفيديو (MP4)" description="تحويل الصيغ غير المتوافقة إلى MP4 وحفظها بالهاتف" onPress={() => { onClose(); router.push("/converter?mode=video" as never); }} />
     <Text style={styles.section}>إدارة التطبيق</Text>
     <MenuRow icon="settings" title="الإعدادات" description="المكتبة والتشغيل والصلاحيات" onPress={openSettings} />
     <MenuRow icon="shield" title="الخصوصية" description="بياناتك وصلاحيات الوسائط" onPress={openPrivacy} />

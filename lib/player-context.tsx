@@ -88,7 +88,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     currentItemRef.current = currentItem;
-  }, [currentItem]);
+  }, [currentItem, videoPlayer]);
 
   useEffect(() => {
     repeatModeRef.current = repeatMode;
@@ -123,7 +123,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // The native player may already be releasing.
     }
   }, [videoPlayer]);
-
   const releaseAudioPlayer = useCallback(() => {
     const player = playerRef.current;
     statusSubscriptionRef.current?.remove();
@@ -180,7 +179,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (item.mediaType === "video") {
       try {
         releaseAudioPlayer();
-        // تشغيل فيديو جديد يلغي أي مصغّر سابق للصوت أو الفيديو.
+        releaseVideoPlayer();
         setMiniPlayerVisible(false);
         await prepareAudioSession(false);
         currentItemRef.current = item;
@@ -195,6 +194,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     try {
       const audioSession = resolveMediaSessionPolicy("audio");
+      releaseVideoPlayer();
+      setMiniPlayerVisible(false);
       await prepareAudioSession(audioSession.allowBackgroundPlayback);
       let player = playerRef.current;
       if (!player) {
@@ -211,7 +212,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       player.loop = repeatMode === "one";
       player.setPlaybackRate(speed);
-      // كل تشغيل جديد يبدأ من البداية بدلاً من استعادة موضع قديم.
+      // إعادة تشغيل المسار تبدأ من الصفر عند اختيار الملف من جديد.
       const resumeAt = 0;
       await player.seekTo(0);
       currentItemRef.current = item;
@@ -235,6 +236,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const player = playerRef.current;
     if (!currentItem) return;
     if (currentItem.mediaType === "video") {
+      if (videoPlayer.playing) videoPlayer.pause(); else videoPlayer.play();
+      setIsPlaying(videoPlayer.playing);
       return;
     }
     if (!player) return;
@@ -336,25 +339,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     setMiniPlayerVisible(true);
   }, [videoPlayer]);
-
   const dismissMiniPlayer = useCallback(() => {
     setMiniPlayerVisible(false);
     if (currentItemRef.current?.mediaType === "video") {
       releaseVideoPlayer();
-      currentItemRef.current = null;
-      setCurrentItem(null);
-      setCurrentTime(0);
-      setDuration(0);
-      setIsPlaying(false);
     } else {
       releaseAudioPlayer();
-      currentItemRef.current = null;
-      setCurrentItem(null);
-      setCurrentTime(0);
-      setDuration(0);
-      setIsPlaying(false);
       void prepareAudioSession(false);
     }
+    currentItemRef.current = null;
+    setCurrentItem(null);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
   }, [prepareAudioSession, releaseAudioPlayer, releaseVideoPlayer]);
 
   const dismissMediaSession = useCallback(() => {
@@ -378,11 +375,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     speed,
     repeatMode,
     shuffle,
-    videoPlayer,
-    videoBackgroundUri,
-    miniPlayerVisible,
-    showMiniPlayer,
-    dismissMiniPlayer,
     playItem,
     setCurrentItem,
     togglePlayback,
@@ -395,6 +387,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     toggleShuffle,
     stop,
     dismissMediaSession,
+    videoPlayer,
+    videoBackgroundUri,
+    miniPlayerVisible,
+    showMiniPlayer,
+    dismissMiniPlayer,
   }), [currentItem, playbackQueue, isPlaying, currentTime, duration, speed, repeatMode, shuffle, videoPlayer, videoBackgroundUri, miniPlayerVisible, showMiniPlayer, dismissMiniPlayer, playItem, togglePlayback, seekTo, skipBy, playNext, playPrevious, setSpeed, toggleRepeat, toggleShuffle, stop, dismissMediaSession]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

@@ -10,10 +10,17 @@ describe("media session policy", () => {
     });
   });
 
-  it("prevents video from inheriting the music background session", () => {
+  it("prevents video from inheriting the music background session by default", () => {
     expect(resolveMediaSessionPolicy("video")).toEqual({
       allowBackgroundPlayback: false,
       enableLockScreenControls: false,
+    });
+  });
+
+  it("enables background playback and lock-screen controls for video when explicitly allowed", () => {
+    expect(resolveMediaSessionPolicy("video", true)).toEqual({
+      allowBackgroundPlayback: true,
+      enableLockScreenControls: true,
     });
   });
 });

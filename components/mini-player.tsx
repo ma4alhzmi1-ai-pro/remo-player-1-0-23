@@ -4,42 +4,38 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Artwork, colors } from "@/components/remo-ui";
 import { usePlayer } from "@/lib/player-context";
-import { shouldRenderMiniPlayer } from "@/lib/mini-player-policy";
+
+/** Hide the floating mini-player while any full-screen player route is active so it never covers the video surface. */
+function isFullScreenPlayerRoute(pathname: string | null | undefined) {
+  if (!pathname) return false;
+  return pathname === "/player/video"
+    || pathname === "/player/audio"
+    || pathname.startsWith("/player/video")
+    || pathname.startsWith("/player/audio")
+    || pathname.startsWith("/player/edit-")
+    || pathname.startsWith("/player/lyrics")
+    || pathname.startsWith("/player/equalizer");
+}
 
 export function MiniPlayer() {
   const router = useRouter();
   const pathname = usePathname();
   const { currentItem, isPlaying, togglePlayback, miniPlayerVisible, dismissMiniPlayer } = usePlayer();
 
-  if (!shouldRenderMiniPlayer({ hasCurrentItem: Boolean(currentItem), enabled: miniPlayerVisible, pathname }) || !currentItem) return null;
+  if (!currentItem || !miniPlayerVisible) return null;
+  if (isFullScreenPlayerRoute(pathname)) return null;
 
   return (
-    <View style={styles.shell}>
-      <Pressable
-        onPress={() => router.push(currentItem.mediaType === "video" ? "/player/video" : "/player/audio")}
-        style={({ pressed }) => [styles.details, pressed && styles.pressed]}
-        accessibilityLabel="العودة إلى المشغل"
-      >
+    <View style={styles.shell} pointerEvents="box-none">
+      <Pressable onPress={() => router.push(currentItem.mediaType === "video" ? "/player/video" : "/player/audio")} style={({ pressed }) => [styles.details, pressed && styles.pressed]}>
         <Artwork item={currentItem} size={42} />
         <View style={styles.textWrap}>
           <Text numberOfLines={1} style={styles.title}>{currentItem.title}</Text>
-          <Text numberOfLines={1} style={styles.artist}>{currentItem.artist}</Text>
+          <Text numberOfLines={1} style={styles.artist}>{currentItem.artist || (currentItem.mediaType === "video" ? "فيديو محلي" : "موسيقى محلية")}</Text>
         </View>
       </Pressable>
-      <Pressable
-        onPress={dismissMiniPlayer}
-        hitSlop={12}
-        style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-        accessibilityLabel="إغلاق المشغل المصغر"
-      >
-        <MaterialIcons name="close" size={21} color={colors.muted} />
-      </Pressable>
-      <Pressable
-        onPress={togglePlayback}
-        hitSlop={12}
-        style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}
-        accessibilityLabel={isPlaying ? "إيقاف التشغيل" : "استئناف التشغيل"}
-      >
+      <Pressable onPress={dismissMiniPlayer} hitSlop={12} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]} accessibilityLabel="إغلاق المشغل المصغر"><MaterialIcons name="close" size={21} color={colors.muted} /></Pressable>
+      <Pressable onPress={togglePlayback} hitSlop={12} style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}>
         <MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={28} color={colors.text} />
       </Pressable>
     </View>

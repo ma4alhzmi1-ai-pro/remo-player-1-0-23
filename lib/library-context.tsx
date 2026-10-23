@@ -5,10 +5,11 @@ import * as Sharing from "expo-sharing";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, Platform } from "react-native";
 
+import { cleanOrphanedCacheFiles } from "@/lib/cache-cleaner";
 import { inferMediaKind, mergeMediaItems, parseArtistAndTitle } from "@/lib/media-utils";
+import { resolveAudioThumbnail } from "@/lib/audio-artwork";
 import { createPlaylistBackup, mergeRestoredPlaylists, parsePlaylistBackup } from "@/lib/playlist-backup";
 import { PLAYLIST_TEMPLATES, playlistTemplateItems, type PlaylistTemplateId } from "@/lib/playlist-templates";
-import { resolvePlayableVideoUri } from "@/lib/video-uri";
 import type { MediaItem, Playlist } from "@/types/media";
 
 const LIBRARY_KEY = "remo-player.library.v1";
@@ -96,6 +97,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         ]);
         if (storedItems) setItems(JSON.parse(storedItems));
         if (storedPlaylists) setPlaylists(JSON.parse(storedPlaylists));
+        // Clean up orphaned cache files in background to prevent storage bloat
+        void cleanOrphanedCacheFiles();
       } finally {
         setIsReady(true);
       }
@@ -152,10 +155,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         try {
           const info = await MediaLibrary.getAssetInfoAsync(asset);
           uri = info.localUri ?? asset.uri;
-          } catch {
+        } catch {
           uri = asset.uri;
         }
-        if (isVideo) uri = await resolvePlayableVideoUri(uri, asset.filename);
         return {
           id: `device:${asset.id}`,
           title: parsed.title,
@@ -165,7 +167,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           duration: Math.max(0, asset.duration ?? 0),
           mediaType: isVideo ? "video" : "audio",
           addedAt: asset.modificationTime || asset.creationTime || Date.now(),
-          thumbnailUri: isVideo ? await createVideoThumbnail(uri, asset.duration ?? 0) : undefined,
+          thumbnailUri: isVideo
+            ? await createVideoThumbnail(uri, asset.duration ?? 0)
+            : await resolveAudioThumbnail(asset.id, uri),
         };
       };
 

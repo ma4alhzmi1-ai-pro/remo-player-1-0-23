@@ -42,7 +42,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "alhzmi",
-  version: "1.0.58",
+  version: "1.0.62",
   orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -65,7 +65,14 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    versionCode: 60,
+    versionCode: 64,
+    permissions: [
+      "READ_EXTERNAL_STORAGE",
+      "WRITE_EXTERNAL_STORAGE",
+      "READ_MEDIA_AUDIO",
+      "READ_MEDIA_VIDEO",
+      "READ_MEDIA_IMAGES",
+    ],
     intentFilters: [
       {
         action: "VIEW",
@@ -100,6 +107,7 @@ const config: ExpoConfig = {
       "expo-media-library",
       {
         "photosPermission": "السماح لـ $(PRODUCT_NAME) بالوصول إلى الوسائط المحلية.",
+        "savePhotosPermission": "السماح لـ $(PRODUCT_NAME) بحفظ الملفات الصوتية والمرئية في ذاكرة الهاتف.",
         "granularPermissions": ["audio", "video"],
       },
     ],
@@ -114,7 +122,7 @@ const config: ExpoConfig = {
     [
       "expo-video",
       {
-        supportsBackgroundPlayback: false,
+        supportsBackgroundPlayback: true,
         supportsPictureInPicture: true,
       },
     ],
@@ -142,7 +150,7 @@ const config: ExpoConfig = {
         android: {
           compileSdkVersion: 36,
           targetSdkVersion: 36,
-          buildArchs: ["arm64-v8a"],
+          buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
           enableMinifyInReleaseBuilds: true,
           enableShrinkResourcesInReleaseBuilds: true,

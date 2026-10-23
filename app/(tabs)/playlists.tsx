@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useState } from "react";
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { colors, EmptyState, MediaRow } from "@/components/remo-ui";
@@ -16,6 +16,15 @@ export default function PlaylistsScreen() {
   const { playItem } = usePlayer();
   const [name, setName] = useState("");
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+
+  useEffect(() => {
+    if (!selectedPlaylist) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setSelectedPlaylist(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [selectedPlaylist]);
   const addPlaylist = async () => { const created = await createPlaylist(name); if (created) setName(""); else Alert.alert("تعذر إنشاء القائمة", "أدخل اسماً جديداً ومميزاً لقائمة التشغيل."); };
   const selectedItems = selectedPlaylist ? selectedPlaylist.itemIds.map((id) => items.find((item) => item.id === id)).filter((item): item is MediaItem => Boolean(item)) : [];
   const openTrack = async (item: MediaItem) => { await playItem(item); router.push("/player/audio" as never); };

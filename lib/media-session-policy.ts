@@ -6,10 +6,11 @@ export type MediaSessionPolicy = {
 };
 
 /**
- * الموسيقى وحدها تستخدم خدمة الوسائط في Android. الفيديو يبقى داخل التطبيق
- * ولا يرث جلسة شاشة القفل أو إشعار الموسيقى عند الانتقال بين النوعين.
+ * يحدد سياسة تشغيل الوسائط في الخلفية وعناصر التحكم في شاشة القفل.
+ * للموسيقى: مفعلة دائماً.
+ * للفيديو: تتبع خيار التشغيل في الخلفية (افتراضياً false إذا لم يتم تفعيله).
  */
-export function resolveMediaSessionPolicy(kind: MediaSessionKind): MediaSessionPolicy {
+export function resolveMediaSessionPolicy(kind: MediaSessionKind, allowVideoBackground = false): MediaSessionPolicy {
   if (kind === "audio") {
     return {
       allowBackgroundPlayback: true,
@@ -18,7 +19,7 @@ export function resolveMediaSessionPolicy(kind: MediaSessionKind): MediaSessionP
   }
 
   return {
-    allowBackgroundPlayback: false,
-    enableLockScreenControls: false,
+    allowBackgroundPlayback: allowVideoBackground,
+    enableLockScreenControls: allowVideoBackground,
   };
 }
