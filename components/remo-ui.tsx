@@ -98,6 +98,8 @@ export function MediaRow({
   trailing,
   isCurrent = false,
   isPlaying = false,
+  selectionMode = false,
+  selected = false,
 }: {
   item: MediaItem;
   onPress: () => void;
@@ -105,6 +107,8 @@ export function MediaRow({
   trailing?: React.ReactNode;
   isCurrent?: boolean;
   isPlaying?: boolean;
+  selectionMode?: boolean;
+  selected?: boolean;
 }) {
   return (
     <Pressable
@@ -140,7 +144,11 @@ export function MediaRow({
         </Text>
       </View>
       <View style={styles.trailing}>
-        {trailing ?? (
+        {selectionMode ? (
+          <View style={[styles.selectionBox, selected && styles.selectionBoxActive]}>
+            {selected ? <MaterialIcons name="check" size={17} color={colors.background} /> : null}
+          </View>
+        ) : trailing ?? (
           isCurrent ? (
             <ActivePlayingBadge label={isPlaying ? "تشغيل" : "مؤقت"} compact />
           ) : (
@@ -294,6 +302,19 @@ const styles = StyleSheet.create({
   trailing: {
     minWidth: 54,
     alignItems: "flex-start",
+  },
+  selectionBox: {
+    width: 25,
+    height: 25,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.muted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectionBoxActive: {
+    borderColor: colors.cyan,
+    backgroundColor: colors.cyan,
   },
   duration: {
     color: colors.muted,

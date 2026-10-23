@@ -1,9 +1,11 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, BackHandler, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Artwork, colors, EmptyState, formatDuration, MediaRow, ActivePlayingBadge } from "@/components/remo-ui";
+import { SelectionToolbar } from "@/components/media-selection";
 import { ScreenContainer } from "@/components/screen-container";
 import { useLibrary } from "@/lib/library-context";
 import { getMediaFolderName, getMediaFolderPath, groupMediaFolders, type MediaFolder } from "@/lib/media-folder-utils";
@@ -24,7 +26,7 @@ const views: { id: VideoView; label: string; icon: keyof typeof MaterialIcons.gl
 export default function VideoScreen() {
   const router = useRouter();
   const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
-  const { items, playlists, importFiles, isRefreshing, refreshDeviceLibrary, addItemToPlaylist, createPlaylist } = useLibrary();
+  const { items, playlists, importFiles, isRefreshing, refreshDeviceLibrary, addItemToPlaylist, createPlaylist, deleteMediaItems } = useLibrary();
   const { playItem, currentItem, isPlaying } = usePlayer();
   const [view, setView] = useState<VideoView>("grid");
   const [query, setQuery] = useState("");
@@ -33,6 +35,7 @@ export default function VideoScreen() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<VideoPlaylist | null>(null);
   const [playlistTarget, setPlaylistTarget] = useState<MediaItem | null>(null);
   const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const videos = useMemo(() => sortMediaItems(items.filter((item) => item.mediaType === "video"), sort), [items, sort]);
   const matchingVideos = useMemo(() => filterMediaItems(videos, query), [query, videos]);
@@ -83,11 +86,21 @@ export default function VideoScreen() {
     setNewPlaylistName("");
     setPlaylistTarget(null);
   };
+  const toggleSelection = (id: string) => setSelectedIds((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const beginSelection = (id: string) => setSelectedIds(new Set([id]));
+  const shareSelected = async () => {
+    const selected = matchingVideos.filter((item) => selectedIds.has(item.id));
+    if (!selected.length || !(await Sharing.isAvailableAsync())) return;
+    if (selected.length > 1) Alert.alert("مشاركة متعددة", "سيتم فتح المشاركة للملف الأول المحدد لأن مشاركة عدة ملفات تعتمد على دعم مزوّد الملفات في Android.");
+    await Sharing.shareAsync(selected[0].uri, { dialogTitle: `مشاركة ${selected[0].title}`, mimeType: "video/*" });
+  };
+  const deleteSelected = () => Alert.alert("حذف الملفات", `هل تريد حذف ${selectedIds.size} ملف؟`, [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: async () => { await deleteMediaItems([...selectedIds]); setSelectedIds(new Set()); } }]);
 
   if (selectedFolder) return <FolderDetail folder={selectedFolder} onBack={() => setSelectedFolder(null)} onOpenVideo={(item) => openVideo(item, selectedFolder.items, selectedFolder.path)} />;
   if (selectedPlaylist) return <PlaylistDetail playlist={selectedPlaylist} onBack={() => setSelectedPlaylist(null)} onOpenVideo={(item) => openVideo(item, selectedPlaylist.items)} />;
 
   return <ScreenContainer className="px-0">
+    {selectedIds.size ? <SelectionToolbar count={selectedIds.size} onClose={() => setSelectedIds(new Set())} onShare={() => void shareSelected()} onDelete={deleteSelected} /> : null}
     <FlatList
       key={`video-${view}`}
       data={(view === "grid" ? matchingVideos : view === "folders" ? folders : videoPlaylists) as (MediaItem | Folder | VideoPlaylist)[]}
@@ -97,7 +110,8 @@ export default function VideoScreen() {
       renderItem={({ item }) => {
         if (view === "grid") {
           const isCurrent = Boolean(currentItem && (currentItem.id === (item as MediaItem).id || currentItem.uri === (item as MediaItem).uri));
-          return <VideoCard item={item as MediaItem} isCurrent={isCurrent} isPlaying={isPlaying} onPress={() => void openVideo(item as MediaItem)} onAddToPlaylist={() => setPlaylistTarget(item as MediaItem)} />;
+          const mediaItem = item as MediaItem;
+          return <VideoCard item={mediaItem} isCurrent={isCurrent} isPlaying={isPlaying} selected={selectedIds.has(mediaItem.id)} selectionMode={selectedIds.size > 0} onPress={() => selectedIds.size ? toggleSelection(mediaItem.id) : void openVideo(mediaItem)} onLongPress={() => beginSelection(mediaItem.id)} onAddToPlaylist={() => setPlaylistTarget(mediaItem)} />;
         }
         if (view === "folders") {
           const folder = item as unknown as Folder;
@@ -130,7 +144,12 @@ export default function VideoScreen() {
 
 function FolderDetail({ folder, onBack, onOpenVideo }: { folder: Folder; onBack: () => void; onOpenVideo: (item: MediaItem) => void }) {
   const { currentItem, isPlaying } = usePlayer();
-  return <ScreenContainer className="px-0"><DetailHeader title={folder.name} subtitle={`${folder.items.length} مقاطع فيديو · ${folder.path}`} onBack={onBack} /><FlatList data={folder.items} keyExtractor={(item) => item.id} renderItem={({ item }) => <MediaRow item={item} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onPress={() => onOpenVideo(item)} />} contentContainerStyle={styles.detailList} /></ScreenContainer>;
+  const { deleteMediaItems } = useLibrary();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setSelectedIds((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const share = async () => { const item = folder.items.find((candidate) => selectedIds.has(candidate.id)); if (item && await Sharing.isAvailableAsync()) await Sharing.shareAsync(item.uri, { dialogTitle: `مشاركة ${item.title}`, mimeType: "video/*" }); };
+  const remove = () => Alert.alert("حذف الملفات", `هل تريد حذف ${selectedIds.size} ملف؟`, [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: async () => { await deleteMediaItems([...selectedIds]); setSelectedIds(new Set()); onBack(); } }]);
+  return <ScreenContainer className="px-0">{selectedIds.size ? <SelectionToolbar count={selectedIds.size} onClose={() => setSelectedIds(new Set())} onShare={() => void share()} onDelete={remove} /> : <DetailHeader title={folder.name} subtitle={`${folder.items.length} مقاطع فيديو · ${folder.path}`} onBack={onBack} />}<FlatList data={folder.items} keyExtractor={(item) => item.id} renderItem={({ item }) => <MediaRow item={item} selected={selectedIds.has(item.id)} selectionMode={selectedIds.size > 0} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onLongPress={() => setSelectedIds(new Set([item.id]))} onPress={() => selectedIds.size ? toggle(item.id) : onOpenVideo(item)} />} contentContainerStyle={styles.detailList} /></ScreenContainer>;
 }
 
 function PlaylistDetail({ playlist, onBack, onOpenVideo }: { playlist: VideoPlaylist; onBack: () => void; onOpenVideo: (item: MediaItem) => void }) {
@@ -142,9 +161,9 @@ function DetailHeader({ title, subtitle, onBack }: { title: string; subtitle: st
   return <View style={styles.detailHeader}><Pressable onPress={onBack} style={styles.headerButton}><MaterialIcons name="arrow-forward" size={24} color={colors.text} /></Pressable><View style={styles.detailCopy}><Text numberOfLines={1} style={styles.detailTitle}>{title}</Text><Text style={styles.detailSubtitle}>{subtitle}</Text></View></View>;
 }
 
-function VideoCard({ item, isCurrent = false, isPlaying = false, onPress, onAddToPlaylist }: { item: MediaItem; isCurrent?: boolean; isPlaying?: boolean; onPress: () => void; onAddToPlaylist: () => void }) {
+function VideoCard({ item, isCurrent = false, isPlaying = false, selected = false, selectionMode = false, onPress, onLongPress, onAddToPlaylist }: { item: MediaItem; isCurrent?: boolean; isPlaying?: boolean; selected?: boolean; selectionMode?: boolean; onPress: () => void; onLongPress: () => void; onAddToPlaylist: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.videoCard, isCurrent && styles.videoCardActive, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [styles.videoCard, isCurrent && styles.videoCardActive, selected && styles.videoCardSelected, pressed && styles.pressed]}>
       <View style={[styles.videoPreview, isCurrent && styles.videoPreviewActive]}>
         {item.thumbnailUri ? <Image source={{ uri: item.thumbnailUri }} style={styles.thumbnail} /> : <Artwork item={item} size={60} />}
         <View style={styles.playShade}>
@@ -159,9 +178,7 @@ function VideoCard({ item, isCurrent = false, isPlaying = false, onPress, onAddT
             <Text style={styles.cardActiveText}>مشغّل</Text>
           </View>
         )}
-        <Pressable onPress={(event) => { event.stopPropagation(); onAddToPlaylist(); }} style={styles.addToPlaylist} accessibilityLabel="إضافة إلى قائمة تشغيل">
-          <MaterialIcons name="playlist-add" size={19} color={colors.text} />
-        </Pressable>
+        {selectionMode ? <View style={[styles.cardSelectionBox, selected && styles.cardSelectionBoxActive]}>{selected ? <MaterialIcons name="check" size={17} color={colors.background} /> : null}</View> : <Pressable onPress={(event) => { event.stopPropagation(); onAddToPlaylist(); }} style={styles.addToPlaylist} accessibilityLabel="إضافة إلى قائمة تشغيل"><MaterialIcons name="playlist-add" size={19} color={colors.text} /></Pressable>}
       </View>
       <Text numberOfLines={2} style={[styles.videoTitle, isCurrent && styles.videoTitleActive]}>{item.title}</Text>
       <Text numberOfLines={1} style={styles.videoMeta}>{getMediaFolderName(getMediaFolderPath(item.uri))}</Text>
@@ -229,6 +246,27 @@ const styles = StyleSheet.create({
   videoPreviewActive: {
     borderColor: colors.cyan,
     borderWidth: 2,
+  },
+  videoCardSelected: {
+    backgroundColor: "rgba(46, 197, 255, 0.1)",
+    borderRadius: 14,
+  },
+  cardSelectionBox: {
+    position: "absolute",
+    top: 7,
+    left: 7,
+    width: 27,
+    height: 27,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.text,
+    backgroundColor: "rgba(1, 8, 16, 0.76)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardSelectionBoxActive: {
+    borderColor: colors.cyan,
+    backgroundColor: colors.cyan,
   },
   videoTitleActive: {
     color: colors.cyan,

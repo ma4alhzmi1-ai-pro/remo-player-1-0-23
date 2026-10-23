@@ -60,6 +60,7 @@ type LibraryContextValue = {
   addItemToPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   removeItemFromPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
+  deleteMediaItems: (itemIds: string[]) => Promise<number>;
   updateMediaItem: (itemId: string, changes: Partial<Pick<MediaItem, "title" | "artist" | "album" | "thumbnailUri" | "lyrics" | "isFavorite">>) => Promise<void>;
   exportPlaylistBackup: () => Promise<boolean>;
   importPlaylistBackup: () => Promise<number>;
@@ -275,6 +276,37 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     setPlaylists((current) => current.filter((playlist) => playlist.id !== playlistId));
   }, []);
 
+  const deleteMediaItems = useCallback(async (itemIds: string[]) => {
+    const selected = items.filter((item) => itemIds.includes(item.id));
+    const deletedIds = new Set<string>();
+    const MediaLibrary = getMediaLibrary();
+    const deviceItems = selected.filter((item) => item.id.startsWith("device:"));
+    if (MediaLibrary && deviceItems.length) {
+      try {
+        const deleted = await MediaLibrary.deleteAssetsAsync(deviceItems.map((item) => item.id.slice("device:".length)));
+        if (deleted) deviceItems.forEach((item) => deletedIds.add(item.id));
+      } catch {
+        // Some Android providers deny deletion; retain those entries in the library.
+      }
+    }
+    for (const item of selected.filter((candidate) => candidate.id.startsWith("import:"))) {
+      try {
+        new File(item.uri).delete();
+        deletedIds.add(item.id);
+      } catch {
+        // The file may already have been removed from app storage.
+      }
+    }
+    if (deletedIds.size) {
+      setItems((current) => current.filter((item) => !deletedIds.has(item.id)));
+      setPlaylists((current) => current.map((playlist) => ({
+        ...playlist,
+        itemIds: playlist.itemIds.filter((id) => !deletedIds.has(id)),
+      })));
+    }
+    return deletedIds.size;
+  }, [items]);
+
   const updateMediaItem = useCallback(async (itemId: string, changes: Partial<Pick<MediaItem, "title" | "artist" | "album" | "thumbnailUri" | "lyrics" | "isFavorite">>) => {
     setItems((current) => current.map((item) => item.id === itemId ? { ...item, ...changes } : item));
   }, []);
@@ -315,10 +347,11 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     addItemToPlaylist,
     removeItemFromPlaylist,
     deletePlaylist,
+    deleteMediaItems,
     updateMediaItem,
     exportPlaylistBackup,
     importPlaylistBackup,
-  }), [items, playlists, isReady, isRefreshing, refreshDeviceLibrary, importFiles, createPlaylist, createPlaylistFromTemplate, addItemToPlaylist, removeItemFromPlaylist, deletePlaylist, updateMediaItem, exportPlaylistBackup, importPlaylistBackup]);
+  }), [items, playlists, isReady, isRefreshing, refreshDeviceLibrary, importFiles, createPlaylist, createPlaylistFromTemplate, addItemToPlaylist, removeItemFromPlaylist, deletePlaylist, deleteMediaItems, updateMediaItem, exportPlaylistBackup, importPlaylistBackup]);
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }

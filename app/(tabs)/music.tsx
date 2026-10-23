@@ -1,9 +1,11 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
 import { useEffect, useMemo, useState } from "react";
-import { BackHandler, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, BackHandler, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { colors, EmptyState, MediaRow, ActivePlayingBadge } from "@/components/remo-ui";
+import { SelectionToolbar } from "@/components/media-selection";
 import { ScreenContainer } from "@/components/screen-container";
 import { useLibrary } from "@/lib/library-context";
 import { groupMediaFolders } from "@/lib/media-folder-utils";
@@ -25,13 +27,14 @@ const views: { id: MusicView; label: string }[] = [
 export default function MusicScreen() {
   const router = useRouter();
   const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
-  const { items, importFiles, isRefreshing, refreshDeviceLibrary } = useLibrary();
+  const { items, importFiles, isRefreshing, refreshDeviceLibrary, deleteMediaItems } = useLibrary();
   const { playItem, currentItem, isPlaying } = usePlayer();
   const [activeView, setActiveView] = useState<MusicView>("tracks");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<MediaSort>("recent");
   const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const tracks = useMemo(() => sortMediaItems(items.filter((item) => item.mediaType === "audio"), sort), [items, sort]);
   const artists = useMemo(() => groupTracks(tracks, "artist", "person-outline"), [tracks]);
   const albums = useMemo(() => groupTracks(tracks, "album", "album"), [tracks]);
@@ -63,11 +66,15 @@ export default function MusicScreen() {
     const route = originFolderPath ? `/player/audio?folderPath=${encodeURIComponent(originFolderPath)}` : "/player/audio";
     router.push(route as never);
   };
+  const toggleSelection = (id: string) => setSelectedIds((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const beginSelection = (id: string) => setSelectedIds(new Set([id]));
+  const shareSelected = async () => { const selected = visibleTracks.filter((item) => selectedIds.has(item.id)); if (!selected.length || !(await Sharing.isAvailableAsync())) return; if (selected.length > 1) Alert.alert("مشاركة متعددة", "سيتم فتح المشاركة للملف الأول المحدد لأن مشاركة عدة ملفات تعتمد على دعم مزوّد الملفات في Android."); await Sharing.shareAsync(selected[0].uri, { dialogTitle: `مشاركة ${selected[0].title}`, mimeType: "audio/*" }); };
+  const deleteSelected = () => Alert.alert("حذف الملفات", `هل تريد حذف ${selectedIds.size} ملف؟`, [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: async () => { await deleteMediaItems([...selectedIds]); setSelectedIds(new Set()); } }]);
 
   if (selectedCollection) return <CollectionDetail title={selectedCollection.name} subtitle={`${selectedCollection.count} أغنيات`} items={selectedCollection.items} onBack={() => setSelectedCollection(null)} onOpenTrack={(item) => openTrack(item, selectedCollection.items)} />;
   if (selectedFolder) return <CollectionDetail title={selectedFolder.title} subtitle={`${selectedFolder.items.length} أغنيات · ${selectedFolder.path}`} items={selectedFolder.items} backLabel="العودة إلى المجلدات" onBack={() => setSelectedFolder(null)} onOpenTrack={(item) => openTrack(item, selectedFolder.items, selectedFolder.path)} />;
 
-  return <ScreenContainer className="px-0"><FlatList data={activeView === "tracks" ? visibleTracks : activeView === "folders" ? visibleFolders : activeView === "albums" ? visibleAlbums : visibleArtists} keyExtractor={(item) => "items" in item ? (item as unknown as Folder | Collection).name : (item as MediaItem).id} renderItem={({ item }) => {
+  return <ScreenContainer className="px-0">{selectedIds.size ? <SelectionToolbar count={selectedIds.size} onClose={() => setSelectedIds(new Set())} onShare={() => void shareSelected()} onDelete={deleteSelected} /> : null}<FlatList data={activeView === "tracks" ? visibleTracks : activeView === "folders" ? visibleFolders : activeView === "albums" ? visibleAlbums : visibleArtists} keyExtractor={(item) => "items" in item ? (item as unknown as Folder | Collection).name : (item as MediaItem).id} renderItem={({ item }) => {
     if ("items" in item && activeView === "folders") {
       const folder = item as unknown as Folder;
       const isCurrent = Boolean(currentItem && folder.items.some((it) => it.id === currentItem.id || it.uri === currentItem.uri));
@@ -80,11 +87,11 @@ export default function MusicScreen() {
     }
     const track = item as MediaItem;
     const isCurrentTrack = Boolean(currentItem && (currentItem.id === track.id || currentItem.uri === track.uri));
-    return <MediaRow item={track} isCurrent={isCurrentTrack} isPlaying={isPlaying} onPress={() => void openTrack(track, visibleTracks)} trailing={<MaterialIcons name="more-vert" size={22} color={colors.muted} />} />;
+    return <MediaRow item={track} selected={selectedIds.has(track.id)} selectionMode={selectedIds.size > 0} isCurrent={isCurrentTrack} isPlaying={isPlaying} onLongPress={() => beginSelection(track.id)} onPress={() => selectedIds.size ? toggleSelection(track.id) : void openTrack(track, visibleTracks)} trailing={<MaterialIcons name="more-vert" size={22} color={colors.muted} />} />;
   }} ListHeaderComponent={<><View style={styles.header}><View style={styles.headerActions}><Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/" as never)} style={styles.headerButton} accessibilityLabel="رجوع"><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable><Pressable onPress={() => router.push("/settings" as never)} style={styles.headerButton}><MaterialIcons name="more-vert" size={25} color={colors.text} /></Pressable></View><View style={styles.headerActions}><Pressable onPress={() => router.push("/playlists" as never)} style={styles.headerButton}><MaterialIcons name="queue-music" size={24} color={colors.text} /></Pressable><Pressable onPress={() => void importFiles()} style={styles.headerButton}><MaterialIcons name="add-circle-outline" size={26} color={colors.text} /></Pressable></View></View><View style={styles.search}><MaterialIcons name="search" size={23} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="ابحث في الموسيقى والمجلدات" placeholderTextColor={colors.muted} style={styles.searchInput} textAlign="right" returnKeyType="search" /></View><View style={styles.tabs}>{views.map((view) => <Pressable key={view.id} onPress={() => setActiveView(view.id)} style={styles.tab}><Text style={[styles.tabText, activeView === view.id && styles.tabTextActive]}>{view.label}</Text>{activeView === view.id ? <View style={styles.tabLine} /> : null}</Pressable>)}</View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{activeView === "folders" ? `المجلدات · ${visibleFolders.length}` : activeView === "artists" ? `الفنانون · ${visibleArtists.length}` : activeView === "albums" ? `الألبومات · ${visibleAlbums.length}` : `الأغاني · ${visibleTracks.length}`}</Text><Pressable onPress={() => setSort((current) => nextMediaSort(current))} style={styles.sortButton} accessibilityLabel="تغيير ترتيب الموسيقى"><MaterialIcons name="sort" size={17} color={colors.cyan} /><Text style={styles.sortText}>{sort === "recent" ? "الأحدث" : sort === "title" ? "العنوان" : "المدة"}</Text></Pressable><Text style={styles.sectionHint}>مكتبتك المحلية</Text></View></>} ListEmptyComponent={<EmptyState icon="library-music" title={query ? "لا توجد نتائج مطابقة" : "لا توجد موسيقى هنا"} description={query ? "جرّب كلمة أخرى أو امسح البحث للعودة إلى مكتبتك كاملة." : activeView === "folders" ? "افحص مكتبة جهازك أو استورد ملفات لإظهار المجلدات الموسيقية." : "استورد ملفات صوتية أو افحص موسيقى جهازك لإظهارها هنا."} actionLabel={query ? undefined : isRefreshing ? "جارِ الفهرسة..." : "فهرسة الموسيقى"} onAction={query ? undefined : () => void refreshDeviceLibrary()} />} ItemSeparatorComponent={() => <View style={styles.separator} />} contentContainerStyle={styles.list} /></ScreenContainer>;
 }
 
-function CollectionDetail({ title, subtitle, items, backLabel = "العودة", onBack, onOpenTrack }: { title: string; subtitle: string; items: MediaItem[]; backLabel?: string; onBack: () => void; onOpenTrack: (item: MediaItem) => Promise<void> }) { const { currentItem, isPlaying } = usePlayer(); return <ScreenContainer className="px-0"><View style={styles.detailHeader}><Pressable onPress={onBack} style={styles.folderBackButton} accessibilityLabel={backLabel}><MaterialIcons name="arrow-forward" size={22} color={colors.text} /><Text style={styles.folderBackText}>{backLabel}</Text></Pressable><View style={styles.detailTitleWrap}><Text numberOfLines={1} style={styles.detailTitle}>{title}</Text><Text style={styles.detailSubtitle}>{subtitle}</Text></View></View><FlatList data={items} keyExtractor={(item) => item.id} renderItem={({ item }) => <MediaRow item={item} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onPress={() => void onOpenTrack(item)} />} contentContainerStyle={styles.detailList} /></ScreenContainer>; }
+function CollectionDetail({ title, subtitle, items, backLabel = "العودة", onBack, onOpenTrack }: { title: string; subtitle: string; items: MediaItem[]; backLabel?: string; onBack: () => void; onOpenTrack: (item: MediaItem) => Promise<void> }) { const { currentItem, isPlaying } = usePlayer(); const { deleteMediaItems } = useLibrary(); const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set()); const toggle = (id: string) => setSelectedIds((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; }); const share = async () => { const item = items.find((candidate) => selectedIds.has(candidate.id)); if (item && await Sharing.isAvailableAsync()) await Sharing.shareAsync(item.uri, { dialogTitle: `مشاركة ${item.title}`, mimeType: "audio/*" }); }; const remove = () => Alert.alert("حذف الملفات", `هل تريد حذف ${selectedIds.size} ملف؟`, [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: async () => { await deleteMediaItems([...selectedIds]); setSelectedIds(new Set()); onBack(); } }]); return <ScreenContainer className="px-0">{selectedIds.size ? <SelectionToolbar count={selectedIds.size} onClose={() => setSelectedIds(new Set())} onShare={() => void share()} onDelete={remove} /> : <View style={styles.detailHeader}><Pressable onPress={onBack} style={styles.folderBackButton} accessibilityLabel={backLabel}><MaterialIcons name="arrow-forward" size={22} color={colors.text} /><Text style={styles.folderBackText}>{backLabel}</Text></Pressable><View style={styles.detailTitleWrap}><Text numberOfLines={1} style={styles.detailTitle}>{title}</Text><Text style={styles.detailSubtitle}>{subtitle}</Text></View></View>}<FlatList data={items} keyExtractor={(item) => item.id} renderItem={({ item }) => <MediaRow item={item} selected={selectedIds.has(item.id)} selectionMode={selectedIds.size > 0} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onLongPress={() => setSelectedIds(new Set([item.id]))} onPress={() => selectedIds.size ? toggle(item.id) : void onOpenTrack(item)} />} contentContainerStyle={styles.detailList} /></ScreenContainer>; }
 
 function CollectionRow({ collection, onPress, isCurrent = false }: { collection: Collection; onPress: () => void; isCurrent?: boolean }) {
   return (
