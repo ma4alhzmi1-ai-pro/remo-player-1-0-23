@@ -964,15 +964,42 @@ export default function VideoPlayerScreen() {
     // Orientation is controlled by the toolbar policy and follows the Android sensor.
   };
   const chooseMode = (mode: DisplayMode) => {
+    const supportedTracks = [...player.availableVideoTracks]
+      .filter((track) => track.isSupported)
+      .sort((a, b) => (b.size.width * b.size.height) - (a.size.width * a.size.height) || (b.bitrate ?? 0) - (a.bitrate ?? 0));
+    const bestTrack = supportedTracks[0];
     if (mode === "quality") {
-      const bestTrack = [...player.availableVideoTracks].filter((track) => track.isSupported).sort((a, b) => (b.size.width * b.size.height) - (a.size.width * a.size.height))[0];
       if (bestTrack) {
-        Alert.alert("معلومات الجودة", `أعلى مسار متاح لهذا الملف هو ${bestTrack.size.width}×${bestTrack.size.height}. يختار Android المسار الفعلي وفق دعم الجهاز والترميز.`);
+        setVideoFit("contain");
+        setSelectedFrameAspect("source");
+        setDisplayMode(mode);
+        Alert.alert("تم تفعيل HD", `سيستخدم المشغل أعلى مسار مدعوم فعلياً: ${bestTrack.size.width}×${bestTrack.size.height}${bestTrack.bitrate ? `، ${Math.round(bestTrack.bitrate / 1000)} kbps` : ""}.`);
       } else {
-        Alert.alert("معلومات الجودة", "لا يوفّر هذا الملف مسارات جودة قابلة للفحص؛ يستخدم Android أفضل جودة يدعمها الجهاز والترميز.");
+        Alert.alert("الجودة غير متاحة", "لم يعلن الملف أو الجهاز عن مسار فيديو مدعوم يمكن اختياره.");
       }
+      return;
     }
-    if (mode === "hdr") Alert.alert("HDR عند توفره", "يعرض Android HDR تلقائياً عندما يدعمه الفيديو وشاشة جهازك.");
+    if (mode === "cinematic") {
+      setVideoFit("cover");
+      setSelectedFrameAspect("21:9");
+      setDisplayMode(mode);
+      return;
+    }
+    if (mode === "hdr") {
+      if (usingCompatibilityEngine) {
+        Alert.alert("HDR عبر VLC", "سيُبقي LibVLC فك الترميز العتادي عند توفره. HDR الحقيقي يعتمد على ملف HDR وشاشة الجهاز.");
+      } else if (!bestTrack) {
+        Alert.alert("HDR غير متاح", "لم يتم العثور على مسار فيديو مدعوم لهذا الملف.");
+        return;
+      } else {
+        Alert.alert("HDR جاهز", "تم تفعيل مسار HDR الآمن. سيعرض Android HDR الحقيقي تلقائياً فقط إذا كان الملف HDR والشاشة والـ decoder يدعمونه.");
+      }
+      setVideoFit("contain");
+      setSelectedFrameAspect("source");
+    } else if (mode === "auto") {
+      setVideoFit("auto");
+      setSelectedFrameAspect(null);
+    }
     setDisplayMode(mode);
   };
   const togglePlay = async () => {
@@ -1179,7 +1206,7 @@ export default function VideoPlayerScreen() {
               onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }}
             />
           ) : (
-            <VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} contentPosition={{ dx: 0, dy: 0 }} surfaceType="textureView" useExoShutter={false} />
+            <VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} contentPosition={{ dx: 0, dy: 0 }} surfaceType={displayMode === "hdr" ? "surfaceView" : "textureView"} useExoShutter={false} />
           )}
         </View>
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
