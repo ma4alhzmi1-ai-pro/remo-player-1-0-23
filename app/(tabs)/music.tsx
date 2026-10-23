@@ -27,7 +27,7 @@ const views: { id: MusicView; label: string }[] = [
 export default function MusicScreen() {
   const router = useRouter();
   const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
-  const { items, importFiles, isRefreshing, refreshDeviceLibrary, deleteMediaItems } = useLibrary();
+  const { items, importFiles, isRefreshing, refreshDeviceLibrary, deleteMediaItems, secureItemIds, hideSecureFolder } = useLibrary();
   const { playItem, currentItem, isPlaying } = usePlayer();
   const [activeView, setActiveView] = useState<MusicView>("tracks");
   const [query, setQuery] = useState("");
@@ -35,7 +35,7 @@ export default function MusicScreen() {
   const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const tracks = useMemo(() => sortMediaItems(items.filter((item) => item.mediaType === "audio"), sort), [items, sort]);
+  const tracks = useMemo(() => sortMediaItems(items.filter((item) => item.mediaType === "audio" && (!hideSecureFolder || !secureItemIds.includes(item.id))), sort), [items, sort, secureItemIds, hideSecureFolder]);
   const artists = useMemo(() => groupTracks(tracks, "artist", "person-outline"), [tracks]);
   const albums = useMemo(() => groupTracks(tracks, "album", "album"), [tracks]);
   const folders = useMemo(() => groupFolders(tracks), [tracks]);

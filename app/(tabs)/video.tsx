@@ -26,7 +26,7 @@ const views: { id: VideoView; label: string; icon: keyof typeof MaterialIcons.gl
 export default function VideoScreen() {
   const router = useRouter();
   const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
-  const { items, playlists, importFiles, isRefreshing, refreshDeviceLibrary, addItemToPlaylist, createPlaylist, deleteMediaItems } = useLibrary();
+  const { items, playlists, importFiles, isRefreshing, refreshDeviceLibrary, addItemToPlaylist, createPlaylist, deleteMediaItems, secureItemIds, hideSecureFolder } = useLibrary();
   const { playItem, currentItem, isPlaying } = usePlayer();
   const [view, setView] = useState<VideoView>("grid");
   const [query, setQuery] = useState("");
@@ -37,7 +37,7 @@ export default function VideoScreen() {
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const videos = useMemo(() => sortMediaItems(items.filter((item) => item.mediaType === "video"), sort), [items, sort]);
+  const videos = useMemo(() => sortMediaItems(items.filter((item) => item.mediaType === "video" && (!hideSecureFolder || !secureItemIds.includes(item.id))), sort), [items, sort, secureItemIds, hideSecureFolder]);
   const matchingVideos = useMemo(() => filterMediaItems(videos, query), [query, videos]);
   const folders = useMemo(() => groupMediaFolders(matchingVideos), [matchingVideos]);
   const videoPlaylists = useMemo<VideoPlaylist[]>(() => playlists.map((playlist) => ({
