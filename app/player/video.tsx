@@ -101,6 +101,7 @@ export default function VideoPlayerScreen() {
   const lastBrightnessUpdateRef = useRef(0);
   const lastVolumeUpdateRef = useRef(0);
   const pipActiveOrRequestedRef = useRef(false);
+  const titleHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const compatibilityErrorRef = useRef(false);
   const compatibilityStartedRef = useRef(false);
   const vlcResumeSeekRef = useRef(0);
@@ -125,6 +126,7 @@ export default function VideoPlayerScreen() {
   const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [videoTitleVisible, setVideoTitleVisible] = useState(true);
   const [controlsActivity, setControlsActivity] = useState(0);
   const [controlsLocked, setControlsLocked] = useState(false);
   const [autoRotateEnabled, setAutoRotateEnabled] = useState(true);
@@ -631,6 +633,20 @@ export default function VideoPlayerScreen() {
     const timeout = setTimeout(() => setControlsVisible(false), 3200);
     return () => clearTimeout(timeout);
   }, [controlsActivity, controlsLocked, controlsVisible, fitPanelOpen]);
+
+  useEffect(() => {
+    if (titleHideTimerRef.current) clearTimeout(titleHideTimerRef.current);
+    setVideoTitleVisible(true);
+    if (!currentItem?.id || !isPlaying) return;
+    titleHideTimerRef.current = setTimeout(() => {
+      setVideoTitleVisible(false);
+      titleHideTimerRef.current = null;
+    }, 2400);
+    return () => {
+      if (titleHideTimerRef.current) clearTimeout(titleHideTimerRef.current);
+      titleHideTimerRef.current = null;
+    };
+  }, [currentItem?.id, isPlaying]);
 
   const safeSeekBy = useCallback((seconds: number) => {
     const target = resolveSafeVideoSeek(playbackTime, playbackDuration, seconds);
@@ -1209,6 +1225,25 @@ export default function VideoPlayerScreen() {
             <VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} contentPosition={{ dx: 0, dy: 0 }} surfaceType={displayMode === "hdr" ? "surfaceView" : "textureView"} useExoShutter={false} />
           )}
         </View>
+        {videoTitleVisible ? (
+          <Pressable
+            onPress={() => setVideoTitleVisible((visible) => !visible)}
+            style={styles.videoTitleBar}
+            accessibilityRole="button"
+            accessibilityLabel="إظهار أو إخفاء اسم الفيديو"
+          >
+            <MaterialIcons name="movie" size={18} color={colors.cyan} />
+            <Text numberOfLines={1} ellipsizeMode="middle" style={styles.videoTitleText}>{currentItem.title}</Text>
+            <MaterialIcons name="expand-less" size={17} color={colors.muted} />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => setVideoTitleVisible(true)}
+            style={styles.videoTitleReveal}
+            accessibilityRole="button"
+            accessibilityLabel="إظهار اسم الفيديو"
+          />
+        )}
         <View collapsable={false} {...panResponder.panHandlers} style={styles.gestureSurface} />
         <Pressable onPress={exitVideo} style={styles.persistentBack} accessibilityLabel="العودة إلى مجلد الفيديو"><MaterialIcons name="arrow-forward" size={25} color={colors.text} /></Pressable>
         <Pressable onPress={() => setSubtitlePanelOpen(true)} style={[styles.captionButton, subtitlePanelOpen && styles.captionButtonActive]} accessibilityLabel="فتح إعدادات الترجمة"><MaterialIcons name="closed-caption" size={23} color={subtitlePanelOpen ? colors.background : colors.text} /><Text style={[styles.captionButtonText, subtitlePanelOpen && styles.captionButtonTextActive]}>CC</Text></Pressable>
@@ -1482,6 +1517,9 @@ const styles = StyleSheet.create({
   cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 },
   videoContainer: { position: "absolute" },
   gestureSurface: { ...StyleSheet.absoluteFillObject, zIndex: 1, elevation: 1 },
+  videoTitleBar: { position: "absolute", top: 16, left: 16, right: 126, zIndex: 6, elevation: 6, minHeight: 46, paddingHorizontal: 12, borderRadius: 15, flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "rgba(1, 8, 16, 0.86)", borderWidth: 1, borderColor: "rgba(72, 207, 255, 0.42)", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  videoTitleText: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "900", textAlign: "right" },
+  videoTitleReveal: { position: "absolute", top: 0, left: 0, right: 0, height: 72, zIndex: 4 },
   persistentBack: { position: "absolute", top: 18, right: 16, zIndex: 5, elevation: 5, width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
   captionButton: { position: "absolute", top: 18, right: 68, zIndex: 5, elevation: 5, minWidth: 52, height: 44, paddingHorizontal: 9, borderRadius: 14, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 3, backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
   captionButtonActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
