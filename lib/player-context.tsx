@@ -229,7 +229,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch {
       Alert.alert("تعذّر تشغيل الملف", "تحقق من أن الملف ما زال متاحاً على جهازك ثم حاول مرة أخرى.");
     }
-  }, [attachStatusListener, items, prepareAudioSession, releaseAudioPlayer, releaseVideoPlayer, repeatMode, speed]);
+  }, [attachStatusListener, items, prepareAudioSession, releaseAudioPlayer, repeatMode, speed]);
 
   const togglePlayback = useCallback(() => {
     const player = playerRef.current;
