@@ -133,6 +133,7 @@ export default function VideoPlayerScreen() {
   const [controlsActivity, setControlsActivity] = useState(0);
   const [controlsLocked, setControlsLocked] = useState(false);
   const [autoRotateEnabled, setAutoRotateEnabled] = useState(true);
+  const [manualPortraitRequested, setManualPortraitRequested] = useState(false);
   const [repeatStart, setRepeatStart] = useState<number | null>(null);
   const [repeatEnd, setRepeatEnd] = useState<number | null>(null);
   const [subtitleTrack, setSubtitleTrack] = useState<LocalSubtitleTrack | null>(null);
@@ -209,7 +210,11 @@ export default function VideoPlayerScreen() {
           }
           await ScreenOrientation.unlockAsync();
         } else {
-          await ScreenOrientation.lockAsync(isLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP);
+          await ScreenOrientation.lockAsync(
+            manualPortraitRequested
+              ? ScreenOrientation.OrientationLock.PORTRAIT_UP
+              : ScreenOrientation.OrientationLock.LANDSCAPE,
+          );
         }
       } catch {
         // Orientation control is optional on some Android devices.
@@ -219,7 +224,7 @@ export default function VideoPlayerScreen() {
     return () => {
       void ScreenOrientation.unlockAsync().catch(() => undefined);
     };
-  }, [autoRotateEnabled, isLandscape]);
+  }, [autoRotateEnabled, isLandscape, manualPortraitRequested]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -758,6 +763,7 @@ export default function VideoPlayerScreen() {
   useEffect(() => () => { restoreTemporarySpeed(); }, [restoreTemporarySpeed]);
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => !controlsLocked,
+    onStartShouldSetPanResponderCapture: () => !controlsLocked,
     onMoveShouldSetPanResponder: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
     onMoveShouldSetPanResponderCapture: (_, gesture) => shouldActivateVideoGesture(gesture.dx, gesture.dy, controlsLocked),
     onPanResponderTerminationRequest: () => false,
@@ -1001,7 +1007,11 @@ export default function VideoPlayerScreen() {
   }
 
   const rotateVideo = () => {
-    setAutoRotateEnabled((enabled) => !enabled);
+    setAutoRotateEnabled((enabled) => {
+      const nextEnabled = !enabled;
+      setManualPortraitRequested(!nextEnabled);
+      return nextEnabled;
+    });
   };
   const handleFirstFrame = () => {
     // Orientation is controlled by the toolbar policy and follows the Android sensor.
