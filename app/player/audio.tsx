@@ -26,6 +26,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { usePlayer } from "@/lib/player-context";
 import { useLibrary } from "@/lib/library-context";
 import { resolveAudioThumbnail, saveCustomAudioArtwork } from "@/lib/audio-artwork";
+import { resolveAudioProgressSeek } from "@/lib/audio-progress";
 import {
   getStoredPlayerTheme,
   savePlayerThemeId,
@@ -224,8 +225,7 @@ export default function AudioPlayerScreen() {
           setIsScrubbing(true);
           const barW = progressBarWidth > 0 ? progressBarWidth : 280;
           const localX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
-          const ratio = barW > 0 ? 1 - (localX / barW) : 0;
-          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+          const targetTime = resolveAudioProgressSeek(localX, barW, duration || 0) ?? 0;
 
           audioInitialTouchRef.current = { startX: localX, width: barW };
           scrubbingTimeRef.current = targetTime;
@@ -234,8 +234,7 @@ export default function AudioPlayerScreen() {
         onPanResponderMove: (_evt, gestureState) => {
           const { startX, width: barW } = audioInitialTouchRef.current;
           const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
-          const ratio = barW > 0 ? 1 - (currentX / barW) : 0;
-          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+          const targetTime = resolveAudioProgressSeek(currentX, barW, duration || 0) ?? 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
@@ -243,8 +242,7 @@ export default function AudioPlayerScreen() {
         onPanResponderRelease: (_evt, gestureState) => {
           const { startX, width: barW } = audioInitialTouchRef.current;
           const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
-          const ratio = barW > 0 ? 1 - (currentX / barW) : 0;
-          const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
+          const targetTime = resolveAudioProgressSeek(currentX, barW, duration || 0) ?? 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);

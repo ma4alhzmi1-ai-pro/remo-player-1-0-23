@@ -884,9 +884,8 @@ export default function VideoPlayerScreen() {
 
           const trackW = progressTrackWidth.current > 0 ? progressTrackWidth.current : 320;
           const localX = Math.max(0, Math.min(trackW, event.nativeEvent.locationX));
-          const fraction = trackW > 0 ? 1 - (localX / trackW) : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(2))));
+          const target = resolveVideoProgressSeek(localX, trackW, dur) ?? 0;
 
           videoInitialTouchRef.current = { startX: localX, width: trackW };
           videoScrubbingTimeRef.current = target;
@@ -896,9 +895,8 @@ export default function VideoPlayerScreen() {
           revealControls();
           const { startX, width: trackW } = videoInitialTouchRef.current;
           const currentX = Math.max(0, Math.min(trackW, startX + gestureState.dx));
-          const fraction = trackW > 0 ? 1 - (currentX / trackW) : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(2))));
+          const target = resolveVideoProgressSeek(currentX, trackW, dur) ?? 0;
 
           videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);
@@ -906,9 +904,8 @@ export default function VideoPlayerScreen() {
         onPanResponderRelease: (_event, gestureState) => {
           const { startX, width: trackW } = videoInitialTouchRef.current;
           const currentX = Math.max(0, Math.min(trackW, startX + gestureState.dx));
-          const fraction = trackW > 0 ? 1 - (currentX / trackW) : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(2))));
+          const target = resolveVideoProgressSeek(currentX, trackW, dur) ?? 0;
 
           videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);
