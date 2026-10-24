@@ -39,9 +39,9 @@ export default function ConverterScreen() {
   const { playItem } = usePlayer();
   const { refreshDeviceLibrary } = useLibrary();
 
-  // Mode: "audio" (Video to Audio) or "video" (Video to MP4)
+  // صفحة موحدة: استخراج الصوت أو تحويل الصيغ غير المدعومة إلى MP4.
   const [activeTab, setActiveTab] = useState<"audio" | "video">(
-    params.mode === "video" ? "video" : "audio"
+    params.mode === "audio" ? "audio" : "video"
   );
 
   // Audio configuration state
@@ -231,9 +231,7 @@ export default function ConverterScreen() {
         >
           <MaterialIcons name="arrow-forward" size={24} color={colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>
-          {activeTab === "audio" ? "تحويل الفيديو إلى صوت" : "محول صيغ الفيديو"}
-        </Text>
+        <Text style={styles.headerTitle}>محول الفيديو</Text>
         <View style={{ width: 40 }} />
       </View>
 

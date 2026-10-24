@@ -2,7 +2,6 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import * as DocumentPicker from "expo-document-picker";
 
 import { Artwork, colors, EmptyState, formatDuration, MediaRow } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -22,24 +21,6 @@ export default function HomeScreen() {
   const openItem = async (item: (typeof items)[number]) => {
     await playItem(item, items.filter((candidate) => candidate.mediaType === item.mediaType));
     router.push(item.mediaType === "video" ? ("/player/video" as never) : ("/player/audio" as never));
-  };
-
-  // Upload & pick file directly from home screen for MP4 conversion
-  const pickAndOpenConverter = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ["video/*", "*/*"],
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-      const asset = result.assets[0];
-      router.push({
-        pathname: "/converter",
-        params: { uri: asset.uri, name: asset.name },
-      } as never);
-    } catch {
-      router.push("/converter" as never);
-    }
   };
 
   useEffect(() => {
@@ -69,10 +50,6 @@ export default function HomeScreen() {
           <Pressable onPress={() => void importFiles()} style={({ pressed }) => [styles.secondaryImport, pressed && styles.pressed]}>
             <MaterialIcons name="file-open" size={18} color={colors.cyan} />
             <Text style={styles.secondaryImportText}>استيراد ملفات</Text>
-          </Pressable>
-          <Pressable onPress={() => void pickAndOpenConverter()} style={({ pressed }) => [styles.secondaryConvert, pressed && styles.pressed]}>
-            <MaterialIcons name="cloud-upload" size={18} color="#04121F" />
-            <Text style={styles.secondaryConvertText}>رفع وتحويل فيديو إلى MP4</Text>
           </Pressable>
         </View>
         <Pressable onPress={() => router.push("/converter" as never)} style={styles.converterFab}>
@@ -112,65 +89,11 @@ export default function HomeScreen() {
           </Pressable>
         ) : null}
 
-        {/* Navigation / Stats Row: Music, Video, and Converter right alongside each other */}
+        {/* Navigation / Stats Row: Music, Video, and Library */}
         <View style={styles.statsRow}>
           <StatCard icon="library-music" label="مشغل الصوت" value={audioCount} onPress={() => router.push("/music" as never)} />
           <StatCard icon="movie" label="مشغل الفيديو" value={videoCount} onPress={() => router.push("/video" as never)} />
-          <StatCard icon="transform" label="تحويل الصيغ" value="MP4" highlight onPress={() => router.push("/converter" as never)} />
           <StatCard icon="folder-open" label="إضافة" value="+" onPress={() => void importFiles()} />
-        </View>
-
-        {/* Quick Video to Audio Converter Card */}
-        <View style={[styles.quickConverterCard, { borderColor: "#1A5C4D", backgroundColor: "#0C2320" }]}>
-          <View style={styles.quickConverterHeader}>
-            <View style={[styles.quickConverterBadge, { backgroundColor: "rgba(78, 222, 128, 0.15)" }]}>
-              <MaterialIcons name="audiotrack" size={14} color="#4ADE80" />
-              <Text style={[styles.quickConverterBadgeText, { color: "#4ADE80" }]}>تحويل الفيديو إلى صوت</Text>
-            </View>
-            <Text style={styles.quickConverterTitle}>استخراج الصوت بجميع الصيغ والجودات</Text>
-            <Text style={styles.quickConverterDesc}>
-              حوّل أي فيديو إلى ملف صوتي عالي النقاء (MP3, M4A, AAC, FLAC, WAV...) وحدد الجودة والتردد بدقة وحفظه بالهاتف.
-            </Text>
-          </View>
-          <View style={styles.quickConverterActions}>
-            <Pressable
-              onPress={() => router.push("/converter?mode=audio" as never)}
-              style={({ pressed }) => [styles.quickUploadBtn, { backgroundColor: "#4ADE80" }, pressed && styles.pressed]}
-            >
-              <MaterialIcons name="music-note" size={20} color="#04121F" />
-              <Text style={styles.quickUploadBtnText}>تحويل فيديو إلى صوت الآن</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Quick Video Converter Card with Direct File Upload Button */}
-        <View style={styles.quickConverterCard}>
-          <View style={styles.quickConverterHeader}>
-            <View style={styles.quickConverterBadge}>
-              <MaterialIcons name="auto-fix-high" size={14} color={colors.cyan} />
-              <Text style={styles.quickConverterBadgeText}>تحويل الصيغ غير المشغلة إلى MP4</Text>
-            </View>
-            <Text style={styles.quickConverterTitle}>محول صيغ الفيديو (FLV, MP5, MVR, DVD...)</Text>
-            <Text style={styles.quickConverterDesc}>
-              هل لديك مقطع بصيغة لا تعمل؟ ارفع الملف لتحويله إلى MP4 القياسي وحفظه تلقائياً في ذاكرة هاتفك.
-            </Text>
-          </View>
-          <View style={styles.quickConverterActions}>
-            <Pressable
-              onPress={() => void pickAndOpenConverter()}
-              style={({ pressed }) => [styles.quickUploadBtn, pressed && styles.pressed]}
-            >
-              <MaterialIcons name="cloud-upload" size={20} color="#04121F" />
-              <Text style={styles.quickUploadBtnText}>رفع ملف للتحويل إلى MP4</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.push("/converter?mode=video" as never)}
-              style={({ pressed }) => [styles.quickOpenBtn, pressed && styles.pressed]}
-            >
-              <MaterialIcons name="tune" size={18} color={colors.cyan} />
-              <Text style={styles.quickOpenBtnText}>صفحة المحول</Text>
-            </Pressable>
-          </View>
         </View>
 
         {/* Recent Media List */}
@@ -266,89 +189,6 @@ const styles = StyleSheet.create({
   statValue: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "900" },
   statValueHighlight: { color: colors.cyan },
   statLabel: { color: colors.muted, fontSize: 11, lineHeight: 16, textAlign: "center" },
-  quickConverterCard: {
-    marginHorizontal: 16,
-    marginTop: 14,
-    borderRadius: 20,
-    backgroundColor: "#102334",
-    borderWidth: 1,
-    borderColor: "#1E4C6E",
-    padding: 16,
-  },
-  quickConverterHeader: {
-    alignItems: "flex-end",
-    marginBottom: 12,
-  },
-  quickConverterBadge: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(117, 230, 218, 0.12)",
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    marginBottom: 6,
-  },
-  quickConverterBadgeText: {
-    color: colors.cyan,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  quickConverterTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "900",
-    textAlign: "right",
-    marginBottom: 4,
-  },
-  quickConverterDesc: {
-    color: "#B4C8DB",
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: "right",
-  },
-  quickConverterActions: {
-    flexDirection: "row-reverse",
-    gap: 8,
-    alignItems: "center",
-  },
-  quickUploadBtn: {
-    flex: 1,
-    backgroundColor: colors.cyan,
-    minHeight: 44,
-    borderRadius: 12,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    shadowColor: colors.cyan,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  quickUploadBtnText: {
-    color: "#04121F",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  quickOpenBtn: {
-    backgroundColor: "#152E44",
-    minHeight: 44,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "#235B82",
-  },
-  quickOpenBtnText: {
-    color: colors.cyan,
-    fontSize: 12,
-    fontWeight: "800",
-  },
   sectionHeader: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 18, marginTop: 22, marginBottom: 9 },
   sectionTitle: { color: colors.text, fontSize: 17, lineHeight: 24, fontWeight: "900" },
   sectionHint: { color: colors.muted, fontSize: 12 },
@@ -373,17 +213,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#0F263A",
   },
   secondaryImportText: { color: colors.cyan, fontSize: 13, fontWeight: "800" },
-  secondaryConvert: {
-    flex: 1.3,
-    minHeight: 46,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    flexDirection: "row-reverse",
-    backgroundColor: colors.cyan,
-  },
-  secondaryConvertText: { color: "#04121F", fontSize: 13, fontWeight: "900" },
   converterFab: {
     position: "absolute",
     bottom: 20,
