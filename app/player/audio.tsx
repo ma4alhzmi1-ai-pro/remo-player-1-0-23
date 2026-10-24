@@ -224,7 +224,7 @@ export default function AudioPlayerScreen() {
           setIsScrubbing(true);
           const barW = progressBarWidth > 0 ? progressBarWidth : 280;
           const localX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
-          const ratio = barW > 0 ? localX / barW : 0;
+          const ratio = barW > 0 ? 1 - (localX / barW) : 0;
           const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
 
           audioInitialTouchRef.current = { startX: localX, width: barW };
@@ -234,7 +234,7 @@ export default function AudioPlayerScreen() {
         onPanResponderMove: (_evt, gestureState) => {
           const { startX, width: barW } = audioInitialTouchRef.current;
           const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
-          const ratio = barW > 0 ? currentX / barW : 0;
+          const ratio = barW > 0 ? 1 - (currentX / barW) : 0;
           const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
 
           scrubbingTimeRef.current = targetTime;
@@ -243,7 +243,7 @@ export default function AudioPlayerScreen() {
         onPanResponderRelease: (_evt, gestureState) => {
           const { startX, width: barW } = audioInitialTouchRef.current;
           const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
-          const ratio = barW > 0 ? currentX / barW : 0;
+          const ratio = barW > 0 ? 1 - (currentX / barW) : 0;
           const targetTime = Math.max(0, Math.min(duration || 0, Number((ratio * (duration || 0)).toFixed(2))));
 
           scrubbingTimeRef.current = targetTime;
@@ -725,12 +725,12 @@ export default function AudioPlayerScreen() {
                 {...progressResponder.panHandlers}
               >
                 <View style={styles.progressTrack} pointerEvents="none">
-                  <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                  <View style={[styles.progressFill, { width: `${progressPercent}%`, right: 0 }]} />
                   <View
                     style={[
                       styles.progressThumb,
                       isScrubbing && styles.progressThumbActive,
-                      { left: `${progressPercent}%` },
+                      { right: `${progressPercent}%` },
                     ]}
                   />
                 </View>
@@ -1437,6 +1437,8 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   progressFill: {
+    position: "absolute",
+    right: 0,
     height: "100%",
     backgroundColor: "#00F2FE",
     borderRadius: 3,
@@ -1448,7 +1450,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     backgroundColor: "#00F2FE",
-    marginLeft: -9,
+    marginRight: -9,
     elevation: 6,
     shadowColor: "#00F2FE",
     shadowOffset: { width: 0, height: 2 },
@@ -1462,7 +1464,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    marginLeft: -12,
+    marginRight: -12,
     borderWidth: 3,
     borderColor: "#FFFFFF",
     elevation: 8,
@@ -1489,6 +1491,7 @@ const styles = StyleSheet.create({
   // Bottom Playback Controls Row (Exact sequence from screenshot)
   playbackControlsRow: {
     flexDirection: "row",
+    direction: "ltr",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 18,

@@ -100,6 +100,8 @@ export default function VideoPlayerScreen() {
   const volumeRef = useRef(1);
   const lastBrightnessUpdateRef = useRef(0);
   const lastVolumeUpdateRef = useRef(0);
+  const volumeWriteSerialRef = useRef(0);
+  const brightnessWriteSerialRef = useRef(0);
   const pipActiveOrRequestedRef = useRef(false);
   const titleHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const compatibilityErrorRef = useRef(false);
@@ -125,7 +127,7 @@ export default function VideoPlayerScreen() {
   const [sourceAspect, setSourceAspect] = useState<number | null>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [videoTitleVisible, setVideoTitleVisible] = useState(true);
   const [controlsActivity, setControlsActivity] = useState(0);
   const [controlsLocked, setControlsLocked] = useState(false);
@@ -211,6 +213,14 @@ export default function VideoPlayerScreen() {
       void ScreenOrientation.unlockAsync().catch(() => undefined);
     };
   }, [autoRotateEnabled, isLandscape]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    // عند تغيير اتجاه الهاتف نُبقي أدوات المشغل ظاهرة حتى يستطيع المستخدم
+    // الوصول إلى زر التدوير وباقي عناصر التحكم في الوضعين الرأسي والأفقي.
+    setControlsVisible(true);
+    setControlsActivity((activity) => activity + 1);
+  }, [isLandscape]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -763,7 +773,11 @@ export default function VideoPlayerScreen() {
           const now = Date.now();
           if (now - lastBrightnessUpdateRef.current >= 70) {
             lastBrightnessUpdateRef.current = now;
-            void Brightness.setBrightnessAsync(nextBrightness).catch(() => undefined);
+            const request = ++brightnessWriteSerialRef.current;
+            void Brightness.setBrightnessAsync(nextBrightness).catch(() => undefined).then(() => {
+              if (request !== brightnessWriteSerialRef.current) return;
+              localBrightnessRef.current = nextBrightness;
+            });
           }
         }
       }
@@ -776,11 +790,15 @@ export default function VideoPlayerScreen() {
           const now = Date.now();
           if (now - lastVolumeUpdateRef.current >= 70) {
             lastVolumeUpdateRef.current = now;
+            const request = ++volumeWriteSerialRef.current;
             void setSystemMusicVolume(nextVolume).then((systemVolume) => {
+              if (request !== volumeWriteSerialRef.current) return;
               if (systemVolume === null) {
                 player.volume = nextVolume;
                 return;
               }
+              // Android يعيد القيمة الفعلية بعد تقريبها إلى درجات مستوى الصوت.
+              // لا نسمح لطلبات أقدم بإرجاع HUD إلى قيمة خاطئة.
               player.volume = 1;
               volumeRef.current = systemVolume;
               setVolume(systemVolume);
@@ -854,7 +872,7 @@ export default function VideoPlayerScreen() {
 
           const trackW = progressTrackWidth.current > 0 ? progressTrackWidth.current : 320;
           const localX = Math.max(0, Math.min(trackW, event.nativeEvent.locationX));
-          const fraction = trackW > 0 ? localX / trackW : 0;
+          const fraction = trackW > 0 ? 1 - (localX / trackW) : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
           const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(2))));
 
@@ -866,7 +884,7 @@ export default function VideoPlayerScreen() {
           revealControls();
           const { startX, width: trackW } = videoInitialTouchRef.current;
           const currentX = Math.max(0, Math.min(trackW, startX + gestureState.dx));
-          const fraction = trackW > 0 ? currentX / trackW : 0;
+          const fraction = trackW > 0 ? 1 - (currentX / trackW) : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
           const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(2))));
 
@@ -876,7 +894,7 @@ export default function VideoPlayerScreen() {
         onPanResponderRelease: (_event, gestureState) => {
           const { startX, width: trackW } = videoInitialTouchRef.current;
           const currentX = Math.max(0, Math.min(trackW, startX + gestureState.dx));
-          const fraction = trackW > 0 ? currentX / trackW : 0;
+          const fraction = trackW > 0 ? 1 - (currentX / trackW) : 0;
           const dur = playbackDuration || currentItem?.duration || 0;
           const target = Math.max(0, Math.min(dur, Number((dur * fraction).toFixed(2))));
 
@@ -1329,7 +1347,7 @@ export default function VideoPlayerScreen() {
               <View style={[styles.progressTrack, isScrubbing && styles.progressTrackActive]} pointerEvents="none">
                 <View style={styles.progressTrackBase} />
                 <View style={[styles.progressFill, { width: `${progress}%` }]} />
-                <View style={[styles.progressThumb, isScrubbing && styles.progressThumbActive, { right: `${Math.max(0, Math.min(100, 100 - progress))}%` }]} />
+                <View style={[styles.progressThumb, isScrubbing && styles.progressThumbActive, { right: `${Math.max(0, Math.min(100, progress))}%` }]} />
               </View>
             </View>
             <View style={styles.progressWrap}><Text style={styles.time}>{formatDuration(effectivePlaybackTime)}</Text><Text style={styles.time}>{formatDuration(playbackDuration || currentItem.duration)}</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickIcons}><Pressable onPress={exitVideo} style={styles.quickIcon} accessibilityLabel="العودة للفيديوهات"><MaterialIcons name="arrow-forward" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(-videoSettings.seekInterval)} style={styles.quickIcon} accessibilityLabel="تأخير عشر ثوان"><MaterialIcons name="replay-10" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={20} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={styles.quickIcon} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={22} color={colors.text} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.quickIcon} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={20} color={colors.text} /></Pressable><Pressable onPress={() => safeSeekBy(videoSettings.seekInterval)} style={styles.quickIcon} accessibilityLabel="تقديم عشر ثوان"><MaterialIcons name="forward-10" size={20} color={colors.text} /></Pressable><Pressable onPress={toggleBackgroundAudio} style={[styles.quickIcon, backgroundPlaybackEnabled && styles.quickIconActive]} accessibilityLabel={backgroundPlaybackEnabled ? "تشغيل الفيديو كصوت بالخلفية: مفعل" : "تشغيل الفيديو بالخلفية: معطل"}><MaterialIcons name="headset" size={20} color={backgroundPlaybackEnabled ? colors.background : colors.text} /></Pressable>{topActions.map((action) => <Pressable key={action.label} onPress={action.onPress} style={({ pressed }) => [styles.topAction, action.active && styles.topActionActive, pressed && styles.dimmed]}><MaterialIcons name={action.icon} size={17} color={action.active ? colors.background : colors.text} /><Text style={[styles.topActionText, action.active && styles.topActionTextActive]}>{action.label}</Text></Pressable>)}<Pressable onPress={() => setFitPanelOpen(true)} style={[styles.quickIcon, fitPanelOpen && styles.quickIconActive]} accessibilityLabel="احتواء وتمدد ونسب العرض"><MaterialIcons name="aspect-ratio" size={20} color={fitPanelOpen ? colors.background : colors.text} /></Pressable><Pressable onPress={cycleSpeed} style={styles.quickIcon}><Text style={styles.quickSpeed}>{speed}×</Text></Pressable><Pressable onPress={rotateVideo} style={[styles.quickIcon, autoRotateEnabled && styles.quickIconActive]} accessibilityLabel={autoRotateEnabled ? "التدوير التلقائي مفعل" : "التدوير التلقائي متوقف"}><MaterialIcons name="screen-rotation" size={20} color={autoRotateEnabled ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setControlsLocked((locked) => !locked)} style={[styles.quickIcon, controlsLocked && styles.quickIconActive]}><MaterialIcons name={controlsLocked ? "lock" : "lock-open"} size={20} color={controlsLocked ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setNightMode((enabled) => !enabled)} style={[styles.quickIcon, nightMode && styles.quickIconActive]} accessibilityLabel="الوضع الليلي"><MaterialIcons name="dark-mode" size={20} color={nightMode ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleMute} style={[styles.quickIcon, muted && styles.quickIconActive]}><MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} /></Pressable><Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, mirrored && styles.quickIconActive]}><MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} /></Pressable><Pressable onPress={toggleRepeat} style={[styles.quickIcon, repeatMode !== "off" && styles.quickIconActive]} accessibilityLabel={repeatMode === "off" ? "تكرار متوقف" : repeatMode === "one" ? "تكرار مقطع واحد" : "تكرار الكل"}><MaterialIcons name={repeatIcon} size={20} color={repeatMode !== "off" ? colors.background : colors.text} /></Pressable><Pressable onPress={setAbPoint} style={[styles.quickIcon, repeatStart !== null && styles.quickIconActive]}><MaterialIcons name="loop" size={20} color={repeatStart !== null ? colors.background : colors.text} /></Pressable></ScrollView></View></View></View> : null}
@@ -1602,7 +1620,7 @@ const styles = StyleSheet.create({
   retryButton: { minHeight: 38, paddingHorizontal: 16, borderRadius: 12, backgroundColor: "#FECACA", alignItems: "center", justifyContent: "center" },
   retryText: { color: "#7F1D1D", fontSize: 12, fontWeight: "900" },
   volumeText: { color: colors.text, fontSize: 14, fontWeight: "900" },
-  centerTransport: { position: "absolute", top: "43%", alignSelf: "center", zIndex: 3, elevation: 3, flexDirection: "row-reverse", alignItems: "center", gap: 12 },
+  centerTransport: { position: "absolute", top: "43%", alignSelf: "center", zIndex: 3, elevation: 3, flexDirection: "row", alignItems: "center", gap: 12 },
   centerControl: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
   centerPlay: { width: 70, height: 70, borderRadius: 35, backgroundColor: colors.cyan, borderColor: colors.cyan },
   centerBack: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
@@ -1677,10 +1695,10 @@ const styles = StyleSheet.create({
   progressTrack: { height: 8, borderRadius: 5, position: "relative", justifyContent: "center", shadowColor: colors.cyan, shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 3 },
   progressTrackBase: { ...StyleSheet.absoluteFillObject, borderRadius: 5, backgroundColor: "rgba(255,255,255,0.2)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
   progressTrackActive: { height: 10, borderRadius: 6 },
-  progressFill: { height: "100%", borderRadius: 5, backgroundColor: colors.cyan, shadowColor: colors.cyan, shadowOpacity: 0.85, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 4 },
+  progressFill: { position: "absolute", right: 0, height: "100%", borderRadius: 5, backgroundColor: colors.cyan, shadowColor: colors.cyan, shadowOpacity: 0.85, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 4 },
   progressThumb: { position: "absolute", top: -5, marginRight: -7, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.cyan, borderWidth: 2, borderColor: "#FFFFFF", shadowColor: colors.cyan, shadowOpacity: 0.9, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 7 },
   progressThumbActive: { width: 24, height: 24, top: -7, marginRight: -10, borderRadius: 12, borderWidth: 3 },
-  quickIcons: { marginTop: 10, flexDirection: "row-reverse", justifyContent: "flex-start", gap: 6, paddingHorizontal: 1 },
+  quickIcons: { marginTop: 10, flexDirection: "row", justifyContent: "flex-start", gap: 6, paddingHorizontal: 1 },
   quickIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "rgba(8,17,31,0.79)", borderWidth: 1, borderColor: "rgba(255,255,255,0.11)", alignItems: "center", justifyContent: "center" },
   quickIconActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
   quickSpeed: { color: colors.text, fontSize: 10, fontWeight: "900" },
