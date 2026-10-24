@@ -102,6 +102,7 @@ export default function VideoPlayerScreen() {
   const lastVolumeUpdateRef = useRef(0);
   const volumeWriteSerialRef = useRef(0);
   const brightnessWriteSerialRef = useRef(0);
+  const initialLandscapeAppliedRef = useRef(false);
   const pipActiveOrRequestedRef = useRef(false);
   const titleHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const compatibilityErrorRef = useRef(false);
@@ -200,6 +201,12 @@ export default function VideoPlayerScreen() {
     const applyOrientationPolicy = async () => {
       try {
         if (autoRotateEnabled) {
+          // يبدأ المشغل أفقياً مرة واحدة، ثم يعود إلى حساس الاتجاه.
+          if (!initialLandscapeAppliedRef.current && !isLandscape) {
+            initialLandscapeAppliedRef.current = true;
+            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+            return;
+          }
           await ScreenOrientation.unlockAsync();
         } else {
           await ScreenOrientation.lockAsync(isLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP);
@@ -721,6 +728,11 @@ export default function VideoPlayerScreen() {
     setControlsVisible(true);
     setControlsActivity((activity) => activity + 1);
   }, []);
+  const toggleControls = useCallback(() => {
+    if (controlsLocked) return;
+    setControlsVisible((visible) => !visible);
+    setControlsActivity((activity) => activity + 1);
+  }, [controlsLocked]);
   const restoreTemporarySpeed = useCallback(() => {
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = null;
@@ -814,10 +826,10 @@ export default function VideoPlayerScreen() {
       if (action?.type === "seek") safeSeekBy(action.seconds);
       if (action?.type === "volume") setVolumeHud(true);
       if (action?.type === "brightness") setBrightnessHud(true);
-      if (!action && !wasTemporarySpeed) { setControlsVisible((visible) => !visible); setControlsActivity((activity) => activity + 1); }
+      if (!action && !wasTemporarySpeed) toggleControls();
     },
     onPanResponderTerminate: restoreTemporarySpeed,
-  }), [controlsLocked, mediaSurfaceHeight, player, revealControls, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, width]);
+  }), [controlsLocked, mediaSurfaceHeight, player, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, toggleControls, width]);
   const updateProgressTrackLayout = useCallback(() => {
     progressTouchRef.current?.measure((_x, _y, width, _height, pageX) => {
       if (width > 0) {
@@ -1245,7 +1257,7 @@ export default function VideoPlayerScreen() {
         </View>
         {videoTitleVisible ? (
           <Pressable
-            onPress={() => setVideoTitleVisible((visible) => !visible)}
+            onPress={() => { setVideoTitleVisible((visible) => !visible); toggleControls(); }}
             style={styles.videoTitleBar}
             accessibilityRole="button"
             accessibilityLabel="إظهار أو إخفاء اسم الفيديو"
@@ -1256,7 +1268,7 @@ export default function VideoPlayerScreen() {
           </Pressable>
         ) : (
           <Pressable
-            onPress={() => setVideoTitleVisible(true)}
+            onPress={() => { setVideoTitleVisible(true); toggleControls(); }}
             style={styles.videoTitleReveal}
             accessibilityRole="button"
             accessibilityLabel="إظهار اسم الفيديو"
