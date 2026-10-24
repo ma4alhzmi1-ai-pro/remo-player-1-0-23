@@ -73,7 +73,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [videoBackgroundUri, setVideoBackgroundUri] = useState<string | null>(null);
   const [miniPlayerVisible, setMiniPlayerVisible] = useState(false);
   const videoPlayer = useVideoPlayer(null, (player) => {
-    player.staysActiveInBackground = false;
+    // يجب تجهيز مشغل الفيديو لجلسة الخلفية منذ إنشائه؛ تفعيله بعد قفل الشاشة
+    // قد يكون متأخراً على بعض إصدارات Android فيتوقف التشغيل فجأة.
+    player.staysActiveInBackground = true;
     player.showNowPlayingNotification = false;
     player.audioMixingMode = "duckOthers";
     player.preservesPitch = true;
@@ -181,7 +183,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         releaseAudioPlayer();
         releaseVideoPlayer();
         setMiniPlayerVisible(false);
-        await prepareAudioSession(false);
+        // خيار المستخدم يقرر الإيقاف عند انتقال التطبيق للخلفية، لكن جلسة
+        // الصوت نفسها يجب أن تبقى مهيأة حتى لا يوقف Android المشغل قسراً.
+        await prepareAudioSession(true);
         currentItemRef.current = item;
         setCurrentItem(item);
         setCurrentTime(0);
