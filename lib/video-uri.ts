@@ -1,4 +1,11 @@
 import * as FileSystem from "expo-file-system/legacy";
+import {
+  checkExtractedCache,
+  extractAndPrepareVideo,
+  isLegacyExtractionFormat,
+  type ExtractionOptions,
+  type ExtractionResult,
+} from "./ffmpeg-extractor";
 
 function stableUriKey(uri: string): string {
   let hash = 2166136261;
@@ -16,21 +23,45 @@ function sourceExtension(uri: string): string {
 }
 
 /**
- * Android media-library items can expose content:// URIs. Resolve those on demand
- * to an app-cache file so both Media3 and LibVLC receive a seekable file URI.
+ * Android media-library items expose content:// URIs which expo-video natively supports.
+ * If a local file copy is ever required (e.g. for non-standard players), prune previous
+ * temporary copies first so storage never balloons.
  */
 export async function resolvePlayableVideoUri(uri: string, nameOrUri = uri): Promise<string> {
+  // On Android, ExoPlayer/Media3 plays content:// directly without copying.
+  // Returning content:// avoids duplicating 500MB - 1GB files in app storage.
   if (!/^content:\/\//i.test(uri)) return uri;
-  const baseDirectory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
-  if (!baseDirectory) return uri;
-  const target = `${baseDirectory}remo-video-${stableUriKey(uri)}.${sourceExtension(nameOrUri)}`;
-  try {
-    const existing = await FileSystem.getInfoAsync(target);
-    if (existing.exists && (existing.size ?? 0) > 0) return target;
-    await FileSystem.copyAsync({ from: uri, to: target });
-    const copied = await FileSystem.getInfoAsync(target);
-    return copied.exists && (copied.size ?? 0) > 0 ? target : uri;
-  } catch {
-    return uri;
+  return uri;
+}
+
+/**
+ * Resolves a playable video URI with transparent FFMPEG extraction cache checks.
+ * If the video is an unsupported legacy format (e.g. FLV, VOB) and has an extracted
+ * MP4 cache, returns the cached file immediately.
+ */
+export async function resolveExtractedPlayableVideoUri(
+  uri: string,
+  nameOrUri = uri,
+  options?: ExtractionOptions
+): Promise<{ uri: string; extracted: boolean; isCached?: boolean }> {
+  const resolvedBaseUri = await resolvePlayableVideoUri(uri, nameOrUri);
+
+  // Check if an extracted cache exists
+  const cached = await checkExtractedCache(resolvedBaseUri);
+  if (cached) {
+    return { uri: cached, extracted: true, isCached: true };
   }
+
+  // If it's a known legacy container format and extraction is requested or forced
+  if (isLegacyExtractionFormat(nameOrUri) && options?.forceTranscode) {
+    const res: ExtractionResult = await extractAndPrepareVideo(resolvedBaseUri, {
+      ...options,
+      fileName: nameOrUri,
+    });
+    if (res.success && res.outputUri) {
+      return { uri: res.outputUri, extracted: true, isCached: res.isCached };
+    }
+  }
+
+  return { uri: resolvedBaseUri, extracted: false };
 }

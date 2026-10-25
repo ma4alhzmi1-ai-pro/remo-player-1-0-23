@@ -12,7 +12,7 @@ import { usePlayer } from "@/lib/player-context";
 export default function HomeScreen() {
   const router = useRouter();
   const { items, isReady, importFiles, isRefreshing, refreshDeviceLibrary } = useLibrary();
-  const { currentItem, playItem } = usePlayer();
+  const { currentItem, playItem, isPlaying } = usePlayer();
   const updateCheckStarted = useRef(false);
   const latest = items.slice(0, 4);
   const audioCount = items.filter((item) => item.mediaType === "audio").length;
@@ -20,7 +20,7 @@ export default function HomeScreen() {
 
   const openItem = async (item: (typeof items)[number]) => {
     await playItem(item, items.filter((candidate) => candidate.mediaType === item.mediaType));
-    router.push(item.mediaType === "video" ? "/player/video" as never : "/player/audio" as never);
+    router.push(item.mediaType === "video" ? ("/player/video" as never) : ("/player/audio" as never));
   };
 
   useEffect(() => {
@@ -42,13 +42,19 @@ export default function HomeScreen() {
         <EmptyState
           icon="perm-media"
           title="مكتبتك جاهزة"
-          description="امنح الإذن لفهرسة موسيقاك وفيديوهاتك أو استورد الملفات التي تريد تشغيلها."
+          description="امنح الإذن لفهرسة موسيقاك وفيديوهاتك أو استورد وحوّل الملفات التي تريد تشغيلها."
           actionLabel={isRefreshing ? "جارِ الفهرسة..." : "فهرسة وسائط الجهاز"}
           onAction={() => void refreshDeviceLibrary()}
         />
-        <Pressable onPress={() => void importFiles()} style={({ pressed }) => [styles.secondaryImport, pressed && styles.pressed]}>
-          <MaterialIcons name="file-open" size={20} color={colors.cyan} />
-          <Text style={styles.secondaryImportText}>استيراد ملفات محددة</Text>
+        <View style={styles.emptyActionRow}>
+          <Pressable onPress={() => void importFiles()} style={({ pressed }) => [styles.secondaryImport, pressed && styles.pressed]}>
+            <MaterialIcons name="file-open" size={18} color={colors.cyan} />
+            <Text style={styles.secondaryImportText}>استيراد ملفات</Text>
+          </Pressable>
+        </View>
+        <Pressable onPress={() => router.push("/converter" as never)} style={styles.converterFab}>
+          <MaterialIcons name="transform" size={20} color={colors.cyan} />
+          <Text style={styles.converterFabText}>محول الفيديو</Text>
         </Pressable>
       </ScreenContainer>
     );
@@ -63,38 +69,99 @@ export default function HomeScreen() {
           <View style={styles.heroCopy}>
             <Text style={styles.heroEyebrow}>REMO PLAYER</Text>
             <Text style={styles.heroTitle}>{currentItem ? "استمر من حيث توقفت" : "كل وسائطك في مكان واحد"}</Text>
-            <Text numberOfLines={2} style={styles.heroSubtitle}>{currentItem ? currentItem.title : "نظّم مكتبتك، شغّل ملفاتك، واستمتع بتجربة تحكم واضحة."}</Text>
+            <Text numberOfLines={2} style={styles.heroSubtitle}>
+              {currentItem ? currentItem.title : "نظّم مكتبتك، شغّل ملفاتك، وحوّل الصيغ القديمة بسهولة."}
+            </Text>
           </View>
           {currentItem ? <Artwork item={currentItem} size={78} /> : <Image source={require("@/assets/images/icon.png")} style={styles.appIcon} />}
         </View>
+
         {currentItem ? (
           <Pressable onPress={() => void openItem(currentItem)} style={({ pressed }) => [styles.continueCard, pressed && styles.pressed]}>
-            <View style={styles.continueIcon}><MaterialIcons name={currentItem.mediaType === "video" ? "play-arrow" : "equalizer"} size={22} color={colors.background} /></View>
-            <View style={styles.continueText}><Text numberOfLines={1} style={styles.continueTitle}>{currentItem.title}</Text><Text style={styles.continueMeta}>{currentItem.mediaType === "video" ? "فيديو" : "موسيقى"} · {formatDuration(currentItem.duration)}</Text></View>
+            <View style={styles.continueIcon}>
+              <MaterialIcons name={currentItem.mediaType === "video" ? "play-arrow" : "equalizer"} size={22} color={colors.background} />
+            </View>
+            <View style={styles.continueText}>
+              <Text numberOfLines={1} style={styles.continueTitle}>{currentItem.title}</Text>
+              <Text style={styles.continueMeta}>{currentItem.mediaType === "video" ? "فيديو" : "موسيقى"} · {formatDuration(currentItem.duration)}</Text>
+            </View>
             <MaterialIcons name="chevron-left" size={22} color={colors.muted} />
           </Pressable>
         ) : null}
+
+        {/* Navigation / Stats Row: Music, Video, and Library */}
         <View style={styles.statsRow}>
-          <StatCard icon="library-music" label="أغنية" value={audioCount} onPress={() => router.push("/music" as never)} />
-          <StatCard icon="movie" label="فيديو" value={videoCount} onPress={() => router.push("/video" as never)} />
+          <StatCard icon="library-music" label="مشغل الصوت" value={audioCount} onPress={() => router.push("/music" as never)} />
+          <StatCard icon="movie" label="مشغل الفيديو" value={videoCount} onPress={() => router.push("/video" as never)} />
           <StatCard icon="folder-open" label="إضافة" value="+" onPress={() => void importFiles()} />
         </View>
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>أُضيفت مؤخراً</Text><Text style={styles.sectionHint}>{items.length} ملف</Text></View>
+
+        {/* Recent Media List */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>أُضيفت مؤخراً</Text>
+          <Text style={styles.sectionHint}>{items.length} ملف</Text>
+        </View>
         <View style={styles.recentList}>
-          {latest.map((item) => <MediaRow key={item.id} item={item} onPress={() => void openItem(item)} />)}
+          {latest.map((item) => (
+            <MediaRow key={item.id} item={item} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onPress={() => void openItem(item)} />
+          ))}
         </View>
       </ScrollView>
+
+      {/* Converter Floating Action Button */}
+      <Pressable onPress={() => router.push("/converter" as never)} style={({ pressed }) => [styles.converterFab, pressed && styles.pressed]}>
+        <MaterialIcons name="transform" size={20} color={colors.cyan} />
+        <Text style={styles.converterFabText}>محول الفيديو</Text>
+      </Pressable>
     </ScreenContainer>
   );
 }
 
 function HomeHeader() {
   const router = useRouter();
-  return <View style={styles.header}><View style={styles.brand}><Image source={require("@/assets/images/icon.png")} style={styles.brandIcon} /><View><Text style={styles.brandName}>REMO PLAYER</Text><Text style={styles.brandTagline}>مشغل وسائطك المحلي</Text></View></View><Pressable onPress={() => router.push("/settings" as never)} hitSlop={10} style={({ pressed }) => pressed && styles.pressed}><MaterialIcons name="settings" size={23} color={colors.muted} /></Pressable></View>;
+  return (
+    <View style={styles.header}>
+      <View style={styles.brand}>
+        <Image source={require("@/assets/images/icon.png")} style={styles.brandIcon} />
+        <View>
+          <Text style={styles.brandName}>REMO PLAYER</Text>
+          <Text style={styles.brandTagline}>مشغل وسائطك ومحول الفيديو</Text>
+        </View>
+      </View>
+      <Pressable onPress={() => router.push("/settings" as never)} hitSlop={10} style={({ pressed }) => pressed && styles.pressed}>
+        <MaterialIcons name="settings" size={23} color={colors.muted} />
+      </Pressable>
+    </View>
+  );
 }
 
-function StatCard({ icon, label, value, onPress }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; value: number | string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.statCard, pressed && styles.pressed]}><MaterialIcons name={icon} size={22} color={colors.cyan} /><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></Pressable>;
+function StatCard({
+  icon,
+  label,
+  value,
+  highlight,
+  onPress,
+}: {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  label: string;
+  value: number | string;
+  highlight?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.statCard,
+        highlight && styles.statCardHighlight,
+        pressed && styles.pressed,
+      ]}
+    >
+      <MaterialIcons name={icon} size={22} color={highlight ? colors.cyan : colors.cyan} />
+      <Text style={[styles.statValue, highlight && styles.statValueHighlight]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -116,15 +183,55 @@ const styles = StyleSheet.create({
   continueText: { flex: 1, alignItems: "flex-end" },
   continueTitle: { color: colors.text, fontSize: 14, fontWeight: "800" },
   continueMeta: { color: colors.muted, fontSize: 11, lineHeight: 17 },
-  statsRow: { flexDirection: "row-reverse", gap: 9, paddingHorizontal: 16, marginTop: 16 },
-  statCard: { flex: 1, minHeight: 86, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", gap: 2 },
-  statValue: { color: colors.text, fontSize: 19, lineHeight: 25, fontWeight: "900" },
-  statLabel: { color: colors.muted, fontSize: 11, lineHeight: 16 },
-  sectionHeader: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 18, marginTop: 25, marginBottom: 9 },
+  statsRow: { flexDirection: "row-reverse", gap: 8, paddingHorizontal: 16, marginTop: 16 },
+  statCard: { flex: 1, minHeight: 88, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", gap: 2 },
+  statCardHighlight: { borderColor: "#23648B", backgroundColor: "#10283D" },
+  statValue: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "900" },
+  statValueHighlight: { color: colors.cyan },
+  statLabel: { color: colors.muted, fontSize: 11, lineHeight: 16, textAlign: "center" },
+  sectionHeader: { flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 18, marginTop: 22, marginBottom: 9 },
   sectionTitle: { color: colors.text, fontSize: 17, lineHeight: 24, fontWeight: "900" },
   sectionHint: { color: colors.muted, fontSize: 12 },
   recentList: { marginHorizontal: 16, borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: colors.border },
-  secondaryImport: { minHeight: 46, marginTop: 14, marginHorizontal: 40, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 8, flexDirection: "row-reverse", borderWidth: 1, borderColor: "#1E6382" },
-  secondaryImportText: { color: colors.cyan, fontSize: 14, fontWeight: "800" },
+  emptyActionRow: {
+    flexDirection: "row-reverse",
+    gap: 10,
+    marginHorizontal: 20,
+    marginTop: 14,
+    justifyContent: "center",
+  },
+  secondaryImport: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    flexDirection: "row-reverse",
+    borderWidth: 1,
+    borderColor: "#1E6382",
+    backgroundColor: "#0F263A",
+  },
+  secondaryImportText: { color: colors.cyan, fontSize: 13, fontWeight: "800" },
+  converterFab: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    zIndex: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: "#102334",
+    borderRadius: 25,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: "#1E4C6E",
+  },
+  converterFabText: { color: colors.text, fontSize: 13, fontWeight: "800" },
   pressed: { opacity: 0.68 },
 });

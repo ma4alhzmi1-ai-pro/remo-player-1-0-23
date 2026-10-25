@@ -36,10 +36,12 @@ export function resolveVideoGesture(translationX: number, translationY: number, 
 
 export function resolveLocalBrightness(startBrightness: number, translationY: number, surfaceHeight: number): number | null {
   if (![startBrightness, translationY, surfaceHeight].every(Number.isFinite) || surfaceHeight <= 0) return null;
-  return Math.max(0.2, Math.min(1, startBrightness - translationY / surfaceHeight));
+  const delta = -translationY / (surfaceHeight * 0.75);
+  return Math.max(0.05, Math.min(1, startBrightness + delta));
 }
 
 export function resolveLocalVolume(startVolume: number, translationY: number, surfaceHeight: number): number | null {
   if (![startVolume, translationY, surfaceHeight].every(Number.isFinite) || surfaceHeight <= 0) return null;
-  return Math.max(0, Math.min(1, startVolume - translationY / surfaceHeight));
+  const delta = -translationY / (surfaceHeight * 0.75);
+  return Math.max(0, Math.min(1, startVolume + delta));
 }

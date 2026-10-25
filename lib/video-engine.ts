@@ -1,4 +1,5 @@
 import { extensionOf } from "./media-utils";
+import { isExoPlayerSourceError, isLegacyExtractionFormat } from "./ffmpeg-extractor";
 
 export type VideoPlaybackEngine = "media3" | "libvlc";
 
@@ -10,7 +11,8 @@ const compatibilityFirstExtensions = new Set([
   "vlc", "vro", "wtv", "xesc",
 ]);
 
-export function preferredVideoPlaybackEngine(uriOrName: string): VideoPlaybackEngine {
+export function preferredVideoPlaybackEngine(uriOrName: string, decoderMode: "auto" | "hardware" | "software" = "auto"): VideoPlaybackEngine {
+  if (decoderMode === "software") return "libvlc";
   return compatibilityFirstExtensions.has(extensionOf(uriOrName)) ? "libvlc" : "media3";
 }
 
@@ -26,6 +28,11 @@ export function shouldUseLibVlcFallback(errorMessage: string | null | undefined)
 
 export function isCompatibilityPlaybackEngine(engine: VideoPlaybackEngine): boolean {
   return engine === "libvlc";
+}
+
+/** Compatibility predicate retained for the legacy extraction test/API surface. */
+export function shouldAttemptFfmpegExtraction(uriOrName?: string | null, errorMessage?: string | null): boolean {
+  return isLegacyExtractionFormat(uriOrName) || isExoPlayerSourceError(errorMessage);
 }
 
 export function shouldAdvanceAfterCompatibilityStop(input: {

@@ -1,6 +1,6 @@
 {
-  "name": "app-template",
-  "version": "1.0.0",
+  "name": "remo-player",
+  "version": "1.0.60",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -9,7 +9,7 @@
     "dev:metro": "cross-env EXPO_USE_METRO_WORKSPACE_ROOT=1 npx expo start --web --port ${EXPO_PORT:-8081}",
     "build": "esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit --skipLibCheck",
     "lint": "expo lint",
     "format": "prettier --write .",
     "test": "vitest run",
@@ -17,7 +17,17 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "qr": "node scripts/generate_qr.mjs",
-    "postinstall": "node scripts/patch-expo-audio-media-controls.mjs"
+    "postinstall": "node scripts/patch-expo-audio-media-controls.mjs && node scripts/patch-expo-video-media-controls.mjs",
+    "build:android": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease",
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "prebuild": "expo prebuild",
+    "prebuild:clean": "expo prebuild --clean",
+    "android:run": "expo run:android",
+    "android:build": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease",
+    "android:apk": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease",
+    "android:bundle": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:bundleRelease",
+    "android:clean": "cd android && ./gradlew clean",
+    "build:apk": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -42,13 +52,15 @@
     "expo-clipboard": "^8.0.8",
     "expo-constants": "~18.0.14",
     "expo-document-picker": "^14.0.8",
+    "expo-file-system": "~19.0.24",
     "expo-font": "~14.0.12",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
     "expo-image-picker": "^17.0.11",
     "expo-intent-launcher": "~13.0.8",
     "expo-keep-awake": "~15.0.8",
-    "expo-libvlc-player": "7.1.8",
+    "expo-libvlc-player": "^57.0.29",
+    "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.12",
     "expo-media-library": "^18.2.1",
     "expo-router": "~6.0.24",
@@ -100,5 +112,12 @@
     "typescript": "~5.9.3",
     "vitest": "^2.1.9"
   },
-  "packageManager": "pnpm@9.12.0"
+  "description": "REMO PLAYER - Advanced Android Media, Audio & Video Player with VLC and ExoPlayer Engine",
+  "author": "ma4alhzmi1-ai-pro",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23.git"
+  },
+  "homepage": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23"
 }

@@ -31,7 +31,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.toggle("dark", scheme === "dark");
       const palette = SchemeColors[scheme];
       Object.entries(palette).forEach(([token, value]) => {
-        root.style.setProperty(`--color-${token}`, value);
+        root.style.setProperty(`--color-${token}`, String(value));
       });
       root.style.setProperty("--color-primary", accent);
     }

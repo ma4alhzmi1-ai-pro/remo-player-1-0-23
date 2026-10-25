@@ -1,18 +1,23 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, Platform } from "react-native";
 
+import { cleanOrphanedCacheFiles } from "@/lib/cache-cleaner";
 import { inferMediaKind, mergeMediaItems, parseArtistAndTitle } from "@/lib/media-utils";
+import { resolveAudioThumbnail } from "@/lib/audio-artwork";
 import { createPlaylistBackup, mergeRestoredPlaylists, parsePlaylistBackup } from "@/lib/playlist-backup";
 import { PLAYLIST_TEMPLATES, playlistTemplateItems, type PlaylistTemplateId } from "@/lib/playlist-templates";
-import { resolvePlayableVideoUri } from "@/lib/video-uri";
 import type { MediaItem, Playlist } from "@/types/media";
 
 const LIBRARY_KEY = "remo-player.library.v1";
 const PLAYLISTS_KEY = "remo-player.playlists.v1";
+const SECURE_ITEMS_KEY = "remo-player.secure.items.v1";
+const SECURE_PIN_KEY = "remo-player.secure.pin.v1";
+const SECURE_HIDE_KEY = "remo-player.secure.hide.v1";
 
 function getMediaLibrary() {
   if (Platform.OS === "web") return null;
@@ -54,11 +59,19 @@ type LibraryContextValue = {
   isRefreshing: boolean;
   refreshDeviceLibrary: () => Promise<boolean>;
   importFiles: () => Promise<void>;
+  importSecureFiles: () => Promise<number>;
+  secureItemIds: string[];
+  hideSecureFolder: boolean;
+  setHideSecureFolder: (hidden: boolean) => Promise<void>;
+  setSecurePin: (pin: string) => Promise<boolean>;
+  verifySecurePin: (pin: string) => Promise<boolean>;
+  hasSecurePin: boolean;
   createPlaylist: (name: string) => Promise<Playlist | null>;
   createPlaylistFromTemplate: (templateId: PlaylistTemplateId) => Promise<boolean>;
   addItemToPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   removeItemFromPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
+  deleteMediaItems: (itemIds: string[]) => Promise<number>;
   updateMediaItem: (itemId: string, changes: Partial<Pick<MediaItem, "title" | "artist" | "album" | "thumbnailUri" | "lyrics" | "isFavorite">>) => Promise<void>;
   exportPlaylistBackup: () => Promise<boolean>;
   importPlaylistBackup: () => Promise<number>;
@@ -85,17 +98,28 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [isReady, setIsReady] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [secureItemIds, setSecureItemIds] = useState<string[]>([]);
+  const [hideSecureFolder, setHideSecureFolderState] = useState(true);
+  const [hasSecurePin, setHasSecurePin] = useState(false);
   const refreshInFlightRef = useRef<Promise<boolean> | null>(null);
 
   useEffect(() => {
     const hydrate = async () => {
       try {
-        const [storedItems, storedPlaylists] = await Promise.all([
+        const [storedItems, storedPlaylists, storedSecureIds, storedHide, storedPin] = await Promise.all([
           AsyncStorage.getItem(LIBRARY_KEY),
           AsyncStorage.getItem(PLAYLISTS_KEY),
+          SecureStore.getItemAsync(SECURE_ITEMS_KEY),
+          SecureStore.getItemAsync(SECURE_HIDE_KEY),
+          SecureStore.getItemAsync(SECURE_PIN_KEY),
         ]);
         if (storedItems) setItems(JSON.parse(storedItems));
         if (storedPlaylists) setPlaylists(JSON.parse(storedPlaylists));
+        if (storedSecureIds) setSecureItemIds(JSON.parse(storedSecureIds));
+        if (storedHide !== null) setHideSecureFolderState(storedHide !== "false");
+        setHasSecurePin(Boolean(storedPin));
+        // Clean up orphaned cache files in background to prevent storage bloat
+        void cleanOrphanedCacheFiles();
       } finally {
         setIsReady(true);
       }
@@ -110,6 +134,10 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isReady) void AsyncStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists));
   }, [isReady, playlists]);
+
+  useEffect(() => {
+    if (isReady) void SecureStore.setItemAsync(SECURE_ITEMS_KEY, JSON.stringify(secureItemIds));
+  }, [isReady, secureItemIds]);
 
   const refreshDeviceLibrary = useCallback(async () => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
@@ -152,10 +180,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         try {
           const info = await MediaLibrary.getAssetInfoAsync(asset);
           uri = info.localUri ?? asset.uri;
-          } catch {
+        } catch {
           uri = asset.uri;
         }
-        if (isVideo) uri = await resolvePlayableVideoUri(uri, asset.filename);
         return {
           id: `device:${asset.id}`,
           title: parsed.title,
@@ -165,7 +192,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           duration: Math.max(0, asset.duration ?? 0),
           mediaType: isVideo ? "video" : "audio",
           addedAt: asset.modificationTime || asset.creationTime || Date.now(),
-          thumbnailUri: isVideo ? await createVideoThumbnail(uri, asset.duration ?? 0) : undefined,
+          thumbnailUri: isVideo
+            ? await createVideoThumbnail(uri, asset.duration ?? 0)
+            : await resolveAudioThumbnail(asset.id, uri),
         };
       };
 
@@ -233,6 +262,40 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     if (imported.length) setItems((current) => mergeMediaItems(current, imported));
   }, []);
 
+  const importSecureFiles = useCallback(async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*", multiple: true, copyToCacheDirectory: true });
+    if (result.canceled) return 0;
+    const imported = (await Promise.all(result.assets.map(async (asset): Promise<MediaItem | null> => {
+      const mediaType = inferMediaKind(asset.name, asset.mimeType);
+      if (!mediaType) return null;
+      const persistentUri = await persistImportedFile(asset);
+      const parsed = parseArtistAndTitle(asset.name);
+      return { id: `secure:${persistentUri}:${asset.lastModified ?? Date.now()}`, title: parsed.title, artist: mediaType === "video" ? "فيديو آمن" : parsed.artist, album: "المجلد الآمن", uri: persistentUri, duration: 0, mediaType, addedAt: asset.lastModified ?? Date.now(), thumbnailUri: mediaType === "video" ? await createVideoThumbnail(persistentUri) : undefined };
+    }))).filter((item): item is MediaItem => item !== null);
+    if (!imported.length) return 0;
+    setItems((current) => mergeMediaItems(current, imported));
+    setSecureItemIds((current) => [...new Set([...current, ...imported.map((item) => item.id)])]);
+    return imported.length;
+  }, []);
+
+  const setHideSecureFolder = useCallback(async (hidden: boolean) => {
+    setHideSecureFolderState(hidden);
+    await SecureStore.setItemAsync(SECURE_HIDE_KEY, String(hidden));
+  }, []);
+
+  const setSecurePin = useCallback(async (pin: string) => {
+    const normalized = pin.trim();
+    if (!/^\d{4,8}$/.test(normalized)) return false;
+    await SecureStore.setItemAsync(SECURE_PIN_KEY, normalized);
+    setHasSecurePin(true);
+    return true;
+  }, []);
+
+  const verifySecurePin = useCallback(async (pin: string) => {
+    const saved = await SecureStore.getItemAsync(SECURE_PIN_KEY);
+    return Boolean(saved && saved === pin.trim());
+  }, []);
+
   const createPlaylist = useCallback(async (rawName: string) => {
     const name = rawName.trim();
     if (!name || playlists.some((playlist) => playlist.name.toLowerCase() === name.toLowerCase())) return null;
@@ -271,6 +334,37 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     setPlaylists((current) => current.filter((playlist) => playlist.id !== playlistId));
   }, []);
 
+  const deleteMediaItems = useCallback(async (itemIds: string[]) => {
+    const selected = items.filter((item) => itemIds.includes(item.id));
+    const deletedIds = new Set<string>();
+    const MediaLibrary = getMediaLibrary();
+    const deviceItems = selected.filter((item) => item.id.startsWith("device:"));
+    if (MediaLibrary && deviceItems.length) {
+      try {
+        const deleted = await MediaLibrary.deleteAssetsAsync(deviceItems.map((item) => item.id.slice("device:".length)));
+        if (deleted) deviceItems.forEach((item) => deletedIds.add(item.id));
+      } catch {
+        // Some Android providers deny deletion; retain those entries in the library.
+      }
+    }
+    for (const item of selected.filter((candidate) => candidate.id.startsWith("import:"))) {
+      try {
+        new File(item.uri).delete();
+        deletedIds.add(item.id);
+      } catch {
+        // The file may already have been removed from app storage.
+      }
+    }
+    if (deletedIds.size) {
+      setItems((current) => current.filter((item) => !deletedIds.has(item.id)));
+      setPlaylists((current) => current.map((playlist) => ({
+        ...playlist,
+        itemIds: playlist.itemIds.filter((id) => !deletedIds.has(id)),
+      })));
+    }
+    return deletedIds.size;
+  }, [items]);
+
   const updateMediaItem = useCallback(async (itemId: string, changes: Partial<Pick<MediaItem, "title" | "artist" | "album" | "thumbnailUri" | "lyrics" | "isFavorite">>) => {
     setItems((current) => current.map((item) => item.id === itemId ? { ...item, ...changes } : item));
   }, []);
@@ -306,15 +400,23 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     isRefreshing,
     refreshDeviceLibrary,
     importFiles,
+    importSecureFiles,
+    secureItemIds,
+    hideSecureFolder,
+    setHideSecureFolder,
+    setSecurePin,
+    verifySecurePin,
+    hasSecurePin,
     createPlaylist,
     createPlaylistFromTemplate,
     addItemToPlaylist,
     removeItemFromPlaylist,
     deletePlaylist,
+    deleteMediaItems,
     updateMediaItem,
     exportPlaylistBackup,
     importPlaylistBackup,
-  }), [items, playlists, isReady, isRefreshing, refreshDeviceLibrary, importFiles, createPlaylist, createPlaylistFromTemplate, addItemToPlaylist, removeItemFromPlaylist, deletePlaylist, updateMediaItem, exportPlaylistBackup, importPlaylistBackup]);
+  }), [items, playlists, isReady, isRefreshing, refreshDeviceLibrary, importFiles, importSecureFiles, secureItemIds, hideSecureFolder, setHideSecureFolder, setSecurePin, verifySecurePin, hasSecurePin, createPlaylist, createPlaylistFromTemplate, addItemToPlaylist, removeItemFromPlaylist, deletePlaylist, deleteMediaItems, updateMediaItem, exportPlaylistBackup, importPlaylistBackup]);
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
