@@ -189,7 +189,9 @@ export default function VideoPlayerScreen() {
   const currentVideoUri = currentItem?.mediaType === "video" ? currentItem.uri : null;
   useEffect(() => { void loadVideoSettings().then(setVideoSettings); }, []);
   const usingCompatibilityEngine = playbackEngine === "libvlc";
-  const [backgroundPlaybackEnabled, setBackgroundPlaybackEnabled] = useState(false);
+  // الإشعار وأزرار شاشة القفل مفعلة افتراضياً مثل إعداد النسخة السابقة؛
+  // تُحدّث القيمة لاحقاً من التخزين إذا عطّلها المستخدم.
+  const [backgroundPlaybackEnabled, setBackgroundPlaybackEnabled] = useState(true);
 
   useEffect(() => {
     void getVideoBackgroundPlaybackSetting().then(setBackgroundPlaybackEnabled);

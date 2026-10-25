@@ -48,11 +48,15 @@ patchFile("playbackService/VideoMediaSessionCallback.kt", [
 patchFile("playbackService/ExpoVideoPlaybackService.kt", [
   [
     `  private val commandSeekBackward = SessionCommand(SEEK_BACKWARD_COMMAND, Bundle.EMPTY)`,
-    `  private val commandSeekBackward = SessionCommand(SEEK_BACKWARD_COMMAND, Bundle.EMPTY)\n  private val commandSkipNext = SessionCommand(SKIP_NEXT_COMMAND, Bundle.EMPTY)\n  private val commandSkipPrevious = SessionCommand(SKIP_PREVIOUS_COMMAND, Bundle.EMPTY)\n  private val skipNextButton = CommandButton.Builder()\n    .setDisplayName("Next")\n    .setSessionCommand(commandSkipNext)\n    .setIconResId(androidx.media3.session.R.drawable.media3_icon_skip_forward)\n    .build()\n  private val skipPreviousButton = CommandButton.Builder()\n    .setDisplayName("Previous")\n    .setSessionCommand(commandSkipPrevious)\n    .setIconResId(androidx.media3.session.R.drawable.media3_icon_skip_back)\n    .build()`,
+    `  private val commandSeekBackward = SessionCommand(SEEK_BACKWARD_COMMAND, Bundle.EMPTY)\n  private val commandSkipNext = SessionCommand(SKIP_NEXT_COMMAND, Bundle.EMPTY)\n  private val commandSkipPrevious = SessionCommand(SKIP_PREVIOUS_COMMAND, Bundle.EMPTY)\n  private val skipPreviousButton = CommandButton.Builder()\n    .setDisplayName("Previous")\n    .setSessionCommand(commandSkipPrevious)\n    .setIconResId(androidx.media3.session.R.drawable.media3_icon_skip_back)\n    .build()\n  private val playPauseButton = CommandButton.Builder(CommandButton.ICON_PLAY)\n    .setDisplayName("Play/Pause")\n    .setPlayerCommand(Player.COMMAND_PLAY_PAUSE)\n    .build()\n  private val skipNextButton = CommandButton.Builder()\n    .setDisplayName("Next")\n    .setSessionCommand(commandSkipNext)\n    .setIconResId(androidx.media3.session.R.drawable.media3_icon_skip_forward)\n    .build()`,
   ],
   [
     `      .setCustomLayout(ImmutableList.of(seekBackwardButton, seekForwardButton))`,
+    `      .setCustomLayout(ImmutableList.of(skipPreviousButton, playPauseButton, seekBackwardButton, seekForwardButton, skipNextButton))`,
+  ],
+  [
     `      .setCustomLayout(ImmutableList.of(skipPreviousButton, seekBackwardButton, seekForwardButton, skipNextButton))`,
+    `      .setCustomLayout(ImmutableList.of(skipPreviousButton, playPauseButton, seekBackwardButton, seekForwardButton, skipNextButton))`,
   ],
   [
     `  private val mediaSessions = mutableMapOf<ExoPlayer, MediaSession>()`,
