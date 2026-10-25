@@ -25,7 +25,7 @@ import { readVideoForTranslation } from "@/lib/translation-upload";
 import { trpc } from "@/lib/trpc";
 import { resolvePlayableVideoUri } from "@/lib/video-uri";
 import { resolveLocalBrightness, resolveLocalVolume, resolveVideoGesture, shouldActivateVideoGesture } from "@/lib/video-gesture";
-import { getVideoBackgroundPlaybackSetting, setVideoBackgroundPlaybackSetting, nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
+import { setVideoBackgroundPlaybackSetting, nextVideoPlaybackSpeed } from "@/lib/video-playback-settings";
 import { resolveVideoProgressSeek } from "@/lib/video-progress";
 import { DEFAULT_VIDEO_SETTINGS, loadVideoSettings, type VideoSettings } from "@/lib/video-settings";
 import { resolveSafeVideoSeek } from "@/lib/video-seek";
@@ -102,7 +102,6 @@ export default function VideoPlayerScreen() {
   const lastVolumeUpdateRef = useRef(0);
   const volumeWriteSerialRef = useRef(0);
   const brightnessWriteSerialRef = useRef(0);
-  const initialLandscapeAppliedRef = useRef(false);
   const pipActiveOrRequestedRef = useRef(false);
   const titleHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const compatibilityErrorRef = useRef(false);
@@ -128,12 +127,11 @@ export default function VideoPlayerScreen() {
   const [sourceAspect, setSourceAspect] = useState<number | null>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
   const [fitPanelOpen, setFitPanelOpen] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(false);
   const [videoTitleVisible, setVideoTitleVisible] = useState(true);
   const [controlsActivity, setControlsActivity] = useState(0);
   const [controlsLocked, setControlsLocked] = useState(false);
-  const [autoRotateEnabled, setAutoRotateEnabled] = useState(true);
-  const [manualPortraitRequested, setManualPortraitRequested] = useState(false);
+  const [autoRotateEnabled, setAutoRotateEnabled] = useState(false);
   const [repeatStart, setRepeatStart] = useState<number | null>(null);
   const [repeatEnd, setRepeatEnd] = useState<number | null>(null);
   const [subtitleTrack, setSubtitleTrack] = useState<LocalSubtitleTrack | null>(null);
@@ -190,43 +188,20 @@ export default function VideoPlayerScreen() {
   useEffect(() => { void loadVideoSettings().then(setVideoSettings); }, []);
   const usingCompatibilityEngine = playbackEngine === "libvlc";
   // الإشعار وأزرار شاشة القفل مفعلة افتراضياً مثل إعداد النسخة السابقة؛
-  // تُحدّث القيمة لاحقاً من التخزين إذا عطّلها المستخدم.
+  // لا نعيد قراءة قيمة قديمة معطلة حتى لا يتوقف التشغيل فجأة بعد التحديث.
   const [backgroundPlaybackEnabled, setBackgroundPlaybackEnabled] = useState(true);
-
-  useEffect(() => {
-    void getVideoBackgroundPlaybackSetting().then(setBackgroundPlaybackEnabled);
-  }, []);
 
   const player = sharedVideoPlayer;
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    const applyOrientationPolicy = async () => {
-      try {
-        if (autoRotateEnabled) {
-          // يبدأ المشغل أفقياً مرة واحدة، ثم يعود إلى حساس الاتجاه.
-          if (!initialLandscapeAppliedRef.current && !isLandscape) {
-            initialLandscapeAppliedRef.current = true;
-            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-            return;
-          }
-          await ScreenOrientation.unlockAsync();
-        } else {
-          await ScreenOrientation.lockAsync(
-            manualPortraitRequested
-              ? ScreenOrientation.OrientationLock.PORTRAIT_UP
-              : ScreenOrientation.OrientationLock.LANDSCAPE,
-          );
-        }
-      } catch {
-        // Orientation control is optional on some Android devices.
-      }
-    };
-    void applyOrientationPolicy();
+    setSelectedFrameAspect("16:9");
+    // لا نفتح الاتجاه للحساس تلقائياً؛ يبدأ الفيديو أفقياً مثل 1.0.60.
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
     return () => {
       void ScreenOrientation.unlockAsync().catch(() => undefined);
     };
-  }, [autoRotateEnabled, isLandscape, manualPortraitRequested]);
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -1009,14 +984,17 @@ export default function VideoPlayerScreen() {
   }
 
   const rotateVideo = () => {
-    setAutoRotateEnabled((enabled) => {
-      const nextEnabled = !enabled;
-      setManualPortraitRequested(!nextEnabled);
-      return nextEnabled;
-    });
+    setAutoRotateEnabled(false);
+    const target = isLandscape
+      ? ScreenOrientation.OrientationLock.PORTRAIT_UP
+      : ScreenOrientation.OrientationLock.LANDSCAPE;
+    void ScreenOrientation.lockAsync(target).catch(() => undefined);
   };
   const handleFirstFrame = () => {
-    // Orientation is controlled by the toolbar policy and follows the Android sensor.
+    if (Platform.OS === "web") return;
+    if (!selectedFrameAspect) setSelectedFrameAspect("16:9");
+    if (!autoRotateEnabled || isLandscape) return;
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
   };
   const chooseMode = (mode: DisplayMode) => {
     const supportedTracks = [...player.availableVideoTracks]
@@ -1359,7 +1337,7 @@ export default function VideoPlayerScreen() {
           </View>
         ) : null}
         {controlsVisible && !controlsLocked ? <View style={styles.centerTransport} pointerEvents="box-none"><Pressable onPress={exitVideo} style={styles.centerBack} accessibilityLabel="العودة إلى مجلدات الفيديو"><MaterialIcons name="folder-open" size={23} color={colors.text} /></Pressable><Pressable onPress={() => void previousVideo()} style={styles.centerControl} accessibilityLabel="الفيديو السابق"><MaterialIcons name="skip-previous" size={31} color={colors.text} /></Pressable><Pressable onPress={() => void togglePlay()} style={[styles.centerControl, styles.centerPlay]} accessibilityLabel={isPlaying ? "إيقاف مؤقت" : "تشغيل"}><MaterialIcons name={isPlaying ? "pause" : "play-arrow"} size={39} color={colors.background} /></Pressable><Pressable onPress={() => void nextVideo()} style={styles.centerControl} accessibilityLabel="الفيديو التالي"><MaterialIcons name="skip-next" size={31} color={colors.text} /></Pressable></View> : null}
-        {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" ><View style={styles.controlDock}><View style={styles.overlayBottom}><View style={styles.progressHeader}>
+        {controlsVisible && !controlsLocked ? <View style={styles.overlay} pointerEvents="box-none" onTouchStart={revealControls}><View style={styles.controlDock}><View style={styles.overlayBottom}><View style={styles.progressHeader}>
               <View style={styles.progressTimeBadge}><MaterialIcons name="play-arrow" size={13} color={colors.cyan} /><Text style={styles.progressTimeCurrent}>{formatDuration(effectivePlaybackTime)}</Text></View>
               <Text style={styles.progressTitle}>شريط التشغيل</Text>
               <View style={styles.progressTimeBadge}><Text style={styles.progressTimeTotal}>{formatDuration(playbackDuration || currentItem.duration)}</Text><MaterialIcons name="schedule" size={13} color={colors.muted} /></View>

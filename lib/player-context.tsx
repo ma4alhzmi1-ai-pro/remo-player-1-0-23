@@ -76,7 +76,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // يجب تجهيز مشغل الفيديو لجلسة الخلفية منذ إنشائه؛ تفعيله بعد قفل الشاشة
     // قد يكون متأخراً على بعض إصدارات Android فيتوقف التشغيل فجأة.
     player.staysActiveInBackground = true;
-    player.showNowPlayingNotification = false;
+    player.showNowPlayingNotification = true;
     player.audioMixingMode = "duckOthers";
     player.preservesPitch = true;
     player.timeUpdateEventInterval = 0.1;
@@ -338,8 +338,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!currentItemRef.current) return;
     if (currentItemRef.current.mediaType === "video") {
       setVideoBackgroundUri(currentItemRef.current.uri);
-      videoPlayer.staysActiveInBackground = false;
-      videoPlayer.showNowPlayingNotification = false;
+      // لا تُطفئ جلسة الفيديو عند مغادرة شاشة المشغل؛ يستمر التشغيل
+      // وتبقى أدوات الإشعار وشاشة القفل متاحة مثل سلوك 1.0.60.
+      videoPlayer.staysActiveInBackground = true;
+      videoPlayer.showNowPlayingNotification = true;
     }
     setMiniPlayerVisible(true);
   }, [videoPlayer]);
