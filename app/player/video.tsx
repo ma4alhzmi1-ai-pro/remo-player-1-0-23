@@ -166,7 +166,7 @@ export default function VideoPlayerScreen() {
   const resumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoScrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoScrubbingTimeRef = useRef(0);
-  const videoInitialTouchRef = useRef<{ startX: number; width: number }>({ startX: 0, width: 320 });
+  const videoInitialTouchRef = useRef<{ startX: number; width: number; startTime: number }>({ startX: 0, width: 320, startTime: 0 });
   const isSwitchingEngineRef = useRef(false);
   const keepVideoAliveRef = useRef(false);
   const playbackErrorRef = useRef<string | null>(null);
@@ -876,25 +876,24 @@ export default function VideoPlayerScreen() {
           const dur = playbackDuration || currentItem?.duration || 0;
           const target = resolveVideoProgressSeek(localX, trackW, dur) ?? 0;
 
-          videoInitialTouchRef.current = { startX: localX, width: trackW };
+          videoInitialTouchRef.current = { startX: localX, width: trackW, startTime: target };
           videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);
         },
         onPanResponderMove: (_event, gestureState) => {
           revealControls();
-          const { startX, width: trackW } = videoInitialTouchRef.current;
-          const currentX = Math.max(0, Math.min(trackW, startX + gestureState.dx));
+          const { width: trackW, startTime } = videoInitialTouchRef.current;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const target = resolveVideoProgressSeek(currentX, trackW, dur) ?? 0;
+          // RTL: تحريك الإصبع يساراً (dx سالب) يزيد الزمن، ويميناً ينقصه.
+          const target = dur > 0 ? Math.max(0, Math.min(dur, startTime - (gestureState.dx / trackW) * dur)) : 0;
 
           videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);
         },
         onPanResponderRelease: (_event, gestureState) => {
-          const { startX, width: trackW } = videoInitialTouchRef.current;
-          const currentX = Math.max(0, Math.min(trackW, startX + gestureState.dx));
+          const { width: trackW, startTime } = videoInitialTouchRef.current;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const target = resolveVideoProgressSeek(currentX, trackW, dur) ?? 0;
+          const target = dur > 0 ? Math.max(0, Math.min(dur, startTime - (gestureState.dx / trackW) * dur)) : 0;
 
           videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);

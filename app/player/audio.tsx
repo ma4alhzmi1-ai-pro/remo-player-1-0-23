@@ -92,7 +92,7 @@ export default function AudioPlayerScreen() {
   const gestureStartXRef = useRef(0);
   const scrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubbingTimeRef = useRef(0);
-  const audioInitialTouchRef = useRef<{ startX: number; width: number }>({ startX: 0, width: 280 });
+  const audioInitialTouchRef = useRef<{ startX: number; width: number; startTime: number }>({ startX: 0, width: 280, startTime: 0 });
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
@@ -227,22 +227,23 @@ export default function AudioPlayerScreen() {
           const localX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
           const targetTime = resolveAudioProgressSeek(localX, barW, duration || 0) ?? 0;
 
-          audioInitialTouchRef.current = { startX: localX, width: barW };
+          audioInitialTouchRef.current = { startX: localX, width: barW, startTime: targetTime };
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
         },
         onPanResponderMove: (_evt, gestureState) => {
-          const { startX, width: barW } = audioInitialTouchRef.current;
-          const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
-          const targetTime = resolveAudioProgressSeek(currentX, barW, duration || 0) ?? 0;
+          const { width: barW, startTime } = audioInitialTouchRef.current;
+          const total = duration || 0;
+          // RTL: يساراً يقدم التشغيل ويميناً يرجعه، حسب حركة الإصبع مباشرة.
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
         },
         onPanResponderRelease: (_evt, gestureState) => {
-          const { startX, width: barW } = audioInitialTouchRef.current;
-          const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
-          const targetTime = resolveAudioProgressSeek(currentX, barW, duration || 0) ?? 0;
+          const { width: barW, startTime } = audioInitialTouchRef.current;
+          const total = duration || 0;
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
