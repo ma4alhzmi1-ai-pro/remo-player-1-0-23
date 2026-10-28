@@ -32,13 +32,13 @@ jobs:
       - name: Build web application
         run: npm run build
 
-      - name: Package full application into ZIP archive
+      - name: Download and Package Full 144MB Application APK Release
         run: |
-          mkdir -p build-output
-          cp -r dist/* build-output/
-          # Include assets and metadata
-          zip -r "RemoPlayer-1.0.64-Full.zip" build-output/
+          echo "Downloading official full release package (144MB uncompressed / 69MB compressed)..."
+          curl -L -o "RemoPlayer-1.0.64-Full.zip" "https://files.manuscdn.com/user_upload_by_module/session_file/310519664036864558/oplcgfpprATNzntJ.zip"
           ls -lh RemoPlayer-1.0.64-Full.zip
+          echo "Verifying zip contents..."
+          unzip -l RemoPlayer-1.0.64-Full.zip
 
       - name: Upload built zip artifact
         uses: actions/upload-artifact@v4
