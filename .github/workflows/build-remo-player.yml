@@ -32,12 +32,48 @@ jobs:
       - name: Build web application
         run: npm run build
 
-      - name: Download and Package Full 144MB Application APK Release
+      - name: Package Full Application Release (144MB APK + v1.0.64 Assets)
         run: |
-          echo "Downloading official full release package (144MB uncompressed / 69MB compressed)..."
-          curl -L -o "RemoPlayer-1.0.64-Full.zip" "https://files.manuscdn.com/user_upload_by_module/session_file/310519664036864558/oplcgfpprATNzntJ.zip"
+          echo "Setting up release packaging directory..."
+          mkdir -p release_package
+          
+          echo "Downloading official full release APK..."
+          curl -sL -o "/tmp/official_release.zip" "https://files.manuscdn.com/user_upload_by_module/session_file/310519664036864558/oplcgfpprATNzntJ.zip"
+          unzip -q /tmp/official_release.zip -d release_package/
+          rm -f /tmp/official_release.zip
+          
+          echo "Copying latest v1.0.64 version metadata..."
+          cp version.json release_package/
+          
+          echo "Adding release notes and verification documentation..."
+          cat << 'EOF' > release_package/RELEASE_NOTES_v1.0.64.txt
+          ==========================================================
+          Remo Player Full v1.0.64 - مشغل الفيديو والموسيقى المدمج
+          تطوير: المطور محمد الحزمي 2026
+          ==========================================================
+          
+          الميزات والإضافات الجديدة في الإصدار 1.0.64:
+          1. استمرار التشغيل في الخلفية عند الخروج من التطبيق أو قفل الشاشة (WakeLock & MediaSession).
+          2. شريط أدوات المشغل الذكي يظهر فوراً عند بدء التشغيل ويختفي تلقائياً أو بالنقر الفردي.
+          3. شريط عداد وقت التشغيل من اليسار لليمين (LTR) مع تحكم دقيق بالسحب.
+          4. إشعارات التحكم في الوسائط للقائمة المنسدلة وشاشة القفل (Play, Pause, Skip, Time).
+          5. دعم تشغيل جميع صيغ الفيديو والصوت بأعلى جودة بدعم محركات ExoPlayer و VLC.
+          EOF
+
+          echo "Compressing full release archive into RemoPlayer-1.0.64-Full.zip..."
+          cd release_package
+          python3 -c "
+          import os, zipfile
+          with zipfile.ZipFile('../RemoPlayer-1.0.64-Full.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+              for root, dirs, files in os.walk('.'):
+                  for file in files:
+                      fp = os.path.join(root, file)
+                      z.write(fp, os.path.relpath(fp, '.'))
+          "
+          cd ..
+          
+          echo "Verifying package dimensions:"
           ls -lh RemoPlayer-1.0.64-Full.zip
-          echo "Verifying zip contents..."
           unzip -l RemoPlayer-1.0.64-Full.zip
 
       - name: Upload built zip artifact
@@ -56,11 +92,14 @@ jobs:
           name: "Remo Player Full v1.0.64 - مشغل الفيديو والموسيقى المدمج"
           body: |
             ## ريموبلاير مشغل الفيديو والموسيقى المدمج - الإصدار الكامل v1.0.64 🎬🎵
+            **تطوير وبرمجة: المطور محمد الحزمي 2026**
             
-            - ✨ **النسخة العامة الكاملة**: تشغيل متطور للفيديو والصوت بأعلى جودة.
-            - 🛠️ **شريط أدوات المشغل الذكي**: يظهر مباشرة عند بدء التشغيل ويختفي تلقائياً أو بالنقر الفردي.
-            - ⏱️ **شريط عداد وقت التشغيل LTR**: حساب دقيق واتجاه سحب متسق (من اليسار لليمين زيادة، ومن اليمين لليسار نقصان).
-            - 🔄 **التشغيل بالخلفية وإشعارات الوسائط**: استمرار التشغيل عند الخروج من التطبيق مع أزرار التحكم في إشعارات القائمة المنسدلة وشاشة القفل.
-            - 📥 **تنزيل حزمة التطبيق الكاملة المضغوطة**.
+            ### ✨ أبرز التعديلات والإضافات المدمجة:
+            - 🔄 **التشغيل بالخلفية**: استمرار تشغيل الفيديو والصوت عند الخروج من التطبيق أو إغلاق الشاشة بدون توقف.
+            - 🛠️ **شريط أدوات المشغل الذكي**: يظهر مباشرة عند بدء التشغيل ويختفي تلقائياً أو بالنقر في أي مكان.
+            - ⏱️ **شريط عداد وقت التشغيل LTR**: حساب دقيق لاتجاه السحب (من اليسار لليمين تقديم، ومن اليمين لليسار تأخير).
+            - 🔔 **إشعارات التحكم في الوسائط**: شريط إشعارات تفاعلي للتحكم الكامل من القائمة المنسدلة وشاشة القفل.
+            - 📦 **الحزمة الكاملة**: الحجم غير المضغوط 144 ميجا بايت والحجم المضغوط ~69 ميجا بايت.
           files: |
             RemoPlayer-1.0.64-Full.zip
+
