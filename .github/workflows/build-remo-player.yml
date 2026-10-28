@@ -1,0 +1,66 @@
+name: Build Remo Player Full v1.0.64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - "remo-player-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-remo-player:
+    name: Build Remo Player Full v1.0.64
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build web application
+        run: npm run build
+
+      - name: Package full application into ZIP archive
+        run: |
+          mkdir -p build-output
+          cp -r dist/* build-output/
+          # Include assets and metadata
+          zip -r "RemoPlayer-1.0.64-Full.zip" build-output/
+          ls -lh RemoPlayer-1.0.64-Full.zip
+
+      - name: Upload built zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RemoPlayer-1.0.64-Full-App
+          path: RemoPlayer-1.0.64-Full.zip
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create or Update GitHub Release v1.0.64
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.64
+          name: "Remo Player Full v1.0.64 - مشغل الفيديو والموسيقى المدمج"
+          body: |
+            ## ريموبلاير مشغل الفيديو والموسيقى المدمج - الإصدار الكامل v1.0.64 🎬🎵
+            
+            - ✨ **النسخة العامة الكاملة**: تشغيل متطور للفيديو والصوت بأعلى جودة.
+            - 🛠️ **شريط أدوات المشغل الذكي**: يظهر مباشرة عند بدء التشغيل ويختفي تلقائياً أو بالنقر الفردي.
+            - ⏱️ **شريط عداد وقت التشغيل LTR**: حساب دقيق واتجاه سحب متسق (من اليسار لليمين زيادة، ومن اليمين لليسار نقصان).
+            - 🔄 **التشغيل بالخلفية وإشعارات الوسائط**: استمرار التشغيل عند الخروج من التطبيق مع أزرار التحكم في إشعارات القائمة المنسدلة وشاشة القفل.
+            - 📥 **تنزيل حزمة التطبيق الكاملة المضغوطة**.
+          files: |
+            RemoPlayer-1.0.64-Full.zip
