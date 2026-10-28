@@ -1,4 +1,4 @@
-name: Build Remo Player Full v1.0.64
+name: Build Remo Player Full v1.0.65
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-remo-player:
-    name: Build Remo Player Full v1.0.64
+    name: Build Remo Player Full v1.0.65
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -32,7 +32,7 @@ jobs:
       - name: Build web application
         run: npm run build
 
-      - name: Package Full Application Release (144MB APK + v1.0.64 Assets)
+      - name: Package Full Application Release (144MB APK + v1.0.65 Assets)
         run: |
           echo "Setting up release packaging directory..."
           mkdir -p release_package
@@ -42,29 +42,30 @@ jobs:
           unzip -q /tmp/official_release.zip -d release_package/
           rm -f /tmp/official_release.zip
           
-          echo "Copying latest v1.0.64 version metadata..."
+          echo "Copying latest v1.0.65 version metadata..."
           cp version.json release_package/
           
           echo "Adding release notes and verification documentation..."
-          cat << 'EOF' > release_package/RELEASE_NOTES_v1.0.64.txt
+          cat << 'EOF' > release_package/RELEASE_NOTES_v1.0.65.txt
           ==========================================================
-          Remo Player Full v1.0.64 - مشغل الفيديو والموسيقى المدمج
+          Remo Player Full v1.0.65 - مشغل الفيديو والموسيقى المدمج
           تطوير: المطور محمد الحزمي 2026
           ==========================================================
-          
-          الميزات والإضافات الجديدة في الإصدار 1.0.64:
-          1. استمرار التشغيل في الخلفية عند الخروج من التطبيق أو قفل الشاشة (WakeLock & MediaSession).
-          2. شريط أدوات المشغل الذكي يظهر فوراً عند بدء التشغيل ويختفي تلقائياً أو بالنقر الفردي.
-          3. شريط عداد وقت التشغيل من اليسار لليمين (LTR) مع تحكم دقيق بالسحب.
-          4. إشعارات التحكم في الوسائط للقائمة المنسدلة وشاشة القفل (Play, Pause, Skip, Time).
-          5. دعم تشغيل جميع صيغ الفيديو والصوت بأعلى جودة بدعم محركات ExoPlayer و VLC.
+
+          الميزات والإصلاحات المدمجة في الإصدار 1.0.65:
+          1. استعادة شريط أدوات حاوية التحكم السفلية بالكامل كما في الإصدار 1.0.61.
+          2. إظهار كافة الأدوات: مسارات، استيراد، تحرير، نافذة PiP، لقطة شاشة، مشاركة، أبعاد الشاشة، السرعة، قفل الشاشة، الوضع الليلي، كتم الصوت، مرآة، وتكرار المقطع وحلقة A-B.
+          3. شريط عداد وقت التشغيل LTR متسق ودقيق للسحب من اليسار لليمين مع عرض الوقت المنقضي والمدة الإجمالية وزر ملء الشاشة.
+          4. استمرار التشغيل في الخلفية عند الخروج من التطبيق أو قفل الشاشة (WakeLock & MediaSession).
+          5. أزرار التشغيل والتنقل المركزية مع زر الخروج وزر الترجمة CC.
+          ==========================================================
           EOF
 
-          echo "Compressing full release archive into RemoPlayer-1.0.64-Full.zip..."
+          echo "Compressing full release archive into RemoPlayer-1.0.65-Full.zip..."
           cd release_package
           python3 -c "
           import os, zipfile
-          with zipfile.ZipFile('../RemoPlayer-1.0.64-Full.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+          with zipfile.ZipFile('../RemoPlayer-1.0.65-Full.zip', 'w', zipfile.ZIP_DEFLATED) as z:
               for root, dirs, files in os.walk('.'):
                   for file in files:
                       fp = os.path.join(root, file)
@@ -73,33 +74,32 @@ jobs:
           cd ..
           
           echo "Verifying package dimensions:"
-          ls -lh RemoPlayer-1.0.64-Full.zip
-          unzip -l RemoPlayer-1.0.64-Full.zip
+          ls -lh RemoPlayer-1.0.65-Full.zip
+          unzip -l RemoPlayer-1.0.65-Full.zip
 
       - name: Upload built zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RemoPlayer-1.0.64-Full-App
-          path: RemoPlayer-1.0.64-Full.zip
+          name: RemoPlayer-1.0.65-Full-App
+          path: RemoPlayer-1.0.65-Full.zip
           if-no-files-found: error
           retention-days: 90
 
-      - name: Create or Update GitHub Release v1.0.64
+      - name: Create or Update GitHub Release v1.0.65
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.64
-          name: "Remo Player Full v1.0.64 - مشغل الفيديو والموسيقى المدمج"
+          tag_name: v1.0.65
+          name: "Remo Player Full v1.0.65 - مشغل الفيديو والموسيقى المدمج"
           body: |
-            ## ريموبلاير مشغل الفيديو والموسيقى المدمج - الإصدار الكامل v1.0.64 🎬🎵
+            ## ريموبلاير مشغل الفيديو والموسيقى المدمج - الإصدار الكامل v1.0.65 🎬🎵
             **تطوير وبرمجة: المطور محمد الحزمي 2026**
-            
-            ### ✨ أبرز التعديلات والإضافات المدمجة:
-            - 🔄 **التشغيل بالخلفية**: استمرار تشغيل الفيديو والصوت عند الخروج من التطبيق أو إغلاق الشاشة بدون توقف.
-            - 🛠️ **شريط أدوات المشغل الذكي**: يظهر مباشرة عند بدء التشغيل ويختفي تلقائياً أو بالنقر في أي مكان.
-            - ⏱️ **شريط عداد وقت التشغيل LTR**: حساب دقيق لاتجاه السحب (من اليسار لليمين تقديم، ومن اليمين لليسار تأخير).
-            - 🔔 **إشعارات التحكم في الوسائط**: شريط إشعارات تفاعلي للتحكم الكامل من القائمة المنسدلة وشاشة القفل.
+
+            ### ✨ أبرز التعديلات والإصلاحات المدمجة:
+            - 🛠️ **استعادة شريط أدوات حاوية التحكم السفلية بالكامل**: عودة شريط أدوات الفيديو كما كان في إصدار 1.0.61 تماماً بجميع أيقوناته وأدواته (مسارات، استيراد، تحرير، نافذة عائمة PiP، لقطة شاشة، مشاركة، أبعاد الشاشة، السرعة، قفل الشاشة، الوضع الليلي، كتم الصوت، مرآة، وتكرار المقطع وحلقة A-B).
+            - ⏱️ **شريط التمرير الزمني السلس**: تحكم دقيق بالسحب من اليسار لليمين مع وقت التشغيل والمدة الإجمالية وزر ملء الشاشة.
+            - 🔄 **التشغيل بالخلفية**: استمرار تشغيل الفيديو كصوت عند الخروج من التطبيق أو قفل الشاشة دون انقطاع.
+            - 🎯 **عناصر التحكم المركزية**: أزرار السابق والتالي وتقديم 10 ثوانٍ، وزر التشغيل/الإيقاف المؤقت الدائري الكبير، وزر المجلد.
             - 📦 **الحزمة الكاملة**: الحجم غير المضغوط 144 ميجا بايت والحجم المضغوط ~69 ميجا بايت.
           files: |
-            RemoPlayer-1.0.64-Full.zip
-
+            RemoPlayer-1.0.65-Full.zip

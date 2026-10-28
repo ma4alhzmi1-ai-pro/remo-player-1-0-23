@@ -1,17 +1,18 @@
 {
-  "latestVersion": "1.0.64",
-  "versionCode": 64,
+  "latestVersion": "1.0.65",
+  "versionCode": 65,
   "releaseDate": "2026-10-28",
-  "title": "تحديث ريموبلاير مشغل الفيديو والموسيقى v1.0.64 متوفر الآن",
-  "message": "يتوفر الإصدار الكامل الجديد من ريموبلاير (v1.0.64) مع تحسينات شريط الأدوات، شريط عداد الوقت LTR، التشغيل بالخلفية وإشعارات الوسائط، وبدء التشغيل الفوري من البداية.",
+  "title": "تحديث ريموبلاير مشغل الفيديو والموسيقى v1.0.65 متوفر الآن",
+  "message": "يتوفر الإصدار المحدث الجديد من ريموبلاير (v1.0.65) مع استعادة شريط أدوات حاوية التحكم السفلية بالكامل كما في الإصدار 1.0.61 (مسارات، استيراد، تحرير، نافذة، لقطة، مشاركة، أبعاد، سرعة، قفل، صوت، تكرار، حلقة A-B)، مع شريط التمرير الزمني السلس والتشغيل في الخلفية.",
   "releaseNotes": [
-    "شريط أدوات مشغل الفيديو يظهر مباشرة عند التشغيل ويختفي تلقائياً أو بالنقر",
-    "شريط عداد وقت التشغيل LTR متسق ودقيق للسحب من اليسار لليمين",
-    "التشغيل بالخلفية ودعم إشعارات الوسائط وشاشة القفل",
-    "النسخة العامة الكاملة المضغوطة بكامل الأصول والميزات"
+    "استعادة شريط أدوات حاوية التحكم السفلية بالكامل وتطابقه مع إصدار 1.0.61",
+    "إظهار كافة أدوات التحكم (مسارات، استيراد، تحرير، نافذة، لقطة، مشاركة، أبعاد الشاشة، السرعة، القفل، الوضع الليلي، كتم الصوت، المرآة، والتكرار)",
+    "شريط تمرير زمني فائق الدقة مع عداد الوقت المزدوج والتحكم السلس بالسحب",
+    "أزرار التشغيل والتنقل المركزية مع زر الخروج وزر الترجمة CC",
+    "استمرار التشغيل بالخلفية وإشعارات الوسائط لشاشة القفل والقائمة المنسدلة"
   ],
-  "apkUrl": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/download/v1.0.64/RemoPlayer-1.0.64-Full.zip",
-  "directDownloadUrl": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/download/v1.0.64/RemoPlayer-1.0.64-Full.zip",
-  "zipUrl": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/download/v1.0.64/RemoPlayer-1.0.64-Full.zip",
-  "githubReleaseUrl": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/tag/v1.0.64"
+  "apkUrl": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/download/v1.0.65/RemoPlayer-1.0.65-Full.zip",
+  "directDownloadUrl": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/download/v1.0.65/RemoPlayer-1.0.65-Full.zip",
+  "zipUrl": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/download/v1.0.65/RemoPlayer-1.0.65-Full.zip",
+  "githubReleaseUrl": "https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/tag/v1.0.65"
 }
