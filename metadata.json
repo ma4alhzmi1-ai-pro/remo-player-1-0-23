@@ -1,0 +1,6 @@
+{
+  "name": "ريمو كيبورد | Remo Keyboard",
+  "description": "مشروع تطبيق ريمو كيبورد المزخرف للأندرويد (الإصدار 1.0.16) - الكتابة الفعلية بالخطوط العربية، الكيبورد الناطق للكلمات الكاملة، محرك IME أصلي، استوديو الثيمات والزخرفة الفورية، وإشعار التحديث التلقائي الفوري",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

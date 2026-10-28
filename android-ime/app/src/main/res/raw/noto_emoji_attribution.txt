@@ -1,0 +1,7 @@
+Noto Emoji image assets
+Source: https://github.com/googlefonts/noto-emoji
+
+The Noto Emoji project states that most image resources are licensed under
+the Apache License, Version 2.0. Emoji fonts are licensed under the SIL Open
+Font License, Version 1.1. This app bundles a curated set of PNG image assets
+for its offline emoji tray.

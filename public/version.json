@@ -1,0 +1,17 @@
+{
+  "latestVersion": "1.0.16",
+  "versionCode": 16,
+  "releaseDate": "2026-09-16",
+  "title": "تحديث ريمو كيبورد v1.0.16 متوفر الآن",
+  "message": "يتوفر إصدار جديد من ريمو كيبورد يحتوي على ميزة الكتابة الفعلية بالخطوط العربية الحقيقية، الكيبورد الناطق لنطق الكلمة كاملة بعد اكتمالها، تحسينات الثيمات وخلفيات الأندية، وإشعارات التحديث التلقائية المباشرة.",
+  "releaseNotes": [
+    "الكتابة الفعلية بالخطوط العربية الحقيقية (القاهرة، الأميري، تجوال، رقعة عارف، المراعي)",
+    "الكيبورد الناطق الذكي للكلمات كاملة بعد اكتمالها بنقاء صوتي عالي",
+    "تفعيل التحقق من التحديثات أونلاين وإشعارات النظام التلقائية المباشرة",
+    "خلفيات حية وثيمات 3D لأندية كرة القدم والتحكم الدقيق بارتفاع الكيبورد"
+  ],
+  "apkUrl": "https://github.com/ma4alhzmi1-ai-pro/RemoKeyboard-Pro/releases/download/v1.0.16/RemoKeyboard-1.0.16.apk",
+  "directDownloadUrl": "/RemoKeyboard-1.0.16.apk",
+  "zipUrl": "https://github.com/ma4alhzmi1-ai-pro/RemoKeyboard-Pro/releases/download/v1.0.16/RemoKeyboard-1.0.16-Android-APK.zip",
+  "githubReleaseUrl": "https://github.com/ma4alhzmi1-ai-pro/RemoKeyboard-Pro/releases/tag/v1.0.16"
+}
