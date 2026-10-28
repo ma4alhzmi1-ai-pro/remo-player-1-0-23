@@ -241,15 +241,15 @@ export function MediaPlayerDemo() {
           <div>
             <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
               <Film className="w-5 h-5 text-cyan-400" />
-              <span>مشغل ريموبلاير الاحترافي — النسخة الكاملة v1.0.65</span>
+              <span>مشغل ريموبلاير الاحترافي — النسخة الكاملة v1.0.64</span>
             </h3>
             <p className="text-xs text-slate-400">
-              استعادة شريط أدوات حاوية التحكم السفلية بالكامل كما في الإصدار 1.0.61 (مسارات، استيراد، تحرير، نافذة، لقطة، مشاركة، أبعاد، سرعة، قفل، صوت، تكرار) مع تشغيل الخلفية.
+              إصلاح ظهور شريط أدوات الفيديو بالكامل فوق شريط التمرير الزمني كما في الإصدار 1.0.61 (مسارات، استيراد، تحرير، نافذة، لقطة، مشاركة، أبعاد، سرعة، قفل، صوت، مرآة، تكرار) مع تشغيل الخلفية.
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-mono">
-              v1.0.65 Official Build
+              v1.0.64 Official Build
             </span>
           </div>
         </div>
@@ -366,7 +366,7 @@ export function MediaPlayerDemo() {
             <span className="text-cyan-400">4G LTE</span>
           </div>
           <div className="flex items-center gap-3">
-            <span>REMO PLAYER v1.0.65</span>
+            <span>REMO PLAYER v1.0.64</span>
             <span className="text-emerald-400">100% 🔋</span>
           </div>
         </div>
@@ -476,7 +476,7 @@ export function MediaPlayerDemo() {
                   <div className="absolute bottom-24 inset-x-8 text-center pointer-events-none z-10">
                     <span className="bg-black/80 backdrop-blur-sm text-yellow-300 font-bold text-xs sm:text-sm px-3 py-1 rounded-lg border border-yellow-500/30 shadow-lg">
                       {currentTime % 6 < 3
-                        ? 'مرحباً بك في الإصدار المحدث 1.0.65 مع شريط أدوات التحكم السفلية الكاملة'
+                        ? 'مرحباً بك في الإصدار 1.0.64 مع شريط أدوات الفيديو الكامل كما في 1.0.61'
                         : 'REMO PLAYER — مشغل الفيديو والموسيقى بأعلى جودة مع استمرار التشغيل بالخلفية'}
                     </span>
                   </div>
@@ -1147,7 +1147,7 @@ export function MediaPlayerDemo() {
         <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-cyan-400" />
-            <h4 className="font-bold text-white text-sm">تقرير استعادة شريط الأدوات بالكامل (الإصدار v1.0.65)</h4>
+            <h4 className="font-bold text-white text-sm">تقرير إصلاح ظهور شريط أدوات الفيديو (الإصدار v1.0.64)</h4>
           </div>
           <span className="text-[10px] font-mono bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-500/40">
             تطابق 100% مع 1.0.61
