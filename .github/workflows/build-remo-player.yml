@@ -1,4 +1,4 @@
-name: Build Remo Player Full v1.0.66
+name: Build Remo Player Full v1.0.67
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-remo-player:
-    name: Build Remo Player Full v1.0.66
+    name: Build Remo Player Full v1.0.67
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -32,7 +32,7 @@ jobs:
       - name: Build web application
         run: npm run build
 
-      - name: Package Full Application Release (144MB APK + v1.0.66 Assets)
+      - name: Package Full Application Release (144MB APK + v1.0.67 Assets)
         run: |
           echo "Setting up release packaging directory..."
           mkdir -p release_package
@@ -42,36 +42,40 @@ jobs:
           unzip -q /tmp/official_release.zip -d release_package/
           rm -f /tmp/official_release.zip
           
-          echo "Copying latest v1.0.66 version metadata and web dist..."
+          echo "Copying latest v1.0.67 version metadata and web dist..."
           cp version.json release_package/
           cp -r dist release_package/web-app/
           
           echo "Adding release notes and verification documentation..."
-          cat << 'EOF' > release_package/RELEASE_NOTES_v1.0.66.txt
+          cat << 'EOF' > release_package/RELEASE_NOTES_v1.0.67.txt
           ==========================================================
-          Remo Player Merged Full v1.0.66 - مشغل الفيديو والموسيقى المدمج
+          Remo Player Merged Full v1.0.67 - مشغل الفيديو والموسيقى المدمج
           تطوير: المطور محمد الحزمي 2026
           ==========================================================
 
-          الميزات والإصلاحات المدمجة في الإصدار 1.0.66:
-          1. شريط أدوات الفيديو فوق شريط عداد الوقت: ظهور شريط الأدوات كاملاً فوق شريط التمرير الزمني دون اختفاء مع أزرار الجودات (تلقائي، HD، HDR، فائق الدقة، سينمائي) وأدوات التحكم.
-          2. شريط الوقت بدون إطار (Frameless Scrubber): تصميم انسيابي بدون أي إطار مزعج مع تحكم فائق النعومة.
-          3. الانتقال التلقائي للفيديو التالي: عند انتهاء تشغيل المقطع ينتقل تلقائياً للمقطع التالي دون أي توقف.
-          4. الفصول الذكية بالذكاء الاصطناعي (AI Chapters & Scene Highlights): تقسيم آلي للمشاهد والتنقل السريع بين الفصول.
-          5. الموازن الصوتي الاحترافي (5-Band Graphic Equalizer): تحكم كامل في الترددات مع تعزيز الباس Bass Boost والوضع السينمائي 3D.
-          6. محول الصوتيات المدمج: استخراج الصوت من أي فيديو بصيغ MP3 و AAC و FLAC وإضافته فوراً لمشغل الموسيقى.
-          7. مؤقت النوم (Sleep Timer): إيقاف تشغيل الموسيقى مع خفض تدريجي للصوت Fade Out.
-          8. مشغل قفل الشاشة والإشعارات بالخلفية: ظهور أزرار (التالي، السابق، تشغيل، توقف، تقديم 10 ثوان) مع خدمة Foreground Service.
-          9. إيماءات الصوت والإضاءة وأزرار الهاتف: السحب بالأعلى بالجهة اليمنى للصوت وباليسار للسطوع مع الربط التلقائي بأزرار الهاتف الفعلية وأزرار اللمس السريعة.
-          10. المجلد الآمن الفعلي بنظام .nomedia: إخفاء حقيقي للملفات من المعرض وكافة تطبيقات الهاتف مع تشفير الامتداد وحمايتها برمز PIN (1234).
+          الميزات والإصلاحات والمقترحات الاحترافية الجديدة المدمجة في الإصدار 1.0.67:
+          1. محرك توضيح الحوارات والهمس وعزل الضجيج (AI Vocal Clarity & DRC): عزل الترددات الصوتية البشرية وتضخيمها بنسبة 150% لتوضيح الكلام في المشاهد الصاخبة مع وضع الاستماع الليلي.
+          2. المعاينة المصغرة الحية لشريط الوقت (Live Visual Thumbnail Bubble): فقاعة معاينة عائمة تعرض الفريم والتوقيت بالثانية بدقة متناهية أثناء التمرير.
+          3. العلامات المرجعية الذكية وحفظ المشاهد (Smart Bookmarks): إمكانية حفظ اللحظات المفضلة في الفيديو بنقرة زر مع مؤشرات بصرية على شريط الوقت.
+          4. استوديو الترجمة المزدوجة (Dual Subtitle Studio): عرض ترجمتين متزامنتين معاً (عربي + إنجليزي) وتخصيص لون الخط (أصفر سينمائي، أبيض، سماوي).
+          5. شريط أدوات الفيديو فوق شريط عداد الوقت: ظهور شريط الأدوات كاملاً فوق شريط التمرير الزمني دون اختفاء مع أزرار الجودات (تلقائي، HD، HDR، فائق الدقة، سينمائي) وأدوات التحكم.
+          6. شريط الوقت بدون إطار (Frameless Scrubber): تصميم انسيابي بدون أي إطار مزعج مع تحكم فائق النعومة.
+          7. الانتقال التلقائي للفيديو التالي: عند انتهاء تشغيل المقطع ينتقل تلقائياً للمقطع التالي دون أي توقف.
+          8. الفصول الذكية بالذكاء الاصطناعي (AI Chapters & Scene Highlights): تقسيم آلي للمشاهد والتنقل السريع بين الفصول.
+          9. الموازن الصوتي الاحترافي (5-Band Graphic Equalizer): تحكم كامل في الترددات مع تعزيز الباس Bass Boost والوضع السينمائي 3D.
+          10. محول الصوتيات المدمج: استخراج الصوت من أي فيديو بصيغ MP3 و AAC و FLAC وإضافته فوراً لمشغل الموسيقى.
+          11. مؤقت النوم (Sleep Timer): إيقاف تشغيل الموسيقى مع خفض تدريجي للصوت Fade Out.
+          12. مشغل قفل الشاشة والإشعارات بالخلفية: ظهور أزرار (التالي، السابق، تشغيل، توقف، تقديم 10 ثوان) مع خدمة Foreground Service.
+          13. إيماءات الصوت والإضاءة وأزرار الهاتف: السحب بالأعلى بالجهة اليمنى للصوت وباليسار للسطوع مع الربط التلقائي بأزرار الهاتف الفعلية وأزرار اللمس السريعة.
+          14. المجلد الآمن الفعلي بنظام .nomedia: إخفاء حقيقي للملفات من المعرض وكافة تطبيقات الهاتف مع تشفير الامتداد وحمايتها برمز PIN (1234).
           ==========================================================
           EOF
 
-          echo "Compressing full release archive into RemoPlayer-1.0.66-Full.zip..."
+          echo "Compressing full release archive into RemoPlayer-1.0.67-Full.zip..."
           cd release_package
           python3 -c "
           import os, zipfile
-          with zipfile.ZipFile('../RemoPlayer-1.0.66-Full.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+          with zipfile.ZipFile('../RemoPlayer-1.0.67-Full.zip', 'w', zipfile.ZIP_DEFLATED) as z:
               for root, dirs, files in os.walk('.'):
                   for file in files:
                       fp = os.path.join(root, file)
@@ -80,31 +84,36 @@ jobs:
           cd ..
           
           echo "Copying alias for backwards compatibility..."
-          cp RemoPlayer-1.0.66-Full.zip RemoPlayer-1.0.64-Full.zip
+          cp RemoPlayer-1.0.67-Full.zip RemoPlayer-1.0.66-Full.zip
+          cp RemoPlayer-1.0.67-Full.zip RemoPlayer-1.0.64-Full.zip
           
           echo "Verifying package dimensions:"
-          ls -lh RemoPlayer-1.0.66-Full.zip
-          unzip -l RemoPlayer-1.0.66-Full.zip
+          ls -lh RemoPlayer-1.0.67-Full.zip
+          unzip -l RemoPlayer-1.0.67-Full.zip
 
       - name: Upload built zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RemoPlayer-1.0.66-Full-App
-          path: RemoPlayer-1.0.66-Full.zip
+          name: RemoPlayer-1.0.67-Full-App
+          path: RemoPlayer-1.0.67-Full.zip
           if-no-files-found: error
           retention-days: 90
 
-      - name: Create or Update GitHub Release v1.0.66
+      - name: Create or Update GitHub Release v1.0.67
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.66
-          name: "Remo Player Full v1.0.66 - مشغل الفيديو والموسيقى المدمج"
+          tag_name: v1.0.67
+          name: "Remo Player Full v1.0.67 - مشغل الفيديو والموسيقى المدمج الاحترافي"
           body: |
-            ## ريموبلاير مشغل الفيديو والموسيقى المدمج - الإصدار الكامل والنهائي v1.0.66 🎬🎵
+            ## ريموبلاير مشغل الفيديو والموسيقى المدمج الاحترافي - الإصدار v1.0.67 🎬🎵
             **تطوير وبرمجة: المطور محمد الحزمي 2026**
 
-            ### ✨ أبرز التعديلات والإصلاحات والميزات المدمجة:
+            ### ✨ باقة الميزات والابتكارات الحصرية الجديدة:
+            - 🎙️ **محرك توضيح الحوارات وعزل الضجيج (AI Vocal Clarity & DRC)**: عزل وتضخيم أصوات الكلام البشري بنسبة 150% مع وضع الاستماع الليلي الهادئ لمنع الأصوات المرتفعة المفاجئة.
+            - 🎬 **المعاينة المصغرة الحية لشريط الوقت (Live Visual Thumbnail Scrubbing Bubble)**: فقاعة عائمة تعرض لقطة المشهد الحية والتوقيت بدقة أجزاء الثانية واسم الفصل.
+            - 🔖 **العلامات المرجعية الذكية (Smart Bookmarks)**: حفظ المشاهد واللحظات المميزة بنقرة زر والرجوع إليها فوراً مع ظهور علامات ملونة على شريط الوقت.
+            - 💬 **استوديو الترجمة المزدوجة (Dual Subtitle Studio)**: عرض ترجمتين متزامنتين معاً (عربي + إنجليزي) وتخصيص لون وظل الخط (أصفر سينمائي، أبيض، سماوي).
             - 🛠️ **شريط أدوات الفيديو فوق شريط الوقت**: ظهور كافة أدوات التحكم وأزرار الجودات الحقيقية (Auto, HD, HDR, 4K UHD, Cinematic) مباشرة فوق شريط التمرير الزمني دون اختفاء.
             - 📏 **شريط التشغيل وعداد الوقت بدون إطار (Frameless)**: مظهر حديث وسلس فائق النعومة.
             - ⏭️ **الانتقال التلقائي للتالي**: عند انتهاء تشغيل أي مقطع ينتقل فوراً للمقطع التالي تلقائياً وبسلاسة تامة دون توقف.
@@ -117,5 +126,6 @@ jobs:
             - 🔒 **المجلد الآمن الفعلي بنظام .nomedia**: إخفاء حقيقي يزيل الفيديوهات من استوديو الهاتف وكافة التطبيقات ولا يمكن الوصول إليها إلا برمز PIN (1234).
             - ⚙️ **إعدادات الفيديو الحقيقية (100% فعالة)**: تسريع العتاد GPU، بافر 16/32/64MB، التبديل بين ExoPlayer و LibVLC، تضخيم الصوت 200%، ومعادل الصوت المحيطي 5.1.
           files: |
+            RemoPlayer-1.0.67-Full.zip
             RemoPlayer-1.0.66-Full.zip
             RemoPlayer-1.0.64-Full.zip

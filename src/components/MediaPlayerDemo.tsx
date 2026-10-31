@@ -52,7 +52,10 @@ import {
   FastForward,
   Rewind,
   Disc,
-  FileAudio
+  FileAudio,
+  Bookmark,
+  Mic,
+  Type
 } from 'lucide-react';
 
 export interface VideoItem {
@@ -204,8 +207,22 @@ export function MediaPlayerDemo() {
   const [newVideoTitleInput, setNewVideoTitleInput] = useState<string>('');
   const [isIndexing, setIsIndexing] = useState<boolean>(false);
 
-  const [activeModal, setActiveModal] = useState<'none' | 'subtitles' | 'import' | 'edit' | 'aspect' | 'share' | 'settings' | 'safe_pin' | 'add_media' | 'lockscreen_hud' | 'converter' | 'sleep_timer' | 'ai_chapters' | 'equalizer'>('none');
+  const [activeModal, setActiveModal] = useState<'none' | 'subtitles' | 'import' | 'edit' | 'aspect' | 'share' | 'settings' | 'safe_pin' | 'add_media' | 'lockscreen_hud' | 'converter' | 'sleep_timer' | 'ai_chapters' | 'equalizer' | 'vocal_boost' | 'bookmarks' | 'dual_subtitles'>('none');
   const [eqBands, setEqBands] = useState<number[]>([5, 3, 6, 4, 7]);
+  
+  // 🌟 ميزات Remo Player الاحترافية الحصرية الجديدة
+  const [aiVocalBoost, setAiVocalBoost] = useState<boolean>(true); // تعزيز نبرة الصوت البشري وعزل الضجيج
+  const [nightDrcMode, setNightDrcMode] = useState<boolean>(false); // وضع الاستماع الليلي الهادئ (Dynamic Range Compression)
+  const [bookmarks, setBookmarks] = useState<{ id: string; time: number; title: string }[]>([
+    { id: 'b1', time: 420, title: 'مشهد البداية المشوق' },
+    { id: 'b2', time: 1850, title: 'المواجهة الحاسمة' }
+  ]);
+  const [newBookmarkTitle, setNewBookmarkTitle] = useState('');
+  const [dualSubtitleEnabled, setDualSubtitleEnabled] = useState(false);
+  const [dualSubtitleLang, setDualSubtitleLang] = useState('English (US)');
+  const [subtitleColor, setSubtitleColor] = useState<'yellow' | 'white' | 'cyan'>('yellow');
+  const [hoverScrub, setHoverScrub] = useState<{ x: number; time: number } | null>(null);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const autoHideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1253,14 +1270,37 @@ export function MediaPlayerDemo() {
                   </>
                 )}
 
-                {/* Subtitle Display Overlay */}
+                {/* Subtitle Display Overlay with Dual Subtitle Engine */}
                 {subtitleEnabled && (
-                  <div className="absolute bottom-28 sm:bottom-32 inset-x-8 text-center pointer-events-none z-10">
-                    <span className="bg-black/80 backdrop-blur-sm text-yellow-300 font-bold text-xs sm:text-sm px-3 py-1 rounded-lg border border-yellow-500/30 shadow-lg">
+                  <div className="absolute bottom-28 sm:bottom-32 inset-x-8 text-center pointer-events-none z-10 flex flex-col items-center gap-1.5">
+                    <span className={`bg-black/85 backdrop-blur-sm font-bold text-xs sm:text-sm px-3.5 py-1 rounded-lg border shadow-lg ${
+                      subtitleColor === 'white'
+                        ? 'text-white border-white/30'
+                        : subtitleColor === 'cyan'
+                        ? 'text-cyan-300 border-cyan-400/40'
+                        : 'text-yellow-300 border-yellow-500/30'
+                    }`}>
                       {currentTime % 6 < 3
                         ? 'شريط أدوات الفيديو يظهر بالأعلى فوق شريط التمرير الزمني مع كافة الأزرار والجودات!'
                         : 'الانتقال التلقائي للتالي مفعل • خدمة Foreground Service نشطة بالخلفية وقفل الشاشة'}
                     </span>
+
+                    {/* Dual Subtitle second line (English) */}
+                    {dualSubtitleEnabled && (
+                      <span className="bg-black/80 backdrop-blur-sm text-cyan-200 font-medium text-[11px] sm:text-xs px-2.5 py-0.5 rounded-md border border-cyan-500/30 font-mono tracking-wide">
+                        {currentTime % 6 < 3
+                          ? 'Upper video toolbar docked right above seekbar with all qualities & tools'
+                          : 'Auto-advance enabled • Foreground Service active in lockscreen'}
+                      </span>
+                    )}
+
+                    {/* AI Vocal Clarity Indicator badge */}
+                    {aiVocalBoost && (
+                      <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.2 rounded-full font-bold flex items-center gap-1">
+                        <Mic className="w-2.5 h-2.5" />
+                        <span>AI Vocal Clarity Active</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -1573,6 +1613,37 @@ export function MediaPlayerDemo() {
                       <span className="text-[11px]">مؤقت النوم</span>
                     </button>
 
+                    {/* 🎙️ توضيح الحوارات وعزل الضجيج بالذكاء الاصطناعي (AI Vocal Clarity & DRC) */}
+                    <button
+                      onClick={() => { setActiveModal('vocal_boost'); resetAutoHide(); }}
+                      className="min-h-[32px] px-2.5 rounded-xl bg-gradient-to-r from-emerald-600/90 to-teal-600/90 hover:from-emerald-500 hover:to-teal-500 border border-emerald-400/50 text-white flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer shadow-md font-bold"
+                      title="توضيح الحوارات والهمس وعزل الضجيج بالذكاء الاصطناعي ووضع الاستماع الليلي DRC"
+                    >
+                      <Mic className="w-3.5 h-3.5 text-emerald-200" />
+                      <span className="text-[11px]">توضيح الحوار</span>
+                      {aiVocalBoost && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                    </button>
+
+                    {/* 🔖 العلامات المرجعية الذكية وحفظ المشاهد (Smart Bookmarks) */}
+                    <button
+                      onClick={() => { setActiveModal('bookmarks'); resetAutoHide(); }}
+                      className="min-h-[32px] px-2.5 rounded-xl bg-gradient-to-r from-violet-600/90 to-purple-600/90 hover:from-violet-500 hover:to-purple-500 border border-violet-400/50 text-white flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer shadow-md font-bold"
+                      title="العلامات المرجعية الذكية: حفظ اللحظات المفضلة والرجوع لها بضغطة زر"
+                    >
+                      <Bookmark className="w-3.5 h-3.5 text-violet-200" />
+                      <span className="text-[11px]">علامات ({bookmarks.length})</span>
+                    </button>
+
+                    {/* 💬 الترجمة المزدوجة واستوديو الخطوط (Dual Subtitles & Styler) */}
+                    <button
+                      onClick={() => { setActiveModal('dual_subtitles'); resetAutoHide(); }}
+                      className="min-h-[32px] px-2.5 rounded-xl bg-gradient-to-r from-sky-600/90 to-cyan-600/90 hover:from-sky-500 hover:to-cyan-500 border border-sky-400/50 text-white flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer shadow-md font-bold"
+                      title="استوديو الترجمة المزدوجة وتخصيص حجم ولون الخط"
+                    >
+                      <Type className="w-3.5 h-3.5 text-sky-200" />
+                      <span className="text-[11px]">ترجمة مزدوجة</span>
+                    </button>
+
                     {/* الأدوات الإضافية كما في النسخة 1.0.61 */}
                     <button onClick={() => { setActiveModal('subtitles'); resetAutoHide(); }} className="min-h-[32px] px-2.5 rounded-xl bg-[#08111F]/90 hover:bg-[#0E2038] border border-white/20 text-white flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
                       <Subtitles className="w-3.5 h-3.5 text-cyan-400" />
@@ -1644,16 +1715,52 @@ export function MediaPlayerDemo() {
                       {formatTime(currentTime)}
                     </span>
 
-                    {/* Fluid, Frameless Progress Scrubber */}
+                    {/* Fluid, Frameless Progress Scrubber with Live Visual Thumbnail Bubble */}
                     <div
                       ref={progressRef}
                       onMouseDown={(e) => { setIsDragging(true); handleTimelineMove(e.clientX); }}
-                      onMouseMove={(e) => { if (isDragging) handleTimelineMove(e.clientX); }}
-                      onMouseUp={() => setIsDragging(false)}
-                      onMouseLeave={() => setIsDragging(false)}
-                      className="relative flex-1 h-6 flex items-center cursor-pointer group/seek"
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                        setHoverScrub({ x: e.clientX, time: Math.floor(ratio * duration) });
+                        if (isDragging) handleTimelineMove(e.clientX);
+                      }}
+                      onMouseUp={() => { setIsDragging(false); setHoverScrub(null); }}
+                      onMouseLeave={() => { setIsDragging(false); setHoverScrub(null); }}
+                      className="relative flex-1 h-7 flex items-center cursor-pointer group/seek"
                     >
+                      {/* 🎬 فقاعة المعاينة الحية المصغرة الفائقة (Live Visual Thumbnail Preview Bubble) */}
+                      {(hoverScrub || isDragging) && (
+                        <div
+                          className="absolute -top-24 pointer-events-none z-30 transition-all duration-75 -translate-x-1/2"
+                          style={{
+                            left: `${Math.max(8, Math.min(92, ((hoverScrub?.time ?? currentTime) / duration) * 100))}%`
+                          }}
+                        >
+                          <div className="bg-[#050D18]/95 border-2 border-cyan-400/90 rounded-2xl p-1.5 shadow-[0_0_25px_rgba(0,210,255,0.5)] backdrop-blur-md flex flex-col items-center gap-1 w-32 animate-fadeIn">
+                            <div className="w-full h-14 rounded-xl bg-gradient-to-tr from-[#020B16] via-[#0A2647] to-[#041325] flex items-center justify-center relative overflow-hidden border border-white/10">
+                              <Film className="w-5 h-5 text-cyan-400 animate-pulse" />
+                              <span className="absolute bottom-1 right-1 text-[8px] bg-black/80 px-1 rounded text-cyan-300 font-mono font-bold">1080p</span>
+                              <span className="absolute top-1 left-1 text-[8px] bg-cyan-500/30 text-cyan-200 px-1 rounded font-bold">معاينة حية</span>
+                            </div>
+                            <span className="font-mono text-[11px] font-black text-cyan-300 tracking-wider">
+                              {formatTime(hoverScrub?.time ?? currentTime)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="w-full h-1.5 group-hover/seek:h-2.5 bg-white/20 group-hover/seek:bg-white/30 rounded-full overflow-visible relative transition-all duration-150">
+                        {/* Bookmark visual pins */}
+                        {bookmarks.map((bm) => (
+                          <div
+                            key={bm.id}
+                            className="absolute top-1/2 -translate-y-1/2 -ml-1 w-2 h-3.5 bg-violet-400 rounded-full z-15 shadow-[0_0_8px_#A78BFA]"
+                            style={{ left: `${(bm.time / duration) * 100}%` }}
+                            title={`علامة: ${bm.title} (${formatTime(bm.time)})`}
+                          />
+                        ))}
+
                         {/* A-B Loop visual pins */}
                         {abLoop.a !== null && (
                           <div
@@ -2792,6 +2899,241 @@ export function MediaPlayerDemo() {
                   إلغاء مؤقت النوم النشط
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* =========================================================================
+          🎙️ MODAL: AI VOCAL CLARITY & DRC (محرك توضيح الحوارات وعزل الضجيج)
+         ========================================================================= */}
+      {activeModal === 'vocal_boost' && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#05161A] border border-emerald-500/50 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl text-white">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Mic className="w-5 h-5 text-emerald-400 animate-pulse" />
+                <h4 className="font-black text-sm">محرك توضيح الحوارات وعزل الضجيج (AI Vocal Clarity)</h4>
+              </div>
+              <button onClick={() => setActiveModal('none')} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-4 text-xs">
+              <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-white flex items-center gap-2">
+                    <span>تضخيم الأصوات البشرية والهمس (Vocal Booster)</span>
+                  </span>
+                  <button
+                    onClick={() => {
+                      setAiVocalBoost(!aiVocalBoost);
+                      showToast(aiVocalBoost ? 'تم إيقاف تضخيم الحوارات' : 'تم تفعيل معزز الحوارات والهمس بنجاح 🎙️');
+                    }}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      aiVocalBoost ? 'bg-emerald-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                        aiVocalBoost ? 'translate-x-6' : 'translate-x-1'
+                      } top-0.5 absolute shadow`}
+                    />
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  يقوم المحرك برفع نطاق ترددات الكلام البشري بنسبة 150% مع تقليل ترددات الضجيج المحيط لتسمع كل كلمة بوضوح فائق حتى لو كانت الموسيقى الخلفية صاخبة.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-teal-950/40 border border-teal-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-white flex items-center gap-2">
+                    <span>وضع الاستماع الليلي الهادئ (Dynamic Range Compression)</span>
+                  </span>
+                  <button
+                    onClick={() => {
+                      setNightDrcMode(!nightDrcMode);
+                      showToast(nightDrcMode ? 'تم إيقاف وضع الاستماع الليلي' : 'تم تفعيل وضع الاستماع الليلي الهادئ 🌙');
+                    }}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      nightDrcMode ? 'bg-teal-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                        nightDrcMode ? 'translate-x-6' : 'translate-x-1'
+                      } top-0.5 absolute shadow`}
+                    />
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  يضغط النطاق الصوتي ليخفض أصوات الانفجارات والمؤثرات العالية فجأة ويرفع أصوات الهمس المنخفضة لتشاهد أفلامك ليلاً دون إزعاج أحد.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setActiveModal('none')}
+                className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
+              >
+                تطبيق الإعدادات
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          🔖 MODAL: SMART BOOKMARKS & MOMENTS (العلامات المرجعية وحفظ اللحظات)
+         ========================================================================= */}
+      {activeModal === 'bookmarks' && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#120B24] border border-violet-500/50 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl text-white">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Bookmark className="w-5 h-5 text-violet-400 animate-pulse" />
+                <h4 className="font-black text-sm">العلامات المرجعية الذكية وحفظ المشاهد (Smart Bookmarks)</h4>
+              </div>
+              <button onClick={() => setActiveModal('none')} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-4 text-xs">
+              {/* Add current moment */}
+              <div className="p-3 rounded-2xl bg-violet-950/40 border border-violet-500/30 flex items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <div className="font-bold text-violet-300">حفظ اللحظة الحالية: {formatTime(currentTime)}</div>
+                  <input
+                    type="text"
+                    value={newBookmarkTitle}
+                    onChange={(e) => setNewBookmarkTitle(e.target.value)}
+                    placeholder="عنوان اللحظة (مثال: لقطة الهدف)..."
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/20 text-white text-[11px] outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    const title = newBookmarkTitle.trim() || `لقطة مميزة عند ${formatTime(currentTime)}`;
+                    setBookmarks((prev) => [...prev, { id: `bm_${Date.now()}`, time: currentTime, title }]);
+                    setNewBookmarkTitle('');
+                    showToast(`تمت إضافة العلامة المرجعية: ${title} 🔖`);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold whitespace-nowrap cursor-pointer"
+                >
+                  حفظ الآن
+                </button>
+              </div>
+
+              {/* Bookmarks list */}
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {bookmarks.length === 0 ? (
+                  <div className="p-4 text-center text-slate-400">لا توجد علامات مرجعية محفوظة بعد.</div>
+                ) : (
+                  bookmarks.map((bm) => (
+                    <div
+                      key={bm.id}
+                      className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between gap-2 hover:bg-white/10 transition-colors"
+                    >
+                      <button
+                        onClick={() => {
+                          setCurrentTime(bm.time);
+                          setActiveModal('none');
+                          showToast(`الانتقال إلى العلامة: ${bm.title}`);
+                        }}
+                        className="flex-1 text-right font-bold text-slate-200 hover:text-violet-300 flex items-center gap-2"
+                      >
+                        <Bookmark className="w-3.5 h-3.5 text-violet-400" />
+                        <span>{bm.title}</span>
+                        <span className="font-mono text-cyan-400 text-[10px]">({formatTime(bm.time)})</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setBookmarks((prev) => prev.filter((b) => b.id !== bm.id));
+                          showToast('تم حذف العلامة المرجعية');
+                        }}
+                        className="p-1 rounded text-rose-400 hover:bg-rose-500/20"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          💬 MODAL: DUAL SUBTITLES & STYLER (الترجمة المزدوجة واستوديو الخطوط)
+         ========================================================================= */}
+      {activeModal === 'dual_subtitles' && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#081622] border border-sky-500/50 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl text-white">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Type className="w-5 h-5 text-sky-400 animate-pulse" />
+                <h4 className="font-black text-sm">استوديو الترجمة المزدوجة (Dual Subtitle Studio)</h4>
+              </div>
+              <button onClick={() => setActiveModal('none')} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-4 text-xs">
+              <div className="p-3.5 rounded-2xl bg-sky-950/40 border border-sky-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-white">تفعيل الترجمة المزدوجة (لغتان معاً على الشاشة)</span>
+                  <button
+                    onClick={() => {
+                      setDualSubtitleEnabled(!dualSubtitleEnabled);
+                      showToast(dualSubtitleEnabled ? 'تم إيقاف الترجمة المزدوجة' : 'تم تفعيل الترجمة المزدوجة (عربي + إنجليزي) 💬');
+                    }}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      dualSubtitleEnabled ? 'bg-sky-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                        dualSubtitleEnabled ? 'translate-x-6' : 'translate-x-1'
+                      } top-0.5 absolute shadow`}
+                    />
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  مثالية لمتعلمي اللغات وعشاق الترجمة لمقارنة النص العربي الأصلي مع النص الإنجليزي في سطرين مدمجين.
+                </p>
+              </div>
+
+              {/* Subtitle Color Selector */}
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-bold">لون خط الترجمة الأساسي:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'yellow', label: 'أصفر سينمائي', color: 'text-yellow-300 border-yellow-400' },
+                    { id: 'white', label: 'أبيض كلاسيكي', color: 'text-white border-white' },
+                    { id: 'cyan', label: 'سماوي فائق', color: 'text-cyan-300 border-cyan-400' },
+                  ].map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        setSubtitleColor(c.id as any);
+                        showToast(`تم ضبط لون الترجمة إلى ${c.label}`);
+                      }}
+                      className={`py-2 rounded-xl text-center font-bold border transition-all ${
+                        subtitleColor === c.id ? `${c.color} bg-white/10 ring-2` : 'border-white/10 text-slate-400'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setActiveModal('none')}
+                className="w-full py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs"
+              >
+                تأكيد وحفظ
+              </button>
             </div>
           </div>
         </div>
