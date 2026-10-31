@@ -275,6 +275,7 @@ export function MediaPlayerDemo() {
     setDuration(nextItem.durationSec);
     setCurrentTime(0);
     setIsPlaying(true);
+    setControlsVisible(true);
     showToast(`تشغيل المقطع السابق: ${nextItem.title}`);
     resetAutoHide();
   }, [viewState, safeVideos, publicVideos, currentVideo]);
@@ -289,6 +290,7 @@ export function MediaPlayerDemo() {
     setDuration(nextItem.durationSec);
     setCurrentTime(0);
     setIsPlaying(true);
+    setControlsVisible(true);
     showToast(`تشغيل المقطع التالي تلقائياً: ${nextItem.title}`);
     resetAutoHide();
   }, [viewState, safeVideos, publicVideos, currentVideo]);
@@ -1038,6 +1040,7 @@ export function MediaPlayerDemo() {
                         setCurrentTime(0);
                         setViewState('player');
                         setIsPlaying(true);
+                        setControlsVisible(true);
                       }}
                       className="flex items-center gap-3 flex-1 cursor-pointer"
                     >
@@ -1172,6 +1175,7 @@ export function MediaPlayerDemo() {
                         setCurrentTime(0);
                         setViewState('player');
                         setIsPlaying(true);
+                        setControlsVisible(true);
                       }}
                       className="flex items-center gap-3 flex-1 cursor-pointer"
                     >
