@@ -49,14 +49,48 @@ export function ReleaseDownloads() {
             </p>
           </div>
 
+          {/* Remo Player v1.0.64 Highlight */}
+          <div className="p-4 rounded-xl border-2 border-cyan-500/50 bg-gradient-to-r from-cyan-950/40 via-slate-900 to-slate-950 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-cyan-300">مشغل ريموبلاير المدمج الكامل (Remo Player v1.0.64)</span>
+                <span className="text-[10px] bg-cyan-500 text-slate-950 font-black px-2 py-0.5 rounded-full">v1.0.64 Merged</span>
+              </div>
+              <a
+                href="https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-bold"
+              >
+                <span>مستودع الإصدارات remo-player-1-0-23</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              الإصدار المدمج المتكامل: شريط أدوات الفيديو فوق شريط التمرير الزمني، الانتقال التلقائي للفيديو التالي دون توقف، مشغل قفل الشاشة والإشعارات بأزرار التحكم الكاملة وخدمة Foreground Service، إيماءات الصوت والإضاءة مع أزرار الهاتف، والمجلد الآمن بنظام .nomedia وتشفير الامتداد.
+            </p>
+            <div className="flex items-center gap-3 pt-1 flex-wrap">
+              <a
+                href="https://github.com/ma4alhzmi1-ai-pro/remo-player-1-0-23/releases/download/v1.0.64/RemoPlayer-1.0.64-Full.zip"
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all"
+              >
+                <Download className="w-4 h-4 text-slate-950" />
+                <span>تحميل حزمة RemoPlayer-1.0.64-Full.zip</span>
+              </a>
+              <span className="text-[11px] text-slate-400 font-mono">144 MB Uncompressed • APK + Full Assets</span>
+            </div>
+          </div>
+
           {/* Release Highlights */}
           <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/80 space-y-2 text-xs">
             <div className="font-bold text-white flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span>ملاحظات التحديث لإصدار 1.0.16:</span>
+              <span>ملاحظات التحديث لإصدار 1.0.16 & 1.0.64:</span>
             </div>
             <p className="text-slate-300 leading-relaxed">
-              «تطبيق الكتابة الفعلية بالخطوط العربية (القاهرة، الأميري، تجوال، رقعة عارف، المراعي) في حقول الكتابة، وتحديث الكيبورد الناطق لينطق الكلمة كاملة بصوت نقي بعد إتمام كتابتها مع إشعار التحديث التلقائي الفوري.»
+              «تطبيق الكتابة الفعلية بالخطوط العربية (القاهرة، الأميري، تجوال، رقعة عارف، المراعي) في حقول الكتابة، وتحديث مشغل الفيديو والصوت المدمج بالخلفية وإصلاح شريط الأدوات فوق شريط الوقت.»
             </p>
           </div>
 

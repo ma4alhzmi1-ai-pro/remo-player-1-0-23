@@ -2,12 +2,14 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Platform } from "react-native";
 import { useColors } from "@/hooks/use-colors";
+import { useLanguage } from "@/lib/language-provider";
 
 export default function TabLayout() {
   const colors = useColors();
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + bottomPadding;
@@ -31,38 +33,39 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "الرئيسية",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: t("home"),
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="home-filled" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="keyboard-studio"
+        name="music"
         options={{
-          title: "المعاينة",
-          tabBarIcon: ({ color }) => <IconSymbol size={27} name="keyboard" color={color} />,
+          title: t("music"),
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="library-music" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="studio"
+        name="video"
         options={{
-          title: "الاستوديو",
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="sparkles" color={color} />,
+          title: t("video"),
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="movie" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="themes"
+        name="playlists"
         options={{
-          title: "الثيمات",
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="paintpalette" color={color} />,
+          title: t("playlists"),
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="queue-music" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="search"
         options={{
-          title: "الإعدادات",
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="gearshape" color={color} />,
+          title: t("search"),
+          tabBarIcon: ({ color }) => <MaterialIcons size={24} name="search" color={color} />,
         }}
       />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

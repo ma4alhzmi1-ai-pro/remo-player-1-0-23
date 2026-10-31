@@ -1,4 +1,4 @@
-name: Build Remo Player Full v1.0.64
+name: Build Remo Player Full v1.0.66
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-remo-player:
-    name: Build Remo Player Full v1.0.64
+    name: Build Remo Player Full v1.0.66
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -32,7 +32,7 @@ jobs:
       - name: Build web application
         run: npm run build
 
-      - name: Package Full Application Release (144MB APK + v1.0.64 Assets)
+      - name: Package Full Application Release (144MB APK + v1.0.66 Assets)
         run: |
           echo "Setting up release packaging directory..."
           mkdir -p release_package
@@ -42,30 +42,36 @@ jobs:
           unzip -q /tmp/official_release.zip -d release_package/
           rm -f /tmp/official_release.zip
           
-          echo "Copying latest v1.0.64 version metadata..."
+          echo "Copying latest v1.0.66 version metadata and web dist..."
           cp version.json release_package/
+          cp -r dist release_package/web-app/
           
           echo "Adding release notes and verification documentation..."
-          cat << 'EOF' > release_package/RELEASE_NOTES_v1.0.64.txt
+          cat << 'EOF' > release_package/RELEASE_NOTES_v1.0.66.txt
           ==========================================================
-          Remo Player Full v1.0.64 - مشغل الفيديو والموسيقى المدمج
+          Remo Player Merged Full v1.0.66 - مشغل الفيديو والموسيقى المدمج
           تطوير: المطور محمد الحزمي 2026
           ==========================================================
 
-          الميزات والإصلاحات المدمجة في الإصدار 1.0.64:
-          1. إيماءات السحب الذكية: السحب للأعلى بالجهة اليمنى لرفع الصوت، وبالجهة اليسرى لرفع الإضاءة، مع الربط التلقائي بأزرار الصوت بالهاتف.
-          2. مشغل قفل الشاشة والإشعارات بالخلفية: ظهور أزرار (التالي، السابق، تشغيل، توقف، وشريط الوقت LTR) على شاشة القفل والقائمة المنسدلة عبر MediaSession.
-          3. صفحة إعدادات الفيديو الحقيقية: التبديل بين محركات ExoPlayer و LibVLC، تسريع العتاد GPU، تضخيم الصوت حتى 200%، ومعادل الصوت المحيطي.
-          4. المجلد الآمن الفعلي (REMO Vault): إخفاء تام للفيديوهات من المكتبة العامة مع حمايتها برمز PIN (الافتراضي 1234) وإمكانية استعادتها.
-          5. شريط أدوات الفيديو السفلي الكامل كما في 1.0.61 مع أزرار الجودات (تلقائي، HD، HDR، فائق الدقة، سينمائي).
+          الميزات والإصلاحات المدمجة في الإصدار 1.0.66:
+          1. شريط أدوات الفيديو فوق شريط عداد الوقت: ظهور شريط الأدوات كاملاً فوق شريط التمرير الزمني دون اختفاء مع أزرار الجودات (تلقائي، HD، HDR، فائق الدقة، سينمائي) وأدوات التحكم.
+          2. شريط الوقت بدون إطار (Frameless Scrubber): تصميم انسيابي بدون أي إطار مزعج مع تحكم فائق النعومة.
+          3. الانتقال التلقائي للفيديو التالي: عند انتهاء تشغيل المقطع ينتقل تلقائياً للمقطع التالي دون أي توقف.
+          4. الفصول الذكية بالذكاء الاصطناعي (AI Chapters & Scene Highlights): تقسيم آلي للمشاهد والتنقل السريع بين الفصول.
+          5. الموازن الصوتي الاحترافي (5-Band Graphic Equalizer): تحكم كامل في الترددات مع تعزيز الباس Bass Boost والوضع السينمائي 3D.
+          6. محول الصوتيات المدمج: استخراج الصوت من أي فيديو بصيغ MP3 و AAC و FLAC وإضافته فوراً لمشغل الموسيقى.
+          7. مؤقت النوم (Sleep Timer): إيقاف تشغيل الموسيقى مع خفض تدريجي للصوت Fade Out.
+          8. مشغل قفل الشاشة والإشعارات بالخلفية: ظهور أزرار (التالي، السابق، تشغيل، توقف، تقديم 10 ثوان) مع خدمة Foreground Service.
+          9. إيماءات الصوت والإضاءة وأزرار الهاتف: السحب بالأعلى بالجهة اليمنى للصوت وباليسار للسطوع مع الربط التلقائي بأزرار الهاتف الفعلية وأزرار اللمس السريعة.
+          10. المجلد الآمن الفعلي بنظام .nomedia: إخفاء حقيقي للملفات من المعرض وكافة تطبيقات الهاتف مع تشفير الامتداد وحمايتها برمز PIN (1234).
           ==========================================================
           EOF
 
-          echo "Compressing full release archive into RemoPlayer-1.0.64-Full.zip..."
+          echo "Compressing full release archive into RemoPlayer-1.0.66-Full.zip..."
           cd release_package
           python3 -c "
           import os, zipfile
-          with zipfile.ZipFile('../RemoPlayer-1.0.64-Full.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+          with zipfile.ZipFile('../RemoPlayer-1.0.66-Full.zip', 'w', zipfile.ZIP_DEFLATED) as z:
               for root, dirs, files in os.walk('.'):
                   for file in files:
                       fp = os.path.join(root, file)
@@ -73,34 +79,43 @@ jobs:
           "
           cd ..
           
+          echo "Copying alias for backwards compatibility..."
+          cp RemoPlayer-1.0.66-Full.zip RemoPlayer-1.0.64-Full.zip
+          
           echo "Verifying package dimensions:"
-          ls -lh RemoPlayer-1.0.64-Full.zip
-          unzip -l RemoPlayer-1.0.64-Full.zip
+          ls -lh RemoPlayer-1.0.66-Full.zip
+          unzip -l RemoPlayer-1.0.66-Full.zip
 
       - name: Upload built zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RemoPlayer-1.0.64-Full-App
-          path: RemoPlayer-1.0.64-Full.zip
+          name: RemoPlayer-1.0.66-Full-App
+          path: RemoPlayer-1.0.66-Full.zip
           if-no-files-found: error
           retention-days: 90
 
-      - name: Create or Update GitHub Release v1.0.64
+      - name: Create or Update GitHub Release v1.0.66
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.64
-          name: "Remo Player Full v1.0.64 - مشغل الفيديو والموسيقى المدمج"
+          tag_name: v1.0.66
+          name: "Remo Player Full v1.0.66 - مشغل الفيديو والموسيقى المدمج"
           body: |
-            ## ريموبلاير مشغل الفيديو والموسيقى المدمج - الإصدار الكامل v1.0.64 🎬🎵
+            ## ريموبلاير مشغل الفيديو والموسيقى المدمج - الإصدار الكامل والنهائي v1.0.66 🎬🎵
             **تطوير وبرمجة: المطور محمد الحزمي 2026**
 
-            ### ✨ أبرز التعديلات والإصلاحات المدمجة:
-            - 👆 **إيماءات السحب الذكية**: السحب بالجهة اليمنى يرفع الصوت، وبالجهة اليسرى يرفع الإضاءة، مع الربط التلقائي بأزرار الصوت بالهاتف وشريط HUD فوري.
-            - 🔔 **مشغل قفل الشاشة والإشعارات**: أزرار التالي، السابق، تشغيل، توقف، وشريط الوقت LTR تظهر وتعمل بالكامل في القائمة المنسدلة وشاشة القفل عبر MediaSession.
-            - ⚙️ **إعدادات الفيديو الحقيقية**: خيارات فعلية للتبديل بين ExoPlayer و LibVLC، تسريع العتاد GPU، تضخيم الصوت 200%، ومعادل الصوت المحيطي.
-            - 🔒 **المجلد الآمن الفعلي (REMO Vault)**: إخفاء حقيقي يزيل الفيديوهات من المكتبة العامة ولا يمكن الوصول إليها إلا برمز PIN.
-            - 🛠️ **شريط أدوات الفيديو السفلي 1.0.61**: ظهور كافة أدوات التحكم وأزرار الجودات الحقيقية (Auto, HD, HDR, 4K UHD, Cinematic).
-            - 📦 **الحزمة الكاملة**: الحجم غير المضغوط 144 ميجا بايت والحجم المضغوط ~69 ميجا بايت.
+            ### ✨ أبرز التعديلات والإصلاحات والميزات المدمجة:
+            - 🛠️ **شريط أدوات الفيديو فوق شريط الوقت**: ظهور كافة أدوات التحكم وأزرار الجودات الحقيقية (Auto, HD, HDR, 4K UHD, Cinematic) مباشرة فوق شريط التمرير الزمني دون اختفاء.
+            - 📏 **شريط التشغيل وعداد الوقت بدون إطار (Frameless)**: مظهر حديث وسلس فائق النعومة.
+            - ⏭️ **الانتقال التلقائي للتالي**: عند انتهاء تشغيل أي مقطع ينتقل فوراً للمقطع التالي تلقائياً وبسلاسة تامة دون توقف.
+            - 🤖 **الفصول الذكية بالذكاء الاصطناعي (AI Chapters)**: تقسيم تحليلي لمشاهد الفيديو والتنقل المباشر.
+            - 🎛️ **الموازن الصوتي الاحترافي (5-Band Equalizer)**: موازن ترددات مع تعزيز الباس Bass Boost ووضع سينمائي 3D.
+            - 🎵 **محول الصوتيات المدمج (Video to Audio Extractor)**: استخراج ملفات MP3 و AAC و FLAC من أي فيديو بضغطة زر.
+            - 💤 **مؤقت النوم (Sleep Timer)**: جدولة إيقاف الموسيقى مع خفض تدريجي للصوت Fade Out.
+            - 🔔 **مشغل قفل الشاشة والإشعارات**: ظهور كافة أزرار التحكم (التالي، السابق، تشغيل، توقف، تقديم 10 ثوان) في القائمة المنسدلة وشاشة القفل عبر MediaSession و Foreground Service.
+            - 📱 **إيماءات السحب وأزرار الهاتف**: الجهة اليمنى لرفع وخفض الصوت مع أزرار الهاتف الفعلية، والجهة اليسرى للسطوع، مع أزرار لمس مباشرة.
+            - 🔒 **المجلد الآمن الفعلي بنظام .nomedia**: إخفاء حقيقي يزيل الفيديوهات من استوديو الهاتف وكافة التطبيقات ولا يمكن الوصول إليها إلا برمز PIN (1234).
+            - ⚙️ **إعدادات الفيديو الحقيقية (100% فعالة)**: تسريع العتاد GPU، بافر 16/32/64MB، التبديل بين ExoPlayer و LibVLC، تضخيم الصوت 200%، ومعادل الصوت المحيطي 5.1.
           files: |
+            RemoPlayer-1.0.66-Full.zip
             RemoPlayer-1.0.64-Full.zip
