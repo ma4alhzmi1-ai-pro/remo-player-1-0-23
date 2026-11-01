@@ -234,8 +234,8 @@ export default function AudioPlayerScreen() {
         onPanResponderMove: (_evt, gestureState) => {
           const { width: barW, startTime } = audioInitialTouchRef.current;
           const total = duration || 0;
-          // RTL: يساراً يقدم التشغيل ويميناً يرجعه، حسب حركة الإصبع مباشرة.
-          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
+          // LTR: يميناً يقدم التشغيل ويساراً يرجعه، حسب حركة الإصبع مباشرة.
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime + (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
@@ -243,7 +243,7 @@ export default function AudioPlayerScreen() {
         onPanResponderRelease: (_evt, gestureState) => {
           const { width: barW, startTime } = audioInitialTouchRef.current;
           const total = duration || 0;
-          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime + (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
@@ -712,7 +712,7 @@ export default function AudioPlayerScreen() {
           {/* Scrubber & Progress Bar */}
           <View style={styles.progressSection}>
             <View style={styles.timeRow}>
-              {/* Current Time on the Left (RTL context) */}
+              {/* Current time is shown on the left; the visual scrubber is LTR. */}
               <Text style={styles.timeText}>{formatDuration(effectiveTime)}</Text>
 
               {/* Scrubber Line - Smooth, Jitter-Free Seeking */}
@@ -724,12 +724,12 @@ export default function AudioPlayerScreen() {
                 {...progressResponder.panHandlers}
               >
                 <View style={styles.progressTrack} pointerEvents="none">
-                  <View style={[styles.progressFill, { width: `${progressPercent}%`, right: 0 }]} />
+                  <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
                   <View
                     style={[
                       styles.progressThumb,
                       isScrubbing && styles.progressThumbActive,
-                      { right: `${progressPercent}%` },
+                      { left: `${progressPercent}%` },
                     ]}
                   />
                 </View>
@@ -1437,7 +1437,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     position: "absolute",
-    right: 0,
+    left: 0,
     height: "100%",
     backgroundColor: "#00F2FE",
     borderRadius: 3,
@@ -1449,7 +1449,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     backgroundColor: "#00F2FE",
-    marginRight: -9,
+    marginLeft: -9,
     elevation: 6,
     shadowColor: "#00F2FE",
     shadowOffset: { width: 0, height: 2 },
@@ -1463,7 +1463,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    marginRight: -12,
+    marginLeft: -12,
     borderWidth: 3,
     borderColor: "#FFFFFF",
     elevation: 8,
