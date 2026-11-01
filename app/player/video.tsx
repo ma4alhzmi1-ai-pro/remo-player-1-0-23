@@ -946,11 +946,6 @@ export default function VideoPlayerScreen() {
         updatedAt: Date.now(),
       });
     }
-    try {
-      if (usingCompatibilityEngine) await vlcViewRef.current?.stop();
-    } catch {
-      // ignore
-    }
     keepVideoAliveRef.current = true;
     showMiniPlayer();
     if (Platform.OS !== "web") {
@@ -997,6 +992,7 @@ export default function VideoPlayerScreen() {
   };
   const handleFirstFrame = () => {
     if (Platform.OS === "web") return;
+    revealControls();
     if (!selectedFrameAspect) setSelectedFrameAspect("16:9");
     if (!autoRotateEnabled || isLandscape) return;
     void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
@@ -1696,9 +1692,9 @@ const styles = StyleSheet.create({
   progressWrap: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 },
   progressTouchArea: { flex: 1, minHeight: 44, justifyContent: "center", paddingHorizontal: 1 },
   time: { color: "rgba(255,255,255,0.58)", fontSize: 9, fontWeight: "700", fontVariant: ["tabular-nums"] },
-  progressTrack: { height: 8, borderRadius: 5, position: "relative", justifyContent: "center", shadowColor: colors.cyan, shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 3 },
-  progressTrackBase: { ...StyleSheet.absoluteFillObject, borderRadius: 5, backgroundColor: "rgba(255,255,255,0.2)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
-  progressTrackActive: { height: 10, borderRadius: 6 },
+  progressTrack: { height: 4, borderRadius: 2, position: "relative", justifyContent: "center", shadowColor: colors.cyan, shadowOpacity: 0.35, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 3 },
+  progressTrackBase: { ...StyleSheet.absoluteFillObject, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.28)" },
+  progressTrackActive: { height: 5, borderRadius: 3 },
   progressFill: { position: "absolute", right: 0, height: "100%", borderRadius: 5, backgroundColor: colors.cyan, shadowColor: colors.cyan, shadowOpacity: 0.85, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 4 },
   progressThumb: { position: "absolute", top: -5, marginRight: -7, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.cyan, borderWidth: 2, borderColor: "#FFFFFF", shadowColor: colors.cyan, shadowOpacity: 0.9, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 7 },
   progressThumbActive: { width: 24, height: 24, top: -7, marginRight: -10, borderRadius: 12, borderWidth: 3 },
