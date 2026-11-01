@@ -729,7 +729,7 @@ export default function AudioPlayerScreen() {
                     style={[
                       styles.progressThumb,
                       isScrubbing && styles.progressThumbActive,
-                      { left: `${progressPercent}%` },
+                      { right: `${Math.max(0, Math.min(100, 100 - progressPercent))}%` },
                     ]}
                   />
                 </View>
@@ -1437,7 +1437,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     position: "absolute",
-    left: 0,
+    right: 0,
     height: "100%",
     backgroundColor: "#00F2FE",
     borderRadius: 3,
@@ -1449,7 +1449,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     backgroundColor: "#00F2FE",
-    marginLeft: -9,
+    marginRight: -9,
     elevation: 6,
     shadowColor: "#00F2FE",
     shadowOffset: { width: 0, height: 2 },
@@ -1463,7 +1463,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    marginLeft: -12,
+    marginRight: -12,
     borderWidth: 3,
     borderColor: "#FFFFFF",
     elevation: 8,
