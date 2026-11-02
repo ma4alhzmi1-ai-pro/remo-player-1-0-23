@@ -30,16 +30,9 @@ export default function VideoSettingsScreen() {
     <Text style={styles.sectionTitle}>التحكم</Text>
     <View style={styles.group}>
       <ValueRow title="فاصل التقديم/الترجيع السريع" value={`${settings.seekInterval}s`} options={SEEK_OPTIONS.map(String)} selected={String(settings.seekInterval)} onSelect={(value) => update({ seekInterval: Number(value) })} />
-      <SwitchRow title="انقر مزدوجًا للتقديم/الترجيع" value={settings.doubleTapSeekEnabled} onToggle={() => toggle("doubleTapSeekEnabled")} />
       <SwitchRow title="اضغط مطولًا لتسريع التشغيل" value={settings.longPressSpeedEnabled} onToggle={() => toggle("longPressSpeedEnabled")} />
       <ValueRow title="سرعة الضغط المطول" value={`${settings.longPressSpeed}x`} options={SPEED_OPTIONS.map(String)} selected={String(settings.longPressSpeed)} onSelect={(value) => update({ longPressSpeed: Number(value) })} disabled={!settings.longPressSpeedEnabled} />
       <SwitchRow title="الاهتزاز عند الضغط مطولًا" value={settings.longPressVibrationEnabled} onToggle={() => toggle("longPressVibrationEnabled")} />
-      <SwitchRow title="انقر فوق النسب للتبديل مباشرة" description="عند التفعيل يمكن تغيير نسبة العرض من خيارات المشغل مباشرة." value={settings.directAspectSwitchEnabled} onToggle={() => toggle("directAspectSwitchEnabled")} />
-    </View>
-    <Text style={styles.sectionTitle}>الذاكرة</Text>
-    <View style={styles.group}>
-      <SwitchRow title="تذكر التشغيل في الخلفية" value={settings.rememberBackgroundPlayback} onToggle={() => toggle("rememberBackgroundPlayback")} />
-      <SwitchRow title="تذكر النسبة" description="يحفظ آخر نسبة عرض اختارها المستخدم للفيديو." value={settings.rememberAspectRatio} onToggle={() => toggle("rememberAspectRatio")} />
     </View>
     <Text style={styles.sectionTitle}>متقدم</Text>
     <View style={styles.group}>

@@ -100,6 +100,11 @@ patch(
   "  val audioTracks: VideoPlayerAudioTracks = VideoPlayerAudioTracks(this)\n  val videoTracks: VideoPlayerVideoTracks = VideoPlayerVideoTracks(this)\n",
 );
 patch(
+  "player/VideoPlayer.kt",
+  "    player.addListener(playerListener)\n    player.addAnalyticsListener(analyticsListener)\n",
+  "    player.addListener(playerListener)\n    player.addAnalyticsListener(analyticsListener)\n    addListener(videoTracks)\n",
+);
+patch(
   "VideoModule.kt",
   `      Property("videoTrack")\n        .get { ref: VideoPlayer ->\n          ref.currentVideoTrack\n        }\n`,
   `      Property("videoTrack")\n        .get { ref: VideoPlayer ->\n          ref.videoTracks.currentVideoTrack\n        }\n        .set { ref: VideoPlayer, videoTrack: expo.modules.video.records.VideoTrack? ->\n          appContext.mainQueue.launch {\n            ref.videoTracks.currentVideoTrack = videoTrack\n          }\n        }\n`,

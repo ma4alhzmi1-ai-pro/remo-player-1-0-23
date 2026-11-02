@@ -1451,14 +1451,8 @@ export default function VideoPlayerScreen() {
               <Pressable onPress={() => { setSubtitlePanelOpen(false); void importSubtitleFile(); }} style={styles.subtitleMenuItem}>
                 <Text style={styles.subtitleMenuItemText}>فتح ملف</Text>
               </Pressable>
-              <Pressable onPress={() => Alert.alert("تنزيل الترجمة", "سيتم إضافة تنزيل الترجمة عبر الإنترنت في إصدار لاحق.")} style={styles.subtitleMenuItem}>
-                <Text style={styles.subtitleMenuItemText}>تنزيل عبر الإنترنت</Text>
-              </Pressable>
               <Pressable onPress={() => { setSubtitlePanelOpen(false); setTranslationOpen(true); }} style={styles.subtitleMenuItem}>
                 <Text style={styles.subtitleMenuItemText}>ترجمة AI</Text>
-              </Pressable>
-              <Pressable onPress={() => undefined} style={styles.subtitleMenuItem}>
-                <Text style={styles.subtitleMenuItemText}>نمط الترجمة</Text>
               </Pressable>
 
               <Text style={styles.subtitleMenuSection}>مظهر الترجمة</Text>
