@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolveAudioProgressSeek } from "../lib/audio-progress";
 
 describe("audio progress seeking", () => {
-  it("maps the physical drag position to the matching playback time", () => {
+  it("maps the RTL track position to the matching playback time", () => {
     expect(resolveAudioProgressSeek(75, 300, 240)).toBe(180);
   });
 

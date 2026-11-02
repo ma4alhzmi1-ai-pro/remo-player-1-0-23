@@ -1,6 +1,6 @@
 {
   "name": "remo-player",
-  "version": "1.0.60",
+  "version": "1.0.70",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -17,7 +17,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "qr": "node scripts/generate_qr.mjs",
-    "postinstall": "node scripts/patch-expo-audio-media-controls.mjs && node scripts/patch-expo-video-media-controls.mjs",
+    "postinstall": "node scripts/patch-expo-audio-media-controls.mjs && node scripts/patch-expo-video-media-controls.mjs && node scripts/patch-expo-video-track-selection.mjs",
     "build:android": "npx expo prebuild --platform android --clean --no-install && cd android && ./gradlew app:assembleRelease",
     "typecheck": "tsc --noEmit --skipLibCheck",
     "prebuild": "expo prebuild",
@@ -81,6 +81,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-css-interop": "0.2.6",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-reanimated": "~4.1.6",
     "react-native-safe-area-context": "~5.6.2",

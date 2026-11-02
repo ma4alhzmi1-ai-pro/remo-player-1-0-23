@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolveVideoProgressSeek } from "../lib/video-progress";
 
 describe("video progress seeking", () => {
-  it("maps the physical touch point to the matching playback time", () => {
+  it("maps the RTL touch point to the matching playback time", () => {
     expect(resolveVideoProgressSeek(50, 200, 120)).toBe(90);
   });
 

@@ -10,6 +10,8 @@ export type VideoSettings = {
   directAspectSwitchEnabled: boolean;
   rememberBackgroundPlayback: boolean;
   rememberAspectRatio: boolean;
+  qualityBoost: boolean;
+  preferredAudioLanguage: string;
 };
 
 export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
@@ -22,6 +24,8 @@ export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
   directAspectSwitchEnabled: false,
   rememberBackgroundPlayback: false,
   rememberAspectRatio: false,
+  qualityBoost: true,
+  preferredAudioLanguage: "auto",
 };
 
 const STORAGE_KEY = "remo.video.settings.v1";
@@ -39,6 +43,8 @@ function normalize(value: Partial<VideoSettings> | null | undefined): VideoSetti
     directAspectSwitchEnabled: value?.directAspectSwitchEnabled ?? DEFAULT_VIDEO_SETTINGS.directAspectSwitchEnabled,
     rememberBackgroundPlayback: value?.rememberBackgroundPlayback ?? DEFAULT_VIDEO_SETTINGS.rememberBackgroundPlayback,
     rememberAspectRatio: value?.rememberAspectRatio ?? DEFAULT_VIDEO_SETTINGS.rememberAspectRatio,
+    qualityBoost: value?.qualityBoost ?? DEFAULT_VIDEO_SETTINGS.qualityBoost,
+    preferredAudioLanguage: typeof value?.preferredAudioLanguage === "string" ? value.preferredAudioLanguage : DEFAULT_VIDEO_SETTINGS.preferredAudioLanguage,
   };
 }
 

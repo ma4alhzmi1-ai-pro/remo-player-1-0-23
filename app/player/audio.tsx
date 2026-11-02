@@ -21,7 +21,7 @@ import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 
-import { colors, formatDuration } from "@/components/remo-ui";
+import { formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { usePlayer } from "@/lib/player-context";
 import { useLibrary } from "@/lib/library-context";
@@ -89,10 +89,9 @@ export default function AudioPlayerScreen() {
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const progressBarRef = useRef<View>(null);
   const progressLayout = useRef({ pageX: 0, width: 0 });
-  const gestureStartXRef = useRef(0);
   const scrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubbingTimeRef = useRef(0);
-  const audioInitialTouchRef = useRef<{ startX: number; width: number }>({ startX: 0, width: 280 });
+  const audioInitialTouchRef = useRef<{ startX: number; width: number; startTime: number }>({ startX: 0, width: 280, startTime: 0 });
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
@@ -117,7 +116,7 @@ export default function AudioPlayerScreen() {
     return () => {
       isMounted = false;
     };
-  }, [currentItem?.id, currentItem?.thumbnailUri, currentItem?.uri]);
+  }, [currentItem]);
 
   // Load saved theme and custom background on mount
   useEffect(() => {
@@ -227,22 +226,23 @@ export default function AudioPlayerScreen() {
           const localX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
           const targetTime = resolveAudioProgressSeek(localX, barW, duration || 0) ?? 0;
 
-          audioInitialTouchRef.current = { startX: localX, width: barW };
+          audioInitialTouchRef.current = { startX: localX, width: barW, startTime: targetTime };
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
         },
         onPanResponderMove: (_evt, gestureState) => {
-          const { startX, width: barW } = audioInitialTouchRef.current;
-          const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
-          const targetTime = resolveAudioProgressSeek(currentX, barW, duration || 0) ?? 0;
+          const { width: barW, startTime } = audioInitialTouchRef.current;
+          const total = duration || 0;
+          // LTR: يميناً يقدم التشغيل ويساراً يرجعه، حسب حركة الإصبع مباشرة.
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime + (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
         },
         onPanResponderRelease: (_evt, gestureState) => {
-          const { startX, width: barW } = audioInitialTouchRef.current;
-          const currentX = Math.max(0, Math.min(barW, startX + gestureState.dx));
-          const targetTime = resolveAudioProgressSeek(currentX, barW, duration || 0) ?? 0;
+          const { width: barW, startTime } = audioInitialTouchRef.current;
+          const total = duration || 0;
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime + (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
@@ -711,7 +711,7 @@ export default function AudioPlayerScreen() {
           {/* Scrubber & Progress Bar */}
           <View style={styles.progressSection}>
             <View style={styles.timeRow}>
-              {/* Current Time on the Left (RTL context) */}
+              {/* Current time is shown on the left; the visual scrubber is LTR. */}
               <Text style={styles.timeText}>{formatDuration(effectiveTime)}</Text>
 
               {/* Scrubber Line - Smooth, Jitter-Free Seeking */}
@@ -1448,7 +1448,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     backgroundColor: "#00F2FE",
-    marginLeft: -9,
+    marginRight: -9,
     elevation: 6,
     shadowColor: "#00F2FE",
     shadowOffset: { width: 0, height: 2 },
@@ -1462,7 +1462,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    marginLeft: -12,
+    marginRight: -12,
     borderWidth: 3,
     borderColor: "#FFFFFF",
     elevation: 8,
