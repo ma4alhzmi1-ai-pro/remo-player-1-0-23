@@ -2,6 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type VideoSettings = {
   decoderMode: "auto" | "hardware" | "software";
+  qualityEnhancementEnabled: boolean;
+  preferredAudioLanguage: string;
   seekInterval: number;
   doubleTapSeekEnabled: boolean;
   longPressSpeedEnabled: boolean;
@@ -14,6 +16,8 @@ export type VideoSettings = {
 
 export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
   decoderMode: "auto",
+  qualityEnhancementEnabled: true,
+  preferredAudioLanguage: "system",
   seekInterval: 10,
   doubleTapSeekEnabled: true,
   longPressSpeedEnabled: true,
@@ -31,6 +35,8 @@ function normalize(value: Partial<VideoSettings> | null | undefined): VideoSetti
   const longPressSpeed = value?.longPressSpeed === 1.25 || value?.longPressSpeed === 1.5 || value?.longPressSpeed === 2 ? value.longPressSpeed : DEFAULT_VIDEO_SETTINGS.longPressSpeed;
   return {
     decoderMode: value?.decoderMode === "hardware" || value?.decoderMode === "software" ? value.decoderMode : DEFAULT_VIDEO_SETTINGS.decoderMode,
+    qualityEnhancementEnabled: value?.qualityEnhancementEnabled ?? DEFAULT_VIDEO_SETTINGS.qualityEnhancementEnabled,
+    preferredAudioLanguage: typeof value?.preferredAudioLanguage === "string" && value.preferredAudioLanguage.trim() ? value.preferredAudioLanguage : DEFAULT_VIDEO_SETTINGS.preferredAudioLanguage,
     seekInterval,
     doubleTapSeekEnabled: value?.doubleTapSeekEnabled ?? DEFAULT_VIDEO_SETTINGS.doubleTapSeekEnabled,
     longPressSpeedEnabled: value?.longPressSpeedEnabled ?? DEFAULT_VIDEO_SETTINGS.longPressSpeedEnabled,

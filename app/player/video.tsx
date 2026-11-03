@@ -11,8 +11,8 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { StatusBar } from "expo-status-bar";
 import { LibVlcPlayerView, type LibVlcPlayerViewRef, type MediaInfo as LibVlcMediaInfo, type MediaTracks as LibVlcMediaTracks } from "expo-libvlc-player";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, BackHandler, I18nManager, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { isPictureInPictureSupported, VideoView, useVideoPlayer, type SubtitleTrack } from "expo-video";
+import { ActivityIndicator, Alert, AppState, BackHandler, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { isPictureInPictureSupported, VideoView, type AudioTrack, type SubtitleTrack } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -82,7 +82,7 @@ const subtitleBackgroundColors = [
 export default function VideoPlayerScreen() {
   const router = useRouter();
   const { folderPath } = useLocalSearchParams<{ folderPath?: string }>();
-  const { currentItem, playNext, playPrevious, repeatMode, stop, toggleRepeat, videoPlayer: sharedVideoPlayer, videoBackgroundUri, showMiniPlayer } = usePlayer();
+  const { currentItem, playNext, playPrevious, repeatMode, toggleRepeat, videoPlayer: sharedVideoPlayer, videoBackgroundUri, showMiniPlayer } = usePlayer();
   const viewRef = useRef<any>(null);
   const vlcViewRef = useRef<LibVlcPlayerViewRef | null>(null);
   const touchStartX = useRef(0);
@@ -91,7 +91,6 @@ export default function VideoPlayerScreen() {
   const originalPlaybackRateRef = useRef(1);
   const progressTrackWidth = useRef(0);
   const progressTouchRef = useRef<View>(null);
-  const progressTrackLayout = useRef({ pageX: 0, width: 0 });
   const isAutoAdvancingRef = useRef(false);
   const isNavigatingVideoRef = useRef(false);
   const brightnessStartRef = useRef(1);
@@ -140,6 +139,7 @@ export default function VideoPlayerScreen() {
   const subtitleAppearanceReadyRef = useRef(false);
   const [embeddedSubtitleTracks, setEmbeddedSubtitleTracks] = useState<SubtitleTrack[]>([]);
   const [embeddedSubtitleId, setEmbeddedSubtitleId] = useState<string | null>(null);
+  const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]);
   const [vlcSubtitleTracks, setVlcSubtitleTracks] = useState<LibVlcMediaTracks["subtitle"]>([]);
   const [vlcSubtitleId, setVlcSubtitleId] = useState<number | undefined>(undefined);
   const [playbackEngine, setPlaybackEngine] = useState<VideoPlaybackEngine>("media3");
@@ -161,7 +161,6 @@ export default function VideoPlayerScreen() {
   });
   const extractionCanceledRef = useRef(false);
   const extractionAttemptedUrisRef = useRef<Set<string>>(new Set());
-  const videoGestureStartXRef = useRef(0);
   const [resumePrompt, setResumePrompt] = useState<{ seconds: number; visible: boolean } | null>(null);
   const resumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoScrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -269,6 +268,41 @@ export default function VideoPlayerScreen() {
       selectedSubscription.remove();
     };
   }, [player]);
+
+  useEffect(() => {
+    const syncAudioTracks = (tracks = player.availableAudioTracks) => setAudioTracks(tracks);
+    syncAudioTracks();
+    const tracksSubscription = player.addListener("availableAudioTracksChange", ({ availableAudioTracks }) => syncAudioTracks(availableAudioTracks));
+    return () => tracksSubscription.remove();
+  }, [player]);
+
+  useEffect(() => {
+    if (usingCompatibilityEngine || videoSettings.preferredAudioLanguage === "system" || audioTracks.length === 0) return;
+    const preferred = videoSettings.preferredAudioLanguage.toLowerCase();
+    const selected = audioTracks.find((track) => track.language?.toLowerCase() === preferred || track.language?.toLowerCase().startsWith(`${preferred}-`) || track.label?.toLowerCase().includes(preferred));
+    if (!selected || player.audioTrack?.id === selected.id) return;
+    try {
+      player.audioTrack = selected;
+    } catch {
+      // بعض ملفات VLC لا تعرض مساراتها عبر واجهة Expo Video.
+    }
+  }, [audioTracks, player, usingCompatibilityEngine, videoSettings.preferredAudioLanguage]);
+
+  useEffect(() => {
+    if (!videoSettings.qualityEnhancementEnabled || usingCompatibilityEngine) return;
+    const onSourceLoad = ({ availableVideoTracks }: { availableVideoTracks: { size: { width: number; height: number }; isSupported: boolean }[] }) => {
+      const bestTrack = availableVideoTracks
+        .filter((track) => track.isSupported)
+        .sort((a, b) => (b.size.width * b.size.height) - (a.size.width * a.size.height))[0];
+      if (!bestTrack) return;
+      // Expo/Media3 يختار هذا المسار تلقائياً؛ نمنع قصّه أو تمديده ونستخدم أبعاده الأصلية.
+      setVideoFit("contain");
+      setSelectedFrameAspect("source");
+      setSourceAspect(resolveSourceAspect(bestTrack.size.width, bestTrack.size.height));
+    };
+    const subscription = player.addListener("sourceLoad", onSourceLoad);
+    return () => subscription.remove();
+  }, [player, usingCompatibilityEngine, videoSettings.qualityEnhancementEnabled]);
 
     const switchToLibVlc = useCallback(() => {
     if (usingCompatibilityEngine) return;
@@ -520,7 +554,7 @@ export default function VideoPlayerScreen() {
         // ignore
       }
     };
-  }, [currentVideoUri, currentItem?.id, currentItem?.duration, currentItem?.title, player, switchToLibVlc, usingCompatibilityEngine, cancelActiveExtraction, triggerFfmpegExtraction, videoBackgroundUri, videoSettings.decoderMode]);
+  }, [backgroundPlaybackEnabled, currentVideoUri, currentItem?.artist, currentItem?.id, currentItem?.duration, currentItem?.title, player, switchToLibVlc, usingCompatibilityEngine, cancelActiveExtraction, triggerFfmpegExtraction, videoBackgroundUri, videoSettings.decoderMode]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
@@ -718,7 +752,7 @@ export default function VideoPlayerScreen() {
     } catch {
       // ignore
     }
-  }, [currentItem, playNext, playPrevious, repeatMode, usingCompatibilityEngine, player, safeSeekBy]);
+  }, [currentItem, playNext, playPrevious, repeatMode, usingCompatibilityEngine, player, safeSeekBy, videoSettings.seekInterval]);
   const revealControls = useCallback(() => {
     setControlsVisible(true);
     setControlsActivity((activity) => activity + 1);
@@ -826,42 +860,6 @@ export default function VideoPlayerScreen() {
     },
     onPanResponderTerminate: restoreTemporarySpeed,
   }), [controlsLocked, mediaSurfaceHeight, player, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, toggleControls, width]);
-  const updateProgressTrackLayout = useCallback(() => {
-    progressTouchRef.current?.measure((_x, _y, width, _height, pageX) => {
-      if (width > 0) {
-        progressTrackLayout.current = { pageX, width };
-        progressTrackWidth.current = width;
-      }
-    });
-  }, []);
-
-  const seekFromProgress = useCallback((pageX: number, isFinal = false) => {
-    if (!playbackDuration || playbackDuration <= 0) return;
-    const { pageX: barX, width: barW } = progressTrackLayout.current;
-    const effectiveWidth = barW > 0 ? barW : progressTrackWidth.current;
-    if (effectiveWidth <= 0) return;
-
-    let fraction = 0;
-    if (barX > 0 && Number.isFinite(pageX)) {
-      fraction = 1 - Math.max(0, Math.min(1, (pageX - barX) / effectiveWidth));
-    } else {
-      return;
-    }
-
-    const target = Number((playbackDuration * fraction).toFixed(3));
-    setScrubbingTime(target);
-    setIsScrubbing(true);
-    if (isFinal) {
-      setIsScrubbing(false);
-      if (usingCompatibilityEngine) {
-        void vlcViewRef.current?.seek(target * 1000, "time");
-        setVlcTime(target);
-        return;
-      }
-      player.currentTime = target;
-    }
-  }, [playbackDuration, player, usingCompatibilityEngine]);
-
   const progressResponder = useMemo(
     () =>
       PanResponder.create({
@@ -938,7 +936,7 @@ export default function VideoPlayerScreen() {
   const activeCue = subtitleTrack?.cues.find((cue) => playbackTime >= cue.start && playbackTime <= cue.end);
   const effectivePlaybackTime = isScrubbing ? scrubbingTime : playbackTime;
   const progress = playbackDuration > 0 ? Math.min(100, (effectivePlaybackTime / playbackDuration) * 100) : 0;
-  const exitVideo = async () => {
+  const exitVideo = useCallback(async () => {
     if (isNavigatingVideoRef.current) return;
     isNavigatingVideoRef.current = true;
     cancelActiveExtraction();
@@ -959,7 +957,7 @@ export default function VideoPlayerScreen() {
       void ScreenOrientation.unlockAsync().catch(() => undefined);
     }
     if (router.canGoBack()) router.back(); else router.replace(videoLibraryRoute as never);
-  };
+  }, [cancelActiveExtraction, currentItem?.id, playbackTime, restoreTemporarySpeed, router, showMiniPlayer, videoLibraryRoute]);
   
   useEffect(() => {
     const onHardwareBack = () => {
@@ -1817,12 +1815,6 @@ const styles = StyleSheet.create({
   },
 });
 
-const playerOverlayStyles = StyleSheet.create({
-  tenSecondControl: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.28)" },
-  progressTouch: { flex: 1, minHeight: 40, justifyContent: "center", position: "relative" },
-  progressThumb: { position: "absolute", top: -6.5, marginLeft: -9, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.cyan, borderWidth: 2, borderColor: "#FFFFFF", elevation: 6 },
-  progressThumbActive: { top: -9.5, marginLeft: -12, width: 24, height: 24, borderRadius: 12, borderWidth: 3, borderColor: "#FFFFFF", elevation: 8 },
-});
 
 const sheetStyles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "flex-end" },

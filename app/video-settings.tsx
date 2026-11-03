@@ -9,6 +9,7 @@ import { DEFAULT_VIDEO_SETTINGS, loadVideoSettings, saveVideoSettings, type Vide
 const SEEK_OPTIONS = [5, 10, 15, 30] as const;
 const SPEED_OPTIONS = [1.25, 1.5, 2] as const;
 const DECODER_OPTIONS = ["auto", "hardware", "software"] as const;
+const AUDIO_LANGUAGE_OPTIONS = ["system", "ar", "en", "fr", "es", "tr"] as const;
 
 export default function VideoSettingsScreen() {
   const router = useRouter();
@@ -43,8 +44,8 @@ export default function VideoSettingsScreen() {
     <Text style={styles.sectionTitle}>متقدم</Text>
     <View style={styles.group}>
       <ValueRow title="وحدة فك الترميز الافتراضية" value={settings.decoderMode === "hardware" ? "HW" : settings.decoderMode === "software" ? "SW" : "تلقائي"} options={[...DECODER_OPTIONS]} selected={settings.decoderMode} onSelect={(value) => update({ decoderMode: value as VideoSettings["decoderMode"] })} />
-      <SwitchRow title="تعزيز الجودة" description="تطبيق على الفيديو الحالي فقط." value={false} onToggle={() => undefined} />
-      <SwitchRow title="لغة الصوت المفضلة" description="سيتم اختيار مسار الصوت المطابق عند توفره." value={false} onToggle={() => undefined} />
+      <SwitchRow title="تعزيز الجودة" description="اختيار أعلى مسار فيديو مدعوم عند توفر أكثر من مسار." value={settings.qualityEnhancementEnabled} onToggle={() => toggle("qualityEnhancementEnabled")} />
+      <ValueRow title="لغة الصوت المفضلة" value={settings.preferredAudioLanguage === "system" ? "النظام" : settings.preferredAudioLanguage.toUpperCase()} options={[...AUDIO_LANGUAGE_OPTIONS]} selected={settings.preferredAudioLanguage} onSelect={(value) => update({ preferredAudioLanguage: value })} />
     </View>
   </ScrollView></ScreenContainer>;
 }

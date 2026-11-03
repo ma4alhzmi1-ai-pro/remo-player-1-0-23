@@ -21,7 +21,7 @@ import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 
-import { colors, formatDuration } from "@/components/remo-ui";
+import { formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { usePlayer } from "@/lib/player-context";
 import { useLibrary } from "@/lib/library-context";
@@ -89,7 +89,6 @@ export default function AudioPlayerScreen() {
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const progressBarRef = useRef<View>(null);
   const progressLayout = useRef({ pageX: 0, width: 0 });
-  const gestureStartXRef = useRef(0);
   const scrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubbingTimeRef = useRef(0);
   const audioInitialTouchRef = useRef<{ startX: number; width: number; startTime: number }>({ startX: 0, width: 280, startTime: 0 });
@@ -117,7 +116,7 @@ export default function AudioPlayerScreen() {
     return () => {
       isMounted = false;
     };
-  }, [currentItem?.id, currentItem?.thumbnailUri, currentItem?.uri]);
+  }, [currentItem, currentItem?.id, currentItem?.thumbnailUri, currentItem?.uri]);
 
   // Load saved theme and custom background on mount
   useEffect(() => {
