@@ -92,6 +92,7 @@ export default function VideoPlayerScreen() {
   const progressTrackWidth = useRef(0);
   const progressTouchRef = useRef<View>(null);
   const isAutoAdvancingRef = useRef(false);
+  const lastAutoAdvancedItemRef = useRef<string | null>(null);
   const isNavigatingVideoRef = useRef(false);
   const brightnessStartRef = useRef(1);
   const localBrightnessRef = useRef(1);
@@ -596,6 +597,8 @@ export default function VideoPlayerScreen() {
       const dur = player.duration;
       const cur = player.currentTime;
       if (dur > 1 && cur >= Math.max(0, dur - 1.5)) {
+        if (lastAutoAdvancedItemRef.current === currentItem?.id) return;
+        lastAutoAdvancedItemRef.current = currentItem?.id ?? null;
         isAutoAdvancingRef.current = true;
         void playNext(repeatMode === "all").then((advanced) => {
           if (!advanced) setIsPlaying(false);
@@ -606,6 +609,19 @@ export default function VideoPlayerScreen() {
   }, [player, playNext, repeatMode, usingCompatibilityEngine]);
   const playbackTime = usingCompatibilityEngine ? vlcTime : player.currentTime;
   const playbackDuration = usingCompatibilityEngine ? vlcDuration : player.duration;
+  useEffect(() => {
+    lastAutoAdvancedItemRef.current = null;
+  }, [currentItem?.id]);
+  useEffect(() => {
+    if (!currentItem?.id || repeatMode === "one" || isSwitchingEngineRef.current || playbackErrorRef.current || isNavigatingVideoRef.current) return;
+    if (playbackDuration <= 1 || playbackTime < playbackDuration - 0.8 || isAutoAdvancingRef.current) return;
+    if (lastAutoAdvancedItemRef.current === currentItem.id) return;
+    lastAutoAdvancedItemRef.current = currentItem.id;
+    isAutoAdvancingRef.current = true;
+    void playNext(repeatMode === "all").then((advanced) => {
+      if (!advanced) setIsPlaying(false);
+    }).finally(() => { isAutoAdvancingRef.current = false; });
+  }, [currentItem?.id, playNext, playbackDuration, playbackTime, repeatMode]);
   useEffect(() => {
     if (repeatStart === null || repeatEnd === null) return;
     if (playbackTime >= repeatEnd) {
@@ -1166,6 +1182,8 @@ export default function VideoPlayerScreen() {
     if (vlcDuration > 1 && vlcTime < Math.max(0, vlcDuration - 2)) {
       return;
     }
+    if (lastAutoAdvancedItemRef.current === currentItem?.id) return;
+    lastAutoAdvancedItemRef.current = currentItem?.id ?? null;
     isAutoAdvancingRef.current = true;
     void playNext(repeatMode === "all").then((advanced) => {
       if (!advanced) setIsPlaying(false);
