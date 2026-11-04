@@ -18,6 +18,7 @@ import { colors, formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/playback-memory";
 import { getSystemMusicVolume, setSystemMusicVolume } from "@/lib/native-audio-controls";
+import { logPlayerDiagnostic } from "@/lib/player-diagnostics";
 import { usePlayer } from "@/lib/player-context";
 import { defaultSubtitleAppearance, loadLocalSubtitles, loadSubtitleAppearance, saveLocalSubtitles, saveSubtitleAppearance, type LocalSubtitleTrack } from "@/lib/subtitle-store";
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
@@ -192,6 +193,12 @@ export default function VideoPlayerScreen() {
   const [backgroundPlaybackEnabled, setBackgroundPlaybackEnabled] = useState(true);
 
   const player = sharedVideoPlayer;
+  useEffect(() => {
+    logPlayerDiagnostic({
+      event: "video-layer-config",
+      details: { surface: "textureView", overlayZ: 100, overlayElevation: 100, dockZ: 101, dockElevation: 101 },
+    });
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -860,6 +867,7 @@ export default function VideoPlayerScreen() {
               player.volume = 1;
               volumeRef.current = systemVolume;
               setVolume(systemVolume);
+              logPlayerDiagnostic({ event: "system-volume-write", details: { requested: nextVolume.toFixed(3), applied: systemVolume.toFixed(3), verified: true } });
             });
           }
         }
@@ -870,7 +878,19 @@ export default function VideoPlayerScreen() {
       const action = resolveVideoGesture(gesture.dx, gesture.dy, touchStartX.current, width);
       const wasTemporarySpeed = restoreTemporarySpeed();
       if (action?.type === "seek") safeSeekBy(action.seconds);
-      if (action?.type === "volume") setVolumeHud(true);
+      if (action?.type === "volume") {
+        // The throttled move handler may skip the final frame; commit the
+        // release value and verify Android's STREAM_MUSIC readback.
+        const finalVolume = volumeRef.current;
+        const request = ++volumeWriteSerialRef.current;
+        void setSystemMusicVolume(finalVolume).then((systemVolume) => {
+          if (request !== volumeWriteSerialRef.current || systemVolume === null) return;
+          volumeRef.current = systemVolume;
+          setVolume(systemVolume);
+          logPlayerDiagnostic({ event: "system-volume-release", details: { requested: finalVolume.toFixed(3), applied: systemVolume.toFixed(3), verified: true } });
+        });
+        setVolumeHud(true);
+      }
       if (action?.type === "brightness") setBrightnessHud(true);
       if (!action && !wasTemporarySpeed) toggleControls();
     },
