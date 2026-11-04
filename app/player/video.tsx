@@ -606,7 +606,7 @@ export default function VideoPlayerScreen() {
       }
     });
     return () => subscription.remove();
-  }, [player, playNext, repeatMode, usingCompatibilityEngine]);
+  }, [currentItem?.id, player, playNext, repeatMode, usingCompatibilityEngine]);
   const playbackTime = usingCompatibilityEngine ? vlcTime : player.currentTime;
   const playbackDuration = usingCompatibilityEngine ? vlcDuration : player.duration;
   useEffect(() => {
@@ -1106,7 +1106,7 @@ export default function VideoPlayerScreen() {
     } catch {
       Alert.alert("تعذر تشغيل السابق", "تعذر تبديل الفيديو الآن. حاول بعد لحظة.");
     } finally {
-      setTimeout(() => { isNavigatingVideoRef.current = false; }, 600);
+      isNavigatingVideoRef.current = false;
     }
   };
   const nextVideo = async () => {
@@ -1117,7 +1117,7 @@ export default function VideoPlayerScreen() {
     } catch {
       Alert.alert("تعذر تشغيل التالي", "تعذر تبديل الفيديو الآن. حاول بعد لحظة.");
     } finally {
-      setTimeout(() => { isNavigatingVideoRef.current = false; }, 600);
+      isNavigatingVideoRef.current = false;
     }
   };
   const repeatIcon: keyof typeof MaterialIcons.glyphMap = repeatMode === "one" ? "repeat-one" : "repeat";
@@ -1263,7 +1263,7 @@ export default function VideoPlayerScreen() {
               onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }}
             />
           ) : (
-            <VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} contentPosition={{ dx: 0, dy: 0 }} surfaceType={displayMode === "hdr" ? "surfaceView" : "textureView"} useExoShutter={false} />
+            <VideoView ref={viewRef} onFirstFrameRender={handleFirstFrame} onPictureInPictureStart={() => { pipActiveOrRequestedRef.current = true; setControlsVisible(false); }} onPictureInPictureStop={() => { pipActiveOrRequestedRef.current = false; }} style={styles.video} player={player} nativeControls={false} allowsFullscreen allowsPictureInPicture startsPictureInPictureAutomatically={false} contentFit={effectiveFit} contentPosition={{ dx: 0, dy: 0 }} surfaceType="textureView" useExoShutter={false} />
           )}
         </View>
         {videoTitleVisible ? (
@@ -1553,7 +1553,7 @@ const styles = StyleSheet.create({
   header: { height: 58, paddingHorizontal: 16, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   headerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "center", marginHorizontal: 8 },
-  mediaSurface: { flex: 1, width: "100%", backgroundColor: "#02060B", overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  mediaSurface: { flex: 1, width: "100%", backgroundColor: "#02060B", overflow: "visible", alignItems: "center", justifyContent: "center" },
   landscapeSurface: { flex: 1 },
   cinematicSurface: { aspectRatio: 2.25, marginVertical: 14 },
   videoContainer: { position: "absolute" },
@@ -1647,9 +1647,9 @@ const styles = StyleSheet.create({
   centerControl: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
   centerPlay: { width: 70, height: 70, borderRadius: 35, backgroundColor: colors.cyan, borderColor: colors.cyan },
   centerBack: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
-  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 15, elevation: 15, justifyContent: "flex-end", backgroundColor: "rgba(0, 8, 15, 0.18)", paddingVertical: 10 },
+  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 100, elevation: 100, justifyContent: "flex-end", backgroundColor: "rgba(0, 8, 15, 0.18)", paddingVertical: 10 },
   // الأدوات فوق خط الزمن مباشرة؛ لا نضع إطاراً حول منطقة العداد.
-  controlDock: { marginHorizontal: 10, paddingVertical: 6, paddingHorizontal: 4, minHeight: 92, backgroundColor: "transparent", borderWidth: 0 },
+  controlDock: { width: "100%", alignSelf: "stretch", marginHorizontal: 0, paddingVertical: 6, paddingHorizontal: 4, minHeight: 92, backgroundColor: "transparent", borderWidth: 0, zIndex: 101, elevation: 101 },
   fitPanel: { position: "absolute", zIndex: 4, elevation: 4, left: 12, right: 12, top: 44, padding: 14, borderRadius: 18, backgroundColor: "rgba(7,15,27,0.96)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
   subtitleMenuOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 8, elevation: 8, justifyContent: "center" },
   subtitleMenuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },

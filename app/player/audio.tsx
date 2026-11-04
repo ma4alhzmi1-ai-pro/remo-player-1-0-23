@@ -92,6 +92,7 @@ export default function AudioPlayerScreen() {
   const scrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubbingTimeRef = useRef(0);
   const audioInitialTouchRef = useRef<{ startX: number; width: number; startTime: number }>({ startX: 0, width: 280, startTime: 0 });
+  const navigationBusyRef = useRef(false);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
@@ -148,6 +149,24 @@ export default function AudioPlayerScreen() {
     (currentIndex >= 0 && currentIndex < playbackQueue.length - 1) ||
     repeatMode === "all" ||
     shuffle;
+  const navigateNext = useCallback(async () => {
+    if (navigationBusyRef.current) return;
+    navigationBusyRef.current = true;
+    try {
+      await playNext();
+    } finally {
+      navigationBusyRef.current = false;
+    }
+  }, [playNext]);
+  const navigatePrevious = useCallback(async () => {
+    if (navigationBusyRef.current) return;
+    navigationBusyRef.current = true;
+    try {
+      await playPrevious();
+    } finally {
+      navigationBusyRef.current = false;
+    }
+  }, [playPrevious]);
 
   const isFavorite = Boolean(currentItem?.isFavorite);
 
@@ -233,8 +252,8 @@ export default function AudioPlayerScreen() {
         onPanResponderMove: (_evt, gestureState) => {
           const { width: barW, startTime } = audioInitialTouchRef.current;
           const total = duration || 0;
-          // LTR: يميناً يقدم التشغيل ويساراً يرجعه، حسب حركة الإصبع مباشرة.
-          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime + (gestureState.dx / barW) * total)) : 0;
+          // RTL: الشريط يبدأ من اليمين؛ السحب يساراً (dx سالب) يقدّم، ويميناً يرجّع.
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
@@ -242,7 +261,7 @@ export default function AudioPlayerScreen() {
         onPanResponderRelease: (_evt, gestureState) => {
           const { width: barW, startTime } = audioInitialTouchRef.current;
           const total = duration || 0;
-          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime + (gestureState.dx / barW) * total)) : 0;
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
@@ -711,7 +730,7 @@ export default function AudioPlayerScreen() {
           {/* Scrubber & Progress Bar */}
           <View style={styles.progressSection}>
             <View style={styles.timeRow}>
-              {/* Current time is shown on the left; the visual scrubber is LTR. */}
+              {/* RTL: يبدأ الزمن من اليمين ويتقدم المؤشر بصرياً نحو اليسار. */}
               <Text style={styles.timeText}>{formatDuration(effectiveTime)}</Text>
 
               {/* Scrubber Line - Smooth, Jitter-Free Seeking */}
@@ -765,7 +784,7 @@ export default function AudioPlayerScreen() {
 
             {/* 3. Previous Track */}
             <Pressable
-              onPress={() => void playPrevious()}
+              onPress={() => void navigatePrevious()}
               disabled={!hasPrevious}
               style={({ pressed }) => [
                 styles.controlButton,
@@ -792,7 +811,7 @@ export default function AudioPlayerScreen() {
 
             {/* 5. Next Track */}
             <Pressable
-              onPress={() => void playNext()}
+              onPress={() => void navigateNext()}
               disabled={!hasNext}
               style={({ pressed }) => [
                 styles.controlButton,
