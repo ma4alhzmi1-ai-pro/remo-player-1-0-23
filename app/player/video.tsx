@@ -11,7 +11,7 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { StatusBar } from "expo-status-bar";
 import { LibVlcPlayerView, type LibVlcPlayerViewRef, type MediaInfo as LibVlcMediaInfo, type MediaTracks as LibVlcMediaTracks } from "expo-libvlc-player";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, BackHandler, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Animated, AppState, BackHandler, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { isPictureInPictureSupported, VideoView, type SubtitleTrack } from "expo-video";
 
 import { colors, formatDuration } from "@/components/remo-ui";
@@ -104,6 +104,7 @@ export default function VideoPlayerScreen() {
   const brightnessPermissionRequestedRef = useRef(false);
   const pipActiveOrRequestedRef = useRef(false);
   const titleHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleMarqueeRef = useRef(new Animated.Value(-32)).current;
   const compatibilityErrorRef = useRef(false);
   const compatibilityStartedRef = useRef(false);
   const vlcResumeSeekRef = useRef(0);
@@ -539,6 +540,11 @@ export default function VideoPlayerScreen() {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       player.staysActiveInBackground = backgroundPlaybackEnabled;
       player.showNowPlayingNotification = backgroundPlaybackEnabled;
+      if (nextAppState === "active") {
+        setControlsVisible(true);
+        setControlsActivity((activity) => activity + 1);
+        setVideoTitleVisible(true);
+      }
       if (shouldPauseVideoForBackground(nextAppState, pipActiveOrRequestedRef.current, backgroundPlaybackEnabled)) {
         try {
           if (usingCompatibilityEngine) void vlcViewRef.current?.pause();
@@ -672,6 +678,21 @@ export default function VideoPlayerScreen() {
       titleHideTimerRef.current = null;
     };
   }, [currentItem?.id, currentItem?.artist, isPlaying, backgroundPlaybackEnabled]);
+
+  useEffect(() => {
+    if (!videoTitleVisible || !currentItem?.id) return;
+    titleMarqueeRef.setValue(-32);
+    const marquee = Animated.loop(
+      Animated.sequence([
+        Animated.timing(titleMarqueeRef, { toValue: 32, duration: 1500, useNativeDriver: true }),
+        Animated.delay(250),
+        Animated.timing(titleMarqueeRef, { toValue: -32, duration: 1500, useNativeDriver: true }),
+        Animated.delay(250),
+      ]),
+    );
+    marquee.start();
+    return () => marquee.stop();
+  }, [currentItem?.id, titleMarqueeRef, videoTitleVisible]);
 
   const safeSeekBy = useCallback((seconds: number) => {
     const target = resolveSafeVideoSeek(playbackTime, playbackDuration, seconds);
@@ -841,7 +862,10 @@ export default function VideoPlayerScreen() {
       if (action?.type === "seek") safeSeekBy(action.seconds);
       if (action?.type === "volume") setVolumeHud(true);
       if (action?.type === "brightness") setBrightnessHud(true);
-      if (!action && !wasTemporarySpeed) toggleControls();
+      if (!action && !wasTemporarySpeed) {
+        setVideoTitleVisible(true);
+        toggleControls();
+      }
     },
     onPanResponderTerminate: restoreTemporarySpeed,
   }), [controlsLocked, mediaSurfaceHeight, player, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, toggleControls, width]);
@@ -1262,7 +1286,9 @@ export default function VideoPlayerScreen() {
             accessibilityLabel="إظهار أو إخفاء اسم الفيديو"
           >
             <MaterialIcons name="movie" size={18} color={colors.cyan} />
-            <Text numberOfLines={1} ellipsizeMode="middle" style={styles.videoTitleText}>{currentItem.title}</Text>
+            <View style={styles.videoTitleTextViewport}>
+              <Animated.Text numberOfLines={1} ellipsizeMode="middle" style={[styles.videoTitleText, { transform: [{ translateX: titleMarqueeRef }] }]}>{currentItem.title}</Animated.Text>
+            </View>
             <MaterialIcons name="expand-less" size={17} color={colors.muted} />
           </Pressable>
         ) : (
@@ -1564,7 +1590,8 @@ const styles = StyleSheet.create({
   // سطح الإيماءات يبقى خلف أدوات التشغيل حتى لا يحجب أزرار الشريط السفلي.
   gestureSurface: { ...StyleSheet.absoluteFillObject, zIndex: 1, elevation: 1 },
   videoTitleBar: { position: "absolute", top: 16, left: 16, right: 126, zIndex: 6, elevation: 6, minHeight: 46, paddingHorizontal: 12, borderRadius: 15, flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "rgba(1, 8, 16, 0.86)", borderWidth: 1, borderColor: "rgba(72, 207, 255, 0.42)", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
-  videoTitleText: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "900", textAlign: "right" },
+  videoTitleTextViewport: { flex: 1, overflow: "hidden" },
+  videoTitleText: { color: colors.text, fontSize: 13, fontWeight: "900", textAlign: "right" },
   videoTitleReveal: { position: "absolute", top: 0, left: 0, right: 0, height: 72, zIndex: 4 },
   persistentBack: { position: "absolute", top: 18, right: 16, zIndex: 5, elevation: 5, width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
   captionButton: { position: "absolute", top: 18, right: 68, zIndex: 5, elevation: 5, minWidth: 52, height: 44, paddingHorizontal: 9, borderRadius: 14, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 3, backgroundColor: "rgba(1, 8, 16, 0.78)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)" },
