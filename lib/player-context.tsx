@@ -84,6 +84,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const repeatModeRef = useRef<RepeatMode>("off");
   const autoAdvanceRef = useRef<(wrap: boolean) => Promise<boolean>>(async () => false);
   const remoteQueueActionRef = useRef<(action: "next" | "previous") => void>(() => undefined);
+  const queueTransitionInFlightRef = useRef(false);
   const isAutoAdvancingRef = useRef(false);
   const currentItemRef = useRef<MediaItem | null>(null);
   const lastSnapshotSecondRef = useRef(0);
@@ -165,7 +166,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       addListener: (event: string, listener: (event: { action?: string }) => void) => { remove: () => void };
     };
     const controlSubscription = nativeControlPlayer.addListener("mediaControlAction", ({ action }) => {
-      if (action === "next" || action === "previous") remoteQueueActionRef.current(action);
+      if (action === "next" || action === "previous") {
+        remoteQueueActionRef.current(action);
+      }
     });
     statusSubscriptionRef.current = {
       remove: () => {
@@ -268,11 +271,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playNext = useCallback(async (wrap = true) => {
     if (!currentItem) return false;
+    if (queueTransitionInFlightRef.current) return false;
+    queueTransitionInFlightRef.current = true;
     const queue = playbackQueue.length ? playbackQueue : items.filter((item) => item.mediaType === currentItem.mediaType);
-    const nextItem = nextQueueItem(queue, currentItem.id, shuffle, Math.random, wrap);
-    if (!nextItem) return false;
-    await playItem(nextItem, queue);
-    return true;
+    try {
+      const nextItem = nextQueueItem(queue, currentItem.id, shuffle, Math.random, wrap);
+      if (!nextItem) return false;
+      await playItem(nextItem, queue);
+      return true;
+    } finally {
+      queueTransitionInFlightRef.current = false;
+    }
   }, [currentItem, items, playbackQueue, playItem, shuffle]);
 
   useEffect(() => {
@@ -281,18 +290,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playPrevious = useCallback(async () => {
     if (!currentItem) return false;
+    if (queueTransitionInFlightRef.current) return false;
+    queueTransitionInFlightRef.current = true;
     const queue = playbackQueue.length ? playbackQueue : items.filter((item) => item.mediaType === currentItem.mediaType);
-    const previousItem = previousQueueItem(queue, currentItem.id);
-    if (!previousItem) return false;
-    await playItem(previousItem, queue);
-    return true;
+    try {
+      const previousItem = previousQueueItem(queue, currentItem.id);
+      if (!previousItem) return false;
+      await playItem(previousItem, queue);
+      return true;
+    } finally {
+      queueTransitionInFlightRef.current = false;
+    }
   }, [currentItem, items, playbackQueue, playItem]);
 
   useEffect(() => {
     remoteQueueActionRef.current = (action) => {
       if (action === "next") {
         void playNext(repeatModeRef.current === "all");
-      } else {
+      } else if (action === "previous") {
         void playPrevious();
       }
     };
