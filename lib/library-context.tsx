@@ -93,6 +93,31 @@ async function persistImportedFile(asset: DocumentPicker.DocumentPickerAsset) {
   }
 }
 
+/**
+ * Vault storage is app-private and is not indexed by Gallery/MediaStore.
+ * Delete the source only after the private copy succeeds.
+ */
+async function moveIntoSecureVault(asset: DocumentPicker.DocumentPickerAsset): Promise<string | null> {
+  if (Platform.OS === "web") return asset.uri;
+  const vaultDirectory = new Directory(Paths.document, "remo-player-secure");
+  if (!vaultDirectory.exists) vaultDirectory.create({ idempotent: true, intermediates: true });
+  const filename = asset.name.replace(/[^\w.()-]+/g, "_");
+  const destination = new File(vaultDirectory, `${Date.now()}-${filename}`);
+  try {
+    const source = new File(asset.uri);
+    source.copy(destination);
+    if (source.uri !== destination.uri) source.delete();
+    return destination.uri;
+  } catch {
+    try {
+      if (destination.exists) destination.delete();
+    } catch {
+      // Best-effort cleanup of a partial vault copy.
+    }
+    return null;
+  }
+}
+
 export function LibraryProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -263,12 +288,15 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const importSecureFiles = useCallback(async () => {
-    const result = await DocumentPicker.getDocumentAsync({ type: "*/*", multiple: true, copyToCacheDirectory: true });
+    // Keep the provider URI so Android can delete the selected original after
+    // the app-private vault copy succeeds. A cache copy would leave the original visible.
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*", multiple: true, copyToCacheDirectory: false });
     if (result.canceled) return 0;
     const imported = (await Promise.all(result.assets.map(async (asset): Promise<MediaItem | null> => {
       const mediaType = inferMediaKind(asset.name, asset.mimeType);
       if (!mediaType) return null;
-      const persistentUri = await persistImportedFile(asset);
+      const persistentUri = await moveIntoSecureVault(asset);
+      if (!persistentUri) return null;
       const parsed = parseArtistAndTitle(asset.name);
       return { id: `secure:${persistentUri}:${asset.lastModified ?? Date.now()}`, title: parsed.title, artist: mediaType === "video" ? "فيديو آمن" : parsed.artist, album: "المجلد الآمن", uri: persistentUri, duration: 0, mediaType, addedAt: asset.lastModified ?? Date.now(), thumbnailUri: mediaType === "video" ? await createVideoThumbnail(persistentUri) : undefined };
     }))).filter((item): item is MediaItem => item !== null);
