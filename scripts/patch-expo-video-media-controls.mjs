@@ -52,11 +52,11 @@ patchFile("playbackService/ExpoVideoPlaybackService.kt", [
   ],
   [
     `      .setCustomLayout(ImmutableList.of(seekBackwardButton, seekForwardButton))`,
-    `      .setCustomLayout(ImmutableList.of(skipPreviousButton, playPauseButton, seekBackwardButton, seekForwardButton, skipNextButton))`,
+    `      .setCustomLayout(ImmutableList.of(skipPreviousButton, playPauseButton, skipNextButton))`,
   ],
   [
     `      .setCustomLayout(ImmutableList.of(skipPreviousButton, seekBackwardButton, seekForwardButton, skipNextButton))`,
-    `      .setCustomLayout(ImmutableList.of(skipPreviousButton, playPauseButton, seekBackwardButton, seekForwardButton, skipNextButton))`,
+    `      .setCustomLayout(ImmutableList.of(skipPreviousButton, playPauseButton, skipNextButton))`,
   ],
   [
     `  private val mediaSessions = mutableMapOf<ExoPlayer, MediaSession>()`,

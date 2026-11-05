@@ -44,8 +44,10 @@ type PlayerContextValue = {
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 const lockScreenOptions = {
-  showSeekBackward: true,
-  showSeekForward: true,
+  // نثبت التخطيط الأساسي بثلاثة أزرار حتى لا تخفي Android السابق/التالي
+  // عندما تحدد مساحة الإشعار أو شاشة القفل عدد الأزرار المعروضة.
+  showSeekBackward: false,
+  showSeekForward: false,
   showSkipPrevious: true,
   showSkipNext: true,
 };
