@@ -4,7 +4,7 @@ import { normalizeEqualizerBands, type EqualizerPresetId } from "./equalizer-set
 
 export const EQUALIZER_STORAGE_KEY = "remo-player.equalizer.v1";
 export type RoomEffect = "none" | "small" | "medium" | "large";
-export type StoredEqualizer = { enabled: boolean; preset: EqualizerPresetId; bands: number[]; room: RoomEffect; bass: number; virtualizer: number };
+export type StoredEqualizer = { enabled: boolean; preset: EqualizerPresetId; bands: number[]; room: RoomEffect; bass: number; virtualizer: number; superSound?: boolean };
 
 export const DEFAULT_EQUALIZER: StoredEqualizer = {
   enabled: true,
@@ -13,6 +13,7 @@ export const DEFAULT_EQUALIZER: StoredEqualizer = {
   room: "none",
   bass: 0,
   virtualizer: 4,
+  superSound: false,
 };
 
 export function normalizeStoredEqualizer(value: Partial<StoredEqualizer> | null | undefined): StoredEqualizer {
@@ -23,6 +24,7 @@ export function normalizeStoredEqualizer(value: Partial<StoredEqualizer> | null 
     room: value?.room === "small" || value?.room === "medium" || value?.room === "large" ? value.room : "none",
     bass: Math.max(0, Math.min(100, value?.bass ?? 0)),
     virtualizer: Math.max(0, Math.min(100, value?.virtualizer ?? 4)),
+    superSound: value?.superSound === true,
   };
 }
 

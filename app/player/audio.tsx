@@ -4,6 +4,7 @@ import {
   Image,
   ImageBackground,
   Pressable,
+  Animated,
   StyleSheet,
   Modal,
   BackHandler,
@@ -27,6 +28,7 @@ import { usePlayer } from "@/lib/player-context";
 import { useLibrary } from "@/lib/library-context";
 import { resolveAudioThumbnail, saveCustomAudioArtwork } from "@/lib/audio-artwork";
 import { resolveAudioProgressSeek } from "@/lib/audio-progress";
+import { activeLyricIndex, loadChromaShape, parseSyncedLyrics, saveChromaShape, type ChromaShape } from "@/lib/audio-visualizer";
 import {
   getStoredPlayerTheme,
   savePlayerThemeId,
@@ -85,6 +87,8 @@ export default function AudioPlayerScreen() {
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubbingTime, setScrubbingTime] = useState(0);
   const [showLyricsOnDisc, setShowLyricsOnDisc] = useState(false);
+  const [chromaShape, setChromaShape] = useState<ChromaShape>("halo");
+  const chromaPulse = useRef(new Animated.Value(0)).current;
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const progressBarRef = useRef<View>(null);
@@ -97,6 +101,9 @@ export default function AudioPlayerScreen() {
 
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
   const [coverImageFailed, setCoverImageFailed] = useState(false);
+  const syncedLyrics = useMemo(() => parseSyncedLyrics(currentItem?.lyrics), [currentItem?.lyrics]);
+  const effectiveTime = isScrubbing ? scrubbingTime : currentTime;
+  const activeSyncedLyric = activeLyricIndex(syncedLyrics, effectiveTime);
 
   useEffect(() => {
     let isMounted = true;
@@ -126,6 +133,20 @@ export default function AudioPlayerScreen() {
       setCustomBgUri(customImageUri);
     });
   }, []);
+  useEffect(() => { void loadChromaShape().then(setChromaShape); }, []);
+  useEffect(() => {
+    chromaPulse.stopAnimation();
+    if (!isPlaying) {
+      chromaPulse.setValue(0);
+      return;
+    }
+    const pulse = Animated.loop(Animated.sequence([
+      Animated.timing(chromaPulse, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.timing(chromaPulse, { toValue: 0, duration: 420, useNativeDriver: true }),
+    ]));
+    pulse.start();
+    return () => pulse.stop();
+  }, [chromaPulse, isPlaying]);
 
   const activeThemePreset: PlayerThemePreset = useMemo(() => {
     return (
@@ -445,7 +466,6 @@ export default function AudioPlayerScreen() {
     );
   }
 
-  const effectiveTime = isScrubbing ? scrubbingTime : currentTime;
   const progressPercent = duration > 0 ? Math.min(100, (effectiveTime / duration) * 100) : 0;
 
   return (
@@ -634,6 +654,7 @@ export default function AudioPlayerScreen() {
         <View style={styles.body}>
           {/* Circular Vinyl / Album Disc Artwork */}
           <View style={styles.discSection}>
+            <Animated.View pointerEvents="none" style={[styles.chromaPulse, chromaShape === "bars" && styles.chromaBars, chromaShape === "rings" && styles.chromaRings, { transform: [{ scale: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.08] }) }], opacity: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) }]} />
             <Pressable
               onPress={() => setShowLyricsOnDisc((prev) => !prev)}
               style={({ pressed }) => [styles.circularDiscWrapper, pressed && { opacity: 0.95 }]}
@@ -646,9 +667,7 @@ export default function AudioPlayerScreen() {
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.lyricsScrollContent}
                   >
-                    <Text style={styles.lyricsBodyText}>
-                      {currentItem.lyrics || "لا توجد كلمات مرفقة حالياً.\nانقر على الخيارات لإضافة الكلمات."}
-                    </Text>
+                    {syncedLyrics.length > 0 ? syncedLyrics.map((line, index) => <Text key={`${line.time}-${index}`} style={[styles.lyricsBodyText, index === activeSyncedLyric && styles.lyricsActiveLine]}>{line.text}</Text>) : <Text style={styles.lyricsBodyText}>{currentItem.lyrics || "لا توجد كلمات مرفقة حالياً.\nانقر على الخيارات لإضافة الكلمات."}</Text>}
                   </ScrollView>
                   <Text style={styles.lyricsBackHint}>انقر للعودة لصورة الغلاف</Text>
                 </View>
@@ -917,6 +936,8 @@ export default function AudioPlayerScreen() {
                   </Pressable>
                 ))}
               </ScrollView>
+              <Text style={styles.presetsLabel}>شكل كروما النبض أثناء التشغيل:</Text>
+              <View style={styles.chromaChoiceRow}>{([{ id: "halo", label: "هالة", icon: "blur-on" }, { id: "bars", label: "أعمدة", icon: "equalizer" }, { id: "rings", label: "حلقات", icon: "radio-button-unchecked" }] as const).map((choice) => <Pressable key={choice.id} onPress={() => { setChromaShape(choice.id); void saveChromaShape(choice.id); }} style={[styles.chromaChoice, chromaShape === choice.id && styles.chromaChoiceActive]}><MaterialIcons name={choice.icon as keyof typeof MaterialIcons.glyphMap} size={20} color={chromaShape === choice.id ? "#050505" : "#00F2FE"} /><Text style={[styles.chromaChoiceText, chromaShape === choice.id && styles.chromaChoiceTextActive]}>{choice.label}</Text></Pressable>)}</View>
 
               {customBgUri && (
                 <Pressable
@@ -1274,6 +1295,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingTop: 10,
   },
+  chromaPulse: { position: "absolute", width: 246, height: 246, borderRadius: 123, borderWidth: 4, borderColor: "#00F2FE", backgroundColor: "rgba(0,242,254,0.08)" },
+  chromaBars: { width: 260, height: 210, borderRadius: 24, borderWidth: 0, backgroundColor: "rgba(233,30,99,0.16)" },
+  chromaRings: { width: 270, height: 270, borderRadius: 135, borderWidth: 9, borderColor: "#E91E63", backgroundColor: "transparent" },
   circularDiscWrapper: {
     width: 260,
     height: 260,
@@ -1337,6 +1361,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: "center",
   },
+  lyricsActiveLine: { color: "#00F2FE", fontSize: 20, fontWeight: "900", textShadowColor: "rgba(0,242,254,0.55)", textShadowRadius: 10 },
+  chromaChoiceRow: { flexDirection: "row-reverse", gap: 8, paddingHorizontal: 18, marginBottom: 12 },
+  chromaChoice: { minHeight: 42, flex: 1, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center", gap: 4 },
+  chromaChoiceActive: { backgroundColor: "#00F2FE" },
+  chromaChoiceText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
+  chromaChoiceTextActive: { color: "#050505" },
   lyricsBackHint: {
     color: "rgba(255,255,255,0.5)",
     fontSize: 11,
