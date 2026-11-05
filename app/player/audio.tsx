@@ -28,6 +28,8 @@ import { usePlayer } from "@/lib/player-context";
 import { useLibrary } from "@/lib/library-context";
 import { resolveAudioThumbnail, saveCustomAudioArtwork } from "@/lib/audio-artwork";
 import { resolveAudioProgressSeek } from "@/lib/audio-progress";
+import { getSystemMusicVolume, setSystemMusicVolume } from "@/lib/native-audio-controls";
+import { resolveLocalVolume } from "@/lib/video-gesture";
 import { activeLyricIndex, loadChromaShape, parseSyncedLyrics, saveChromaShape, type ChromaShape } from "@/lib/audio-visualizer";
 import {
   getStoredPlayerTheme,
@@ -101,6 +103,9 @@ export default function AudioPlayerScreen() {
 
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
   const [coverImageFailed, setCoverImageFailed] = useState(false);
+  const [systemVolume, setSystemVolume] = useState(1);
+  const systemVolumeStartRef = useRef(1);
+  const systemVolumeRef = useRef(1);
   const syncedLyrics = useMemo(() => parseSyncedLyrics(currentItem?.lyrics), [currentItem?.lyrics]);
   const effectiveTime = isScrubbing ? scrubbingTime : currentTime;
   const activeSyncedLyric = activeLyricIndex(syncedLyrics, effectiveTime);
@@ -304,6 +309,38 @@ export default function AudioPlayerScreen() {
       }),
     [duration, progressBarWidth, seekTo]
   );
+
+  const volumeResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dy) > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderGrant: () => {
+      void getSystemMusicVolume().then((value) => {
+        if (value === null) return;
+        systemVolumeStartRef.current = value;
+        systemVolumeRef.current = value;
+        setSystemVolume(value);
+      });
+    },
+    onPanResponderMove: (_, gesture) => {
+      const next = resolveLocalVolume(systemVolumeStartRef.current, gesture.dy, 400);
+      if (next === null) return;
+      systemVolumeRef.current = next;
+      setSystemVolume(next);
+      void setSystemMusicVolume(next).then((applied) => {
+        if (applied === null) return;
+        systemVolumeRef.current = applied;
+        setSystemVolume(applied);
+      });
+    },
+    onPanResponderRelease: () => {
+      void setSystemMusicVolume(systemVolumeRef.current).then((applied) => {
+        if (applied === null) return;
+        systemVolumeRef.current = applied;
+        setSystemVolume(applied);
+      });
+    },
+  }), []);
 
   const onProgressBarLayout = (event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
@@ -653,7 +690,7 @@ export default function AudioPlayerScreen() {
         {/* Main Body */}
         <View style={styles.body}>
           {/* Circular Vinyl / Album Disc Artwork */}
-          <View style={styles.discSection}>
+          <View {...volumeResponder.panHandlers} style={styles.discSection} accessibilityLabel={`مستوى صوت النظام ${Math.round(systemVolume * 100)} بالمئة`}>
             <Animated.View pointerEvents="none" style={[styles.chromaPulse, chromaShape === "bars" && styles.chromaBars, chromaShape === "rings" && styles.chromaRings, { transform: [{ scale: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.08] }) }], opacity: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) }]} />
             <Pressable
               onPress={() => setShowLyricsOnDisc((prev) => !prev)}

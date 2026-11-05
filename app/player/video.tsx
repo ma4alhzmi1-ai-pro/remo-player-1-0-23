@@ -936,7 +936,9 @@ export default function VideoPlayerScreen() {
             void setSystemMusicVolume(nextVolume).then((systemVolume) => {
               if (request !== volumeWriteSerialRef.current) return;
               if (systemVolume === null) {
-                player.volume = nextVolume;
+                // Android يجب أن يمر عبر STREAM_MUSIC الحقيقي؛ لا نستخدم
+                // player.volume كبديل لأنه يصنع صوتاً مستقلاً داخل التطبيق.
+                if (Platform.OS === "web") player.volume = nextVolume;
                 return;
               }
               // Android يعيد القيمة الفعلية بعد تقريبها إلى درجات مستوى الصوت.
