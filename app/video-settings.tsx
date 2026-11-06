@@ -10,6 +10,8 @@ const SEEK_OPTIONS = [5, 10, 15, 30] as const;
 const SPEED_OPTIONS = [1.25, 1.5, 2] as const;
 const DECODER_OPTIONS = ["auto", "hardware", "software"] as const;
 const AUDIO_LANGUAGE_OPTIONS = ["auto", "ar", "en", "fr", "es", "tr"] as const;
+const TOOL_OPTIONS = ["back", "rewind", "previous", "play", "next", "forward", "background", "options", "fit", "speed", "rotate", "lock", "night", "mute", "mirror", "repeat", "ab"] as const;
+const TOOL_LABELS: Record<string, string> = { back: "رجوع", rewind: "ترجيع", previous: "السابق", play: "تشغيل/إيقاف", next: "التالي", forward: "تقديم", background: "الخلفية", options: "المزيد", fit: "نسبة العرض", speed: "السرعة", rotate: "تدوير الشاشة", lock: "قفل الأدوات", night: "الوضع الليلي", mute: "كتم الصوت", mirror: "عكس الصورة", repeat: "تكرار", ab: "تكرار A-B" };
 
 export default function VideoSettingsScreen() {
   const router = useRouter();
@@ -34,6 +36,21 @@ export default function VideoSettingsScreen() {
       <ValueRow title="سرعة الضغط المطول" value={`${settings.longPressSpeed}x`} options={SPEED_OPTIONS.map(String)} selected={String(settings.longPressSpeed)} onSelect={(value) => update({ longPressSpeed: Number(value) })} disabled={!settings.longPressSpeedEnabled} />
       <SwitchRow title="الاهتزاز عند الضغط مطولًا" value={settings.longPressVibrationEnabled} onToggle={() => toggle("longPressVibrationEnabled")} />
     </View>
+    <Text style={styles.sectionTitle}>إعدادات شريط أدوات الفيديو</Text>
+    <View style={styles.group}>
+      <ValueRow title="مكان ظهور الشريط" value={settings.toolbarPosition === "center" ? "الوسط" : settings.toolbarPosition === "top" ? "الأعلى" : settings.toolbarPosition === "bottom" ? "الأسفل" : "الجوانب"} options={["center", "top", "bottom", "sides"]} selected={settings.toolbarPosition} onSelect={(value) => update({ toolbarPosition: value as VideoSettings["toolbarPosition"] })} />
+      <View style={styles.valueRow}><Text style={styles.rowTitle}>الأدوات الظاهرة في الشريط</Text><View style={styles.options}>{TOOL_OPTIONS.map((tool) => { const selected = settings.toolbarTools.includes(tool); return <Pressable key={tool} onPress={() => update({ toolbarTools: selected ? settings.toolbarTools.filter((item) => item !== tool) : [...settings.toolbarTools, tool] })} style={[styles.option, selected && styles.optionActive]}><Text style={[styles.optionText, selected && styles.optionTextActive]}>{selected ? "✓ " : "□ "}{TOOL_LABELS[tool]}</Text></Pressable>; })}</View></View>
+      <ValueRow title="لون الأزرار" value={settings.toolbarButtonColor} options={["#FFFFFF", "#39D353", "#48CFFF", "#FFB020"]} selected={settings.toolbarButtonColor} onSelect={(value) => update({ toolbarButtonColor: value })} />
+      <ValueRow title="لون إطار الشريط" value={settings.toolbarBorderColor === "#39D353" ? "أخضر" : settings.toolbarBorderColor === "#48CFFF" ? "سماوي" : "أبيض"} options={["rgba(255,255,255,0.16)", "#39D353", "#48CFFF"]} selected={settings.toolbarBorderColor} onSelect={(value) => update({ toolbarBorderColor: value })} />
+    </View>
+    <Text style={styles.sectionTitle}>التحكم بشريط التشغيل (عداد الوقت)</Text>
+    <View style={styles.group}>
+      <ValueRow title="استايل خط التشغيل" value={settings.progressStyle === "solid" ? "متصل" : settings.progressStyle === "gradient" ? "متدرج" : "متقطع"} options={["solid", "gradient", "dashed"]} selected={settings.progressStyle} onSelect={(value) => update({ progressStyle: value as VideoSettings["progressStyle"] })} />
+      <ValueRow title="شكل المؤشر" value={settings.progressThumb === "circle" ? "دائري" : settings.progressThumb === "diamond" ? "معيّن" : "مربع"} options={["circle", "diamond", "square"]} selected={settings.progressThumb} onSelect={(value) => update({ progressThumb: value as VideoSettings["progressThumb"] })} />
+      <ValueRow title="اتجاه تقدم المؤشر" value={settings.progressDirection === "rtl" ? "يمين ← يسار" : "يسار ← يمين"} options={["rtl", "ltr"]} selected={settings.progressDirection} onSelect={(value) => update({ progressDirection: value as VideoSettings["progressDirection"] })} />
+      <ValueRow title="اتجاه زيادة الوقت بالسحب" value={settings.seekDirection === "right" ? "السحب يميناً" : "السحب يساراً"} options={["right", "left"]} selected={settings.seekDirection} onSelect={(value) => update({ seekDirection: value as VideoSettings["seekDirection"] })} />
+      <ValueRow title="سرعة متابعة المؤشر" value={`${settings.seekSensitivity}×`} options={["0.5", "1", "1.5", "2"]} selected={String(settings.seekSensitivity)} onSelect={(value) => update({ seekSensitivity: Number(value) })} />
+    </View>
     <Text style={styles.sectionTitle}>متقدم</Text>
     <View style={styles.group}>
       <ValueRow title="وحدة فك الترميز الافتراضية" value={settings.decoderMode === "hardware" ? "HW" : settings.decoderMode === "software" ? "SW" : "تلقائي"} options={[...DECODER_OPTIONS]} selected={settings.decoderMode} onSelect={(value) => update({ decoderMode: value as VideoSettings["decoderMode"] })} />
@@ -48,7 +65,7 @@ function SwitchRow({ title, description, value, onToggle }: { title: string; des
 }
 
 function ValueRow({ title, value, options, selected, onSelect, disabled = false }: { title: string; value: string; options: string[]; selected: string; onSelect: (value: string) => void; disabled?: boolean }) {
-  const labels: Record<string, string> = { auto: "تلقائي", hardware: "HW", software: "SW", ar: "العربية", en: "English", fr: "Français", es: "Español", tr: "Türkçe" };
+  const labels: Record<string, string> = { auto: "تلقائي", hardware: "HW", software: "SW", ar: "العربية", en: "English", fr: "Français", es: "Español", tr: "Türkçe", center: "الوسط", top: "الأعلى", bottom: "الأسفل", sides: "الجوانب", solid: "متصل", gradient: "متدرج", dashed: "متقطع", circle: "دائري", diamond: "معيّن", square: "مربع", rtl: "يمين ← يسار", ltr: "يسار ← يمين", right: "السحب يميناً", left: "السحب يساراً", "#FFFFFF": "أبيض", "#39D353": "أخضر", "#48CFFF": "سماوي", "#FFB020": "ذهبي", "rgba(255,255,255,0.16)": "أبيض" };
   return <View style={[styles.valueRow, disabled && styles.disabled]}><View style={styles.valueHeader}><Text style={styles.value}>{value}</Text><Text style={styles.rowTitle}>{title}</Text></View><View style={styles.options}>{options.map((option) => <Pressable key={option} disabled={disabled} onPress={() => onSelect(option)} style={[styles.option, selected === option && styles.optionActive]}><Text style={[styles.optionText, selected === option && styles.optionTextActive]}>{labels[option] ?? option}{title.includes("فاصل") ? "s" : title.includes("سرعة") ? "x" : ""}</Text></Pressable>)}</View></View>;
 }
 

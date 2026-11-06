@@ -8,6 +8,15 @@ export type VideoSettings = {
   longPressVibrationEnabled: boolean;
   qualityBoost: boolean;
   preferredAudioLanguage: string;
+  toolbarPosition: "center" | "top" | "bottom" | "sides";
+  toolbarTools: string[];
+  toolbarButtonColor: string;
+  toolbarBorderColor: string;
+  progressStyle: "solid" | "gradient" | "dashed";
+  progressThumb: "circle" | "diamond" | "square";
+  progressDirection: "rtl" | "ltr";
+  seekDirection: "right" | "left";
+  seekSensitivity: number;
 };
 
 export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
@@ -18,6 +27,15 @@ export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
   longPressVibrationEnabled: true,
   qualityBoost: true,
   preferredAudioLanguage: "auto",
+  toolbarPosition: "center",
+  toolbarTools: ["back", "rewind", "previous", "play", "next", "forward", "background", "options", "fit", "speed", "rotate", "lock", "night", "mute", "mirror", "repeat", "ab"],
+  toolbarButtonColor: "#FFFFFF",
+  toolbarBorderColor: "rgba(255,255,255,0.16)",
+  progressStyle: "solid",
+  progressThumb: "circle",
+  progressDirection: "rtl",
+  seekDirection: "right",
+  seekSensitivity: 1,
 };
 
 const STORAGE_KEY = "remo.video.settings.v1";
@@ -33,6 +51,15 @@ function normalize(value: Partial<VideoSettings> | null | undefined): VideoSetti
     longPressVibrationEnabled: value?.longPressVibrationEnabled ?? DEFAULT_VIDEO_SETTINGS.longPressVibrationEnabled,
     qualityBoost: value?.qualityBoost ?? DEFAULT_VIDEO_SETTINGS.qualityBoost,
     preferredAudioLanguage: typeof value?.preferredAudioLanguage === "string" ? value.preferredAudioLanguage : DEFAULT_VIDEO_SETTINGS.preferredAudioLanguage,
+    toolbarPosition: ["center", "top", "bottom", "sides"].includes(value?.toolbarPosition ?? "") ? value!.toolbarPosition! : DEFAULT_VIDEO_SETTINGS.toolbarPosition,
+    toolbarTools: Array.isArray(value?.toolbarTools) ? value!.toolbarTools!.filter((item) => typeof item === "string") : DEFAULT_VIDEO_SETTINGS.toolbarTools,
+    toolbarButtonColor: typeof value?.toolbarButtonColor === "string" ? value.toolbarButtonColor : DEFAULT_VIDEO_SETTINGS.toolbarButtonColor,
+    toolbarBorderColor: typeof value?.toolbarBorderColor === "string" ? value.toolbarBorderColor : DEFAULT_VIDEO_SETTINGS.toolbarBorderColor,
+    progressStyle: ["solid", "gradient", "dashed"].includes(value?.progressStyle ?? "") ? value!.progressStyle! : DEFAULT_VIDEO_SETTINGS.progressStyle,
+    progressThumb: ["circle", "diamond", "square"].includes(value?.progressThumb ?? "") ? value!.progressThumb! : DEFAULT_VIDEO_SETTINGS.progressThumb,
+    progressDirection: value?.progressDirection === "ltr" ? "ltr" : "rtl",
+    seekDirection: value?.seekDirection === "left" ? "left" : "right",
+    seekSensitivity: [0.5, 1, 1.5, 2].includes(value?.seekSensitivity ?? 1) ? value?.seekSensitivity ?? 1 : 1,
   };
 }
 

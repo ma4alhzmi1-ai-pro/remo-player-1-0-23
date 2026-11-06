@@ -1,6 +1,6 @@
 {
   "name": "remo-player",
-  "version": "1.0.70",
+  "version": "1.0.72",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {

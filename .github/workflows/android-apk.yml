@@ -94,7 +94,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: REMO-PLAYER-v1.0.70-Full-APK
+          name: REMO-PLAYER-v1.0.72-Full-APK
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -116,7 +116,7 @@ jobs:
       - name: Download verified APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: REMO-PLAYER-v1.0.70-Full-APK
+          name: REMO-PLAYER-v1.0.72-Full-APK
           path: release
 
       - name: Publish GitHub release and update feed

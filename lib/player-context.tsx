@@ -288,6 +288,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     autoAdvanceRef.current = playNext;
   }, [playNext]);
 
+  useEffect(() => {
+    const subscription = videoPlayer.addListener("playToEnd", () => {
+      if (AppState.currentState === "active" || currentItemRef.current?.mediaType !== "video" || repeatModeRef.current === "one" || isAutoAdvancingRef.current) return;
+      isAutoAdvancingRef.current = true;
+      void autoAdvanceRef.current(repeatModeRef.current === "all").then((advanced) => {
+        if (!advanced) setIsPlaying(false);
+      }).finally(() => { isAutoAdvancingRef.current = false; });
+    });
+    return () => subscription.remove();
+  }, [videoPlayer]);
+
   const playPrevious = useCallback(async () => {
     if (!currentItem) return false;
     if (queueTransitionInFlightRef.current) return false;
