@@ -155,7 +155,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         lastSnapshotSecondRef.current = roundedSecond;
         void savePlaybackMemory({ itemId: item.id, position: status.currentTime || 0, updatedAt: Date.now() });
       }
-      if (status.didJustFinish && !player.loop) {
+      const reachedEnd = Boolean(status.duration && status.currentTime >= Math.max(0, status.duration - 0.35) && !status.playing);
+      if ((status.didJustFinish || reachedEnd) && !player.loop) {
         const shouldWrap = repeatModeRef.current === "all";
         if (isAutoAdvancingRef.current) return;
         isAutoAdvancingRef.current = true;

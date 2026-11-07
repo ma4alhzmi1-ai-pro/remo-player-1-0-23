@@ -13,6 +13,7 @@ import {
   LayoutChangeEvent,
   ScrollView,
   TextInput,
+  Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -106,6 +107,7 @@ export default function AudioPlayerScreen() {
   const [systemVolume, setSystemVolume] = useState(1);
   const systemVolumeStartRef = useRef(1);
   const systemVolumeRef = useRef(1);
+  const volumeGestureActiveRef = useRef(false);
   const syncedLyrics = useMemo(() => parseSyncedLyrics(currentItem?.lyrics), [currentItem?.lyrics]);
   const effectiveTime = isScrubbing ? scrubbingTime : currentTime;
   const activeSyncedLyric = activeLyricIndex(syncedLyrics, effectiveTime);
@@ -315,6 +317,7 @@ export default function AudioPlayerScreen() {
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dy) > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onPanResponderGrant: () => {
+      volumeGestureActiveRef.current = true;
       void getSystemMusicVolume().then((value) => {
         if (value === null) return;
         systemVolumeStartRef.current = value;
@@ -339,8 +342,27 @@ export default function AudioPlayerScreen() {
         systemVolumeRef.current = applied;
         setSystemVolume(applied);
       });
+      volumeGestureActiveRef.current = false;
     },
   }), []);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    let cancelled = false;
+    const sync = async () => {
+      if (volumeGestureActiveRef.current) return;
+      const value = await getSystemMusicVolume();
+      if (cancelled || value === null) return;
+      systemVolumeRef.current = value;
+      setSystemVolume(value);
+    };
+    void sync();
+    const interval = setInterval(() => void sync(), 250);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const onProgressBarLayout = (event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
