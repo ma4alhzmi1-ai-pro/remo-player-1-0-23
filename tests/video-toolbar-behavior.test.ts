@@ -23,6 +23,7 @@ describe("video toolbar behavior", () => {
   });
 
   it("advances audio when the background status reaches its end", () => {
-    expect(context).toContain('const reachedEnd = Boolean(status.duration && status.currentTime >= Math.max(0, status.duration - 0.35)');
+    expect(context).toContain('const reachedEnd = Boolean(status.duration && status.currentTime >= Math.max(0, status.duration - 0.15)');
+    expect(context).toContain('videoPlayer.addListener("playToEnd"');
   });
 });

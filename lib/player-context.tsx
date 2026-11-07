@@ -96,6 +96,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [currentItem, videoPlayer]);
 
   useEffect(() => {
+    const subscription = videoPlayer.addListener("playToEnd", () => {
+      const item = currentItemRef.current;
+      if (item?.mediaType !== "video" || repeatModeRef.current === "one" || isAutoAdvancingRef.current) return;
+      isAutoAdvancingRef.current = true;
+      void autoAdvanceRef.current(repeatModeRef.current === "all")
+        .then((advanced) => { if (!advanced) setIsPlaying(false); })
+        .finally(() => { isAutoAdvancingRef.current = false; });
+    });
+    return () => subscription.remove();
+  }, [videoPlayer]);
+
+  useEffect(() => {
     repeatModeRef.current = repeatMode;
   }, [repeatMode]);
 
@@ -155,7 +167,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         lastSnapshotSecondRef.current = roundedSecond;
         void savePlaybackMemory({ itemId: item.id, position: status.currentTime || 0, updatedAt: Date.now() });
       }
-      const reachedEnd = Boolean(status.duration && status.currentTime >= Math.max(0, status.duration - 0.35) && !status.playing);
+      const reachedEnd = Boolean(status.duration && status.currentTime >= Math.max(0, status.duration - 0.15));
       if ((status.didJustFinish || reachedEnd) && !player.loop) {
         const shouldWrap = repeatModeRef.current === "all";
         if (isAutoAdvancingRef.current) return;
@@ -207,7 +219,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       await prepareAudioSession(audioSession.allowBackgroundPlayback);
       let player = playerRef.current;
       if (!player) {
-        player = createAudioPlayer({ uri: item.uri }, { updateInterval: 300, keepAudioSessionActive: true });
+        player = createAudioPlayer({ uri: item.uri }, { updateInterval: 100, keepAudioSessionActive: true });
         playerRef.current = player;
         attachStatusListener(player);
       } else {
