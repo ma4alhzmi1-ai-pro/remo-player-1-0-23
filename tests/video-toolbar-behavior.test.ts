@@ -7,13 +7,14 @@ const context = readFileSync(new URL("../lib/player-context.tsx", import.meta.ur
 
 describe("video toolbar behavior", () => {
   it("keeps progress at the bottom and actions in a separate center dock", () => {
-    expect(video).toContain('<View style={styles.progressDock}>');
-    expect(video).toContain('<View style={styles.controlDock}><ScrollView horizontal nestedScrollEnabled');
+    expect(video).toContain('<View style={[styles.progressDock, { borderColor: videoSettings.toolbarBorderColor }]}');
+    expect(video).toContain('styles.controlDock, toolbarPositionStyle');
     expect(video).toContain('progressDock: { position: "absolute"');
   });
 
   it("enables responsive horizontal action scrolling", () => {
     expect(video).toContain('directionalLockEnabled scrollEventThrottle={16} decelerationRate="fast"');
+    expect(video).toContain('display: showTool("memory")');
   });
 
   it("polls Android STREAM_MUSIC so hardware buttons update the HUD", () => {
