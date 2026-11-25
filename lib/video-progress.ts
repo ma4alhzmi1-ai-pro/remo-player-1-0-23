@@ -1,7 +1,14 @@
-/** يحول موضع اللمس داخل الشريط المرئي من اليسار إلى اليمين إلى وقت التشغيل. */
-export function resolveVideoProgressSeek(locationX: number, trackWidth: number, duration: number) {
+import type { ProgressDirection } from "./video-settings";
+
+/** يحول موضع اللمس داخل الشريط المرئي إلى وقت التشغيل وفق اتجاه الشريط المختار (RTL أو LTR). */
+export function resolveVideoProgressSeek(
+  locationX: number,
+  trackWidth: number,
+  duration: number,
+  direction: ProgressDirection = "rtl",
+) {
   if (![locationX, trackWidth, duration].every(Number.isFinite) || trackWidth <= 0 || duration <= 0) return null;
-  // RTL timeline: the right edge is the beginning and the left edge is the end.
-  const fraction = 1 - Math.max(0, Math.min(1, locationX / trackWidth));
+  const clamped = Math.max(0, Math.min(1, locationX / trackWidth));
+  const fraction = direction === "ltr" ? clamped : 1 - clamped;
   return Number((duration * fraction).toFixed(3));
 }

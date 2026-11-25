@@ -10,8 +10,10 @@ describe("video toolbar layout", () => {
     expect(source).toContain('quickIcons: { minHeight: 42, height: 42');
   });
 
-  it("keeps the toolbar above the native video surface", () => {
+  it("keeps the toolbar above the native video surface with non-overlapping bottom and center stacks", () => {
     expect(source).toContain('overlay: { ...StyleSheet.absoluteFillObject, zIndex: 100, elevation: 100');
-    expect(source).toContain('controlDock: { width: "96%"');
+    expect(source).toContain('centerOverlayStack:');
+    expect(source).toContain('bottomOverlayStack:');
+    expect(source).toContain('controlDock: { width: "100%"');
   });
 });

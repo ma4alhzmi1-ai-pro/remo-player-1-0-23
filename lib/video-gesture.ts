@@ -1,3 +1,5 @@
+import type { ProgressDirection } from "./video-settings";
+
 export type VideoGestureAction =
   | { type: "seek"; seconds: number }
   | { type: "volume"; delta: number }
@@ -13,25 +15,39 @@ export function shouldActivateVideoGesture(translationX: number, translationY: n
   return Math.abs(translationX) >= ACTIVATION_SWIPE_THRESHOLD || Math.abs(translationY) >= ACTIVATION_SWIPE_THRESHOLD;
 }
 
-export function resolveVideoGesture(translationX: number, translationY: number, touchX: number, surfaceWidth: number): VideoGestureAction {
+export function resolveVideoGesture(
+  translationX: number,
+  translationY: number,
+  touchX: number,
+  surfaceWidth: number,
+  seekDirection: ProgressDirection = "rtl",
+): VideoGestureAction {
   if (![translationX, translationY, touchX, surfaceWidth].every(Number.isFinite) || surfaceWidth <= 0) {
     return null;
   }
-
   const horizontalDistance = Math.abs(translationX);
   const verticalDistance = Math.abs(translationY);
-
   if (horizontalDistance >= verticalDistance && horizontalDistance >= HORIZONTAL_SWIPE_THRESHOLD) {
     const seconds = Math.max(5, Math.min(45, Math.round(horizontalDistance / 7)));
-    return { type: "seek", seconds: translationX < 0 ? seconds : -seconds };
+    const forward = seekDirection === "ltr" ? translationX > 0 : translationX < 0;
+    return { type: "seek", seconds: forward ? seconds : -seconds };
   }
-
   if (verticalDistance >= VERTICAL_SWIPE_THRESHOLD) {
     const delta = translationY < 0 ? 0.1 : -0.1;
     return touchX >= surfaceWidth / 2 ? { type: "volume", delta } : { type: "brightness", delta };
   }
-
   return null;
+}
+
+export function resolveDoubleTapSeekSeconds(
+  tapX: number,
+  surfaceWidth: number,
+  seekInterval: number,
+): number | null {
+  if (![tapX, surfaceWidth, seekInterval].every(Number.isFinite) || surfaceWidth <= 0 || seekInterval <= 0) {
+    return null;
+  }
+  return tapX >= surfaceWidth / 2 ? seekInterval : -seekInterval;
 }
 
 export function resolveLocalBrightness(startBrightness: number, translationY: number, surfaceHeight: number): number | null {

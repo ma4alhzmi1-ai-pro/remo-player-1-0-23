@@ -4,20 +4,63 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-nat
 import { useRouter } from "expo-router";
 import { colors } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
-import { DEFAULT_VIDEO_SETTINGS, loadVideoSettings, saveVideoSettings, VIDEO_TOOL_IDS, type VideoSettings, type VideoToolId } from "@/lib/video-settings";
+import {
+  DEFAULT_VIDEO_SETTINGS,
+  loadVideoSettings,
+  saveVideoSettings,
+  VIDEO_TOOL_IDS,
+  type VideoSettings,
+  type VideoToolId,
+} from "@/lib/video-settings";
 
 const SEEK_OPTIONS = [5, 10, 15, 30] as const;
 const SPEED_OPTIONS = [1.25, 1.5, 2] as const;
 const SCRUB_SPEED_OPTIONS = [0.5, 1, 1.5, 2] as const;
 const DECODER_OPTIONS = ["auto", "hardware", "software"] as const;
 const AUDIO_LANGUAGE_OPTIONS = ["system", "ar", "en", "fr", "es", "tr"] as const;
-const TOOL_LABELS: Record<VideoToolId, string> = { memory: "حفظ اللحظة", focus: "التركيز السينمائي", back: "العودة", rewind: "ترجيع 10 ثوان", previous: "السابق", play: "تشغيل وإيقاف", next: "التالي", forward: "تقديم 10 ثوان", background: "التشغيل بالخلفية", display: "نسبة العرض", speed: "سرعة التشغيل", rotate: "التدوير", lock: "قفل الأدوات", night: "الوضع الليلي", mute: "كتم الصوت", mirror: "عكس الصورة", repeat: "التكرار", ab: "تكرار A-B" };
-const TOOLBAR_POSITIONS = [{ value: "center", label: "الوسط" }, { value: "top", label: "الأعلى" }, { value: "bottom", label: "الأسفل" }, { value: "left", label: "الجانب الأيسر" }, { value: "right", label: "الجانب الأيمن" }] as const;
+
+const TOOL_LABELS: Record<VideoToolId, string> = {
+  memory: "حفظ اللحظة",
+  focus: "التركيز السينمائي",
+  back: "العودة",
+  rewind: "الترجيع السريع",
+  previous: "السابق",
+  play: "تشغيل وإيقاف",
+  next: "التالي",
+  forward: "التقديم السريع",
+  background: "التشغيل بالخلفية",
+  display: "نسبة العرض",
+  speed: "سرعة التشغيل",
+  rotate: "التدوير",
+  lock: "قفل الأدوات",
+  night: "الوضع الليلي",
+  mute: "كتم الصوت",
+  mirror: "عكس الصورة",
+  repeat: "التكرار",
+  ab: "تكرار A-B",
+};
+
+const TOOLBAR_POSITIONS = [
+  { value: "center", label: "الوسط" },
+  { value: "top", label: "الأعلى" },
+  { value: "bottom", label: "الأسفل" },
+  { value: "left", label: "الجانب الأيسر" },
+  { value: "right", label: "الجانب الأيمن" },
+] as const;
+
+const PROGRESS_POSITIONS = [
+  { value: "center", label: "في الوسط" },
+  { value: "bottom", label: "في الأسفل" },
+] as const;
 
 export default function VideoSettingsScreen() {
   const router = useRouter();
   const [settings, setSettings] = useState<VideoSettings>(DEFAULT_VIDEO_SETTINGS);
-  useEffect(() => { void loadVideoSettings().then(setSettings); }, []);
+
+  useEffect(() => {
+    void loadVideoSettings().then(setSettings);
+  }, []);
+
   const update = (patch: Partial<VideoSettings>) => {
     setSettings((current) => {
       const next = { ...current, ...patch };
@@ -25,35 +68,382 @@ export default function VideoSettingsScreen() {
       return next;
     });
   };
-  const toggle = (key: keyof VideoSettings) => update({ [key]: !settings[key] } as Partial<VideoSettings>);
-  const toggleTool = (id: VideoToolId) => update({ toolbarButtons: settings.toolbarButtons.includes(id) ? settings.toolbarButtons.filter((item) => item !== id) : [...settings.toolbarButtons, id] });
 
-  return <ScreenContainer edges={["top", "bottom", "left", "right"]}><ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-    <View style={styles.header}><Pressable onPress={() => router.back()} style={styles.backButton} accessibilityLabel="العودة"><MaterialIcons name="arrow-forward" size={23} color={colors.text} /></Pressable><Text style={styles.title}>إعدادات الفيديو</Text></View>
-    <Text style={styles.sectionTitle}>تخصيص شريط الأدوات</Text>
-    <View style={styles.group}>
-      <ValueRow title="مكان ظهور الشريط" value={TOOLBAR_POSITIONS.find((item) => item.value === settings.toolbarPosition)?.label ?? "الوسط"} options={TOOLBAR_POSITIONS.map((item) => item.value)} selected={settings.toolbarPosition} labels={Object.fromEntries(TOOLBAR_POSITIONS.map((item) => [item.value, item.label]))} onSelect={(value) => update({ toolbarPosition: value as VideoSettings["toolbarPosition"] })} />
-      <ColorRow title="لون أزرار الشريط" value={settings.toolbarButtonColor} colors={["rgba(8,17,31,0.79)", "#123B52", "#23304F", "#3A1F4F"]} onSelect={(value) => update({ toolbarButtonColor: value })} />
-      <ColorRow title="لون إطار الشريط" value={settings.toolbarBorderColor} colors={["rgba(255,255,255,0.18)", "#2EC5FF", "#39D353", "#F59E0B"]} onSelect={(value) => update({ toolbarBorderColor: value })} />
-      <View style={styles.toolSection}><Text style={styles.rowTitle}>الأدوات الظاهرة في الشريط</Text><Text style={styles.description}>ضع علامة على الأدوات التي تريد إظهارها داخل المشغل.</Text>{VIDEO_TOOL_IDS.map((id) => <Pressable key={id} onPress={() => toggleTool(id)} style={styles.toolRow}><View style={[styles.checkbox, settings.toolbarButtons.includes(id) && styles.checkboxActive]}>{settings.toolbarButtons.includes(id) ? <MaterialIcons name="check" size={17} color={colors.background} /> : null}</View><Text style={styles.toolLabel}>{TOOL_LABELS[id]}</Text></Pressable>)}</View>
-    </View>
-    <Text style={styles.sectionTitle}>تخصيص خط التشغيل</Text>
-    <View style={styles.group}>
-      <ValueRow title="استايل الخط" value={settings.progressStyle} options={["line", "thick", "glow", "dashed"]} selected={settings.progressStyle} labels={{ line: "خط بسيط", thick: "عريض", glow: "متوهج", dashed: "متقطع" }} onSelect={(value) => update({ progressStyle: value as VideoSettings["progressStyle"] })} />
-      <ValueRow title="استايل المؤشر" value={settings.progressThumbStyle} options={["circle", "square", "diamond"]} selected={settings.progressThumbStyle} labels={{ circle: "دائري", square: "مربع", diamond: "مُعين" }} onSelect={(value) => update({ progressThumbStyle: value as VideoSettings["progressThumbStyle"] })} />
-      <ValueRow title="اتجاه تقدم المؤشر" value={settings.progressDirection === "rtl" ? "من اليمين لليسار" : "من اليسار لليمين"} options={["rtl", "ltr"]} selected={settings.progressDirection} labels={{ rtl: "يمين ← يسار", ltr: "يسار → يمين" }} onSelect={(value) => update({ progressDirection: value as VideoSettings["progressDirection"] })} />
-      <ValueRow title="اتجاه زيادة الوقت بالسحب" value={settings.progressDragDirection === "rtl" ? "السحب لليسار يزيد" : "السحب لليمين يزيد"} options={["rtl", "ltr"]} selected={settings.progressDragDirection} labels={{ rtl: "لليسار يزيد", ltr: "لليمين يزيد" }} onSelect={(value) => update({ progressDragDirection: value as VideoSettings["progressDragDirection"] })} />
-      <ValueRow title="سرعة متابعة المؤشر" value={`${settings.progressScrubSpeed}x`} options={SCRUB_SPEED_OPTIONS.map(String)} selected={String(settings.progressScrubSpeed)} labels={{ "0.5": "بطيء", "1": "طبيعي", "1.5": "سريع", "2": "فوري" }} onSelect={(value) => update({ progressScrubSpeed: Number(value) })} />
-    </View>
-    <Text style={styles.sectionTitle}>التحكم</Text>
-    <View style={styles.group}><ValueRow title="فاصل التقديم/الترجيع السريع" value={`${settings.seekInterval}s`} options={SEEK_OPTIONS.map(String)} selected={String(settings.seekInterval)} onSelect={(value) => update({ seekInterval: Number(value) })} /><SwitchRow title="انقر مزدوجًا للتقديم/الترجيع" value={settings.doubleTapSeekEnabled} onToggle={() => toggle("doubleTapSeekEnabled")} /><SwitchRow title="اضغط مطولًا لتسريع التشغيل" value={settings.longPressSpeedEnabled} onToggle={() => toggle("longPressSpeedEnabled")} /><ValueRow title="سرعة الضغط المطول" value={`${settings.longPressSpeed}x`} options={SPEED_OPTIONS.map(String)} selected={String(settings.longPressSpeed)} onSelect={(value) => update({ longPressSpeed: Number(value) })} disabled={!settings.longPressSpeedEnabled} /><SwitchRow title="الاهتزاز عند الضغط مطولًا" value={settings.longPressVibrationEnabled} onToggle={() => toggle("longPressVibrationEnabled")} /><SwitchRow title="انقر فوق النسب للتبديل مباشرة" value={settings.directAspectSwitchEnabled} onToggle={() => toggle("directAspectSwitchEnabled")} /></View>
-    <Text style={styles.sectionTitle}>الذاكرة والمتقدم</Text>
-    <View style={styles.group}><SwitchRow title="تذكر التشغيل في الخلفية" value={settings.rememberBackgroundPlayback} onToggle={() => toggle("rememberBackgroundPlayback")} /><SwitchRow title="تذكر النسبة" value={settings.rememberAspectRatio} onToggle={() => toggle("rememberAspectRatio")} /><ValueRow title="وحدة فك الترميز الافتراضية" value={settings.decoderMode === "hardware" ? "HW" : settings.decoderMode === "software" ? "SW" : "تلقائي"} options={[...DECODER_OPTIONS]} selected={settings.decoderMode} onSelect={(value) => update({ decoderMode: value as VideoSettings["decoderMode"] })} /><SwitchRow title="تعزيز الجودة" value={settings.qualityEnhancementEnabled} onToggle={() => toggle("qualityEnhancementEnabled")} /><ValueRow title="لغة الصوت المفضلة" value={settings.preferredAudioLanguage === "system" ? "النظام" : settings.preferredAudioLanguage.toUpperCase()} options={[...AUDIO_LANGUAGE_OPTIONS]} selected={settings.preferredAudioLanguage} onSelect={(value) => update({ preferredAudioLanguage: value })} /></View>
-  </ScrollView></ScreenContainer>;
+  const toggle = (key: keyof VideoSettings) => update({ [key]: !settings[key] } as Partial<VideoSettings>);
+
+  const toggleTool = (id: VideoToolId) =>
+    update({
+      toolbarButtons: settings.toolbarButtons.includes(id)
+        ? settings.toolbarButtons.filter((item) => item !== id)
+        : [...settings.toolbarButtons, id],
+    });
+
+  return (
+    <ScreenContainer edges={["top", "bottom", "left", "right"]}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.backButton} accessibilityLabel="العودة">
+            <MaterialIcons name="arrow-forward" size={23} color={colors.text} />
+          </Pressable>
+          <Text style={styles.title}>إعدادات الفيديو</Text>
+        </View>
+
+        <Text style={styles.sectionTitle}>تخصيص شريط الأدوات</Text>
+        <View style={styles.group}>
+          <ValueRow
+            title="مكان ظهور الشريط"
+            value={TOOLBAR_POSITIONS.find((item) => item.value === settings.toolbarPosition)?.label ?? "الوسط"}
+            options={TOOLBAR_POSITIONS.map((item) => item.value)}
+            selected={settings.toolbarPosition}
+            labels={Object.fromEntries(TOOLBAR_POSITIONS.map((item) => [item.value, item.label]))}
+            onSelect={(value) => update({ toolbarPosition: value as VideoSettings["toolbarPosition"] })}
+          />
+          <ColorRow
+            title="لون أزرار الشريط"
+            value={settings.toolbarButtonColor}
+            colors={["rgba(8,17,31,0.79)", "#123B52", "#23304F", "#3A1F4F"]}
+            onSelect={(value) => update({ toolbarButtonColor: value })}
+          />
+          <ColorRow
+            title="لون إطار الشريط"
+            value={settings.toolbarBorderColor}
+            colors={["rgba(255,255,255,0.18)", "#2EC5FF", "#39D353", "#F59E0B"]}
+            onSelect={(value) => update({ toolbarBorderColor: value })}
+          />
+          <View style={styles.toolSection}>
+            <Text style={styles.rowTitle}>الأدوات الظاهرة في الشريط</Text>
+            <Text style={styles.description}>ضع علامة على الأدوات التي تريد إظهارها داخل المشغل.</Text>
+            {VIDEO_TOOL_IDS.map((id) => (
+              <Pressable key={id} onPress={() => toggleTool(id)} style={styles.toolRow}>
+                <View style={[styles.checkbox, settings.toolbarButtons.includes(id) && styles.checkboxActive]}>
+                  {settings.toolbarButtons.includes(id) ? (
+                    <MaterialIcons name="check" size={17} color={colors.background} />
+                  ) : null}
+                </View>
+                <Text style={styles.toolLabel}>{TOOL_LABELS[id]}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>تخصيص خط التشغيل</Text>
+        <View style={styles.group}>
+          <ValueRow
+            title="مكان ظهور خط عداد مؤقت الوقت داخل مشغل الفيديو"
+            value={PROGRESS_POSITIONS.find((item) => item.value === settings.progressPosition)?.label ?? "في الأسفل"}
+            options={PROGRESS_POSITIONS.map((item) => item.value)}
+            selected={settings.progressPosition}
+            labels={Object.fromEntries(PROGRESS_POSITIONS.map((item) => [item.value, item.label]))}
+            onSelect={(value) => update({ progressPosition: value as VideoSettings["progressPosition"] })}
+          />
+          <ValueRow
+            title="استايل الخط"
+            value={
+              settings.progressStyle === "thick"
+                ? "عريض"
+                : settings.progressStyle === "glow"
+                  ? "متوهج"
+                  : settings.progressStyle === "dashed"
+                    ? "متقطع"
+                    : "خط بسيط"
+            }
+            options={["line", "thick", "glow", "dashed"]}
+            selected={settings.progressStyle}
+            labels={{ line: "خط بسيط", thick: "عريض", glow: "متوهج", dashed: "متقطع" }}
+            onSelect={(value) => update({ progressStyle: value as VideoSettings["progressStyle"] })}
+          />
+          <ValueRow
+            title="استايل المؤشر"
+            value={
+              settings.progressThumbStyle === "square"
+                ? "مربع"
+                : settings.progressThumbStyle === "diamond"
+                  ? "مُعين"
+                  : "دائري"
+            }
+            options={["circle", "square", "diamond"]}
+            selected={settings.progressThumbStyle}
+            labels={{ circle: "دائري", square: "مربع", diamond: "مُعين" }}
+            onSelect={(value) => update({ progressThumbStyle: value as VideoSettings["progressThumbStyle"] })}
+          />
+          <ValueRow
+            title="اتجاه تقدم المؤشر"
+            value={settings.progressDirection === "rtl" ? "من اليمين لليسار" : "من اليسار لليمين"}
+            options={["rtl", "ltr"]}
+            selected={settings.progressDirection}
+            labels={{ rtl: "يمين ← يسار", ltr: "يسار → يمين" }}
+            onSelect={(value) => update({ progressDirection: value as VideoSettings["progressDirection"] })}
+          />
+          <ValueRow
+            title="اتجاه زيادة الوقت بالسحب"
+            value={settings.progressDragDirection === "rtl" ? "السحب لليسار يزيد" : "السحب لليمين يزيد"}
+            options={["rtl", "ltr"]}
+            selected={settings.progressDragDirection}
+            labels={{ rtl: "لليسار يزيد", ltr: "لليمين يزيد" }}
+            onSelect={(value) => update({ progressDragDirection: value as VideoSettings["progressDragDirection"] })}
+          />
+          <ValueRow
+            title="سرعة متابعة المؤشر"
+            value={`${settings.progressScrubSpeed}x`}
+            options={SCRUB_SPEED_OPTIONS.map(String)}
+            selected={String(settings.progressScrubSpeed)}
+            labels={{ "0.5": "بطيء", "1": "طبيعي", "1.5": "سريع", "2": "فوري" }}
+            onSelect={(value) => update({ progressScrubSpeed: Number(value) })}
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>التحكم</Text>
+        <View style={styles.group}>
+          <ValueRow
+            title="فاصل التقديم/الترجيع السريع"
+            value={`${settings.seekInterval}s`}
+            options={SEEK_OPTIONS.map(String)}
+            selected={String(settings.seekInterval)}
+            onSelect={(value) => update({ seekInterval: Number(value) })}
+          />
+          <SwitchRow
+            title="انقر مزدوجًا للتقديم/الترجيع"
+            description="النقر المزدوج يمين الشاشة يقدّم الفيديو، ويسارها يرجّع وفق الفاصل المختار."
+            value={settings.doubleTapSeekEnabled}
+            onToggle={() => toggle("doubleTapSeekEnabled")}
+          />
+          <SwitchRow
+            title="اضغط مطولًا لتسريع التشغيل"
+            value={settings.longPressSpeedEnabled}
+            onToggle={() => toggle("longPressSpeedEnabled")}
+          />
+          <ValueRow
+            title="سرعة الضغط المطول"
+            value={`${settings.longPressSpeed}x`}
+            options={SPEED_OPTIONS.map(String)}
+            selected={String(settings.longPressSpeed)}
+            onSelect={(value) => update({ longPressSpeed: Number(value) })}
+            disabled={!settings.longPressSpeedEnabled}
+          />
+          <SwitchRow
+            title="الاهتزاز عند الضغط مطولًا"
+            value={settings.longPressVibrationEnabled}
+            onToggle={() => toggle("longPressVibrationEnabled")}
+            disabled={!settings.longPressSpeedEnabled}
+          />
+          <SwitchRow
+            title="انقر فوق النسب للتبديل مباشرة"
+            description="عند التفعيل، النقر على زر نسبة العرض يبدّل النسبة مباشرة دون فتح القائمة."
+            value={settings.directAspectSwitchEnabled}
+            onToggle={() => toggle("directAspectSwitchEnabled")}
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>الذاكرة والمتقدم</Text>
+        <View style={styles.group}>
+          <SwitchRow
+            title="تذكر التشغيل في الخلفية"
+            description="حفظ آخر حالة للتشغيل في الخلفية وتطبيقها تلقائياً عند فتح الفيديوهات التالية."
+            value={settings.rememberBackgroundPlayback}
+            onToggle={() => toggle("rememberBackgroundPlayback")}
+          />
+          <SwitchRow
+            title="تذكر النسبة"
+            description="الاحتفاظ بآخر نسبة عرض ووضع احتواء تم اختيارهما بين جلسات المشاهدة."
+            value={settings.rememberAspectRatio}
+            onToggle={() => toggle("rememberAspectRatio")}
+          />
+          <ValueRow
+            title="وحدة فك الترميز الافتراضية"
+            value={settings.decoderMode === "hardware" ? "HW" : settings.decoderMode === "software" ? "SW" : "تلقائي"}
+            options={[...DECODER_OPTIONS]}
+            selected={settings.decoderMode}
+            labels={{ auto: "تلقائي", hardware: "HW", software: "SW" }}
+            onSelect={(value) => update({ decoderMode: value as VideoSettings["decoderMode"] })}
+          />
+          <SwitchRow
+            title="تعزيز الجودة"
+            value={settings.qualityEnhancementEnabled}
+            onToggle={() => toggle("qualityEnhancementEnabled")}
+          />
+          <ValueRow
+            title="لغة الصوت المفضلة"
+            value={settings.preferredAudioLanguage === "system" ? "النظام" : settings.preferredAudioLanguage.toUpperCase()}
+            options={[...AUDIO_LANGUAGE_OPTIONS]}
+            selected={settings.preferredAudioLanguage}
+            labels={{ system: "النظام", ar: "AR", en: "EN", fr: "FR", es: "ES", tr: "TR" }}
+            onSelect={(value) => update({ preferredAudioLanguage: value })}
+          />
+        </View>
+      </ScrollView>
+    </ScreenContainer>
+  );
 }
 
-function SwitchRow({ title, description, value, onToggle }: { title: string; description?: string; value: boolean; onToggle: () => void }) { return <View style={styles.row}><Switch value={value} onValueChange={onToggle} trackColor={{ false: "#CBD0D4", true: "#B8E9C1" }} thumbColor={value ? "#08B52B" : "#F3F4F5"} /><View style={styles.copy}><Text style={styles.rowTitle}>{title}</Text>{description ? <Text style={styles.description}>{description}</Text> : null}</View></View>; }
-function ColorRow({ title, value, colors: choices, onSelect }: { title: string; value: string; colors: string[]; onSelect: (value: string) => void }) { return <View style={styles.valueRow}><Text style={styles.rowTitle}>{title}</Text><View style={styles.colorOptions}>{choices.map((color) => <Pressable key={color} onPress={() => onSelect(color)} style={[styles.colorOption, { backgroundColor: color }, value === color && styles.colorOptionActive]} />)}</View></View>; }
-function ValueRow({ title, value, options, selected, labels = {}, onSelect, disabled = false }: { title: string; value: string; options: string[]; selected: string; labels?: Record<string, string>; onSelect: (value: string) => void; disabled?: boolean }) { return <View style={[styles.valueRow, disabled && styles.disabled]}><View style={styles.valueHeader}><Text style={styles.value}>{value}</Text><Text style={styles.rowTitle}>{title}</Text></View><View style={styles.options}>{options.map((option) => <Pressable key={option} disabled={disabled} onPress={() => onSelect(option)} style={[styles.option, selected === option && styles.optionActive]}><Text style={[styles.optionText, selected === option && styles.optionTextActive]}>{labels[option] ?? option}</Text></Pressable>)}</View></View>; }
+function SwitchRow({
+  title,
+  description,
+  value,
+  onToggle,
+  disabled = false,
+}: {
+  title: string;
+  description?: string;
+  value: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={[styles.row, disabled && styles.disabled]}>
+      <Switch
+        disabled={disabled}
+        value={value}
+        onValueChange={onToggle}
+        trackColor={{ false: "#CBD0D4", true: "#B8E9C1" }}
+        thumbColor={value ? "#08B52B" : "#F3F4F5"}
+      />
+      <View style={styles.copy}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {description ? <Text style={styles.description}>{description}</Text> : null}
+      </View>
+    </View>
+  );
+}
 
-const styles = StyleSheet.create({ scroll: { paddingBottom: 42 }, header: { minHeight: 72, paddingHorizontal: 20, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" }, title: { color: colors.text, fontSize: 27, fontWeight: "500", textAlign: "right" }, backButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center" }, sectionTitle: { color: "#12B52E", fontSize: 16, fontWeight: "800", textAlign: "right", paddingHorizontal: 22, paddingTop: 19, paddingBottom: 8 }, group: { marginHorizontal: 16, borderTopWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, row: { minHeight: 76, paddingHorizontal: 18, borderBottomWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 16 }, copy: { flex: 1, alignItems: "flex-end" }, rowTitle: { color: colors.text, fontSize: 15, lineHeight: 22, textAlign: "right", fontWeight: "800" }, description: { color: colors.muted, fontSize: 11, lineHeight: 17, textAlign: "right", marginTop: 3 }, valueRow: { minHeight: 92, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderColor: colors.border }, valueHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }, value: { color: colors.muted, fontSize: 14 }, options: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginTop: 12 }, option: { minWidth: 48, height: 34, paddingHorizontal: 10, borderRadius: 17, backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center" }, optionActive: { backgroundColor: "#12B52E" }, optionText: { color: colors.muted, fontSize: 11, fontWeight: "800" }, optionTextActive: { color: "#06101A" }, disabled: { opacity: 0.45 }, colorOptions: { flexDirection: "row-reverse", gap: 12, marginTop: 13 }, colorOption: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: "rgba(255,255,255,0.25)" }, colorOptionActive: { borderColor: colors.cyan, borderWidth: 4 }, toolSection: { padding: 18, borderBottomWidth: 1, borderColor: colors.border }, toolRow: { minHeight: 44, flexDirection: "row-reverse", alignItems: "center", gap: 10, borderBottomWidth: 1, borderColor: colors.border }, toolLabel: { flex: 1, color: colors.text, fontSize: 13, textAlign: "right" }, checkbox: { width: 23, height: 23, borderRadius: 6, borderWidth: 1, borderColor: colors.muted, alignItems: "center", justifyContent: "center" }, checkboxActive: { backgroundColor: colors.cyan, borderColor: colors.cyan } });
+function ColorRow({
+  title,
+  value,
+  colors: choices,
+  onSelect,
+}: {
+  title: string;
+  value: string;
+  colors: string[];
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <View style={styles.valueRow}>
+      <Text style={styles.rowTitle}>{title}</Text>
+      <View style={styles.colorOptions}>
+        {choices.map((color) => (
+          <Pressable
+            key={color}
+            onPress={() => onSelect(color)}
+            style={[styles.colorOption, { backgroundColor: color }, value === color && styles.colorOptionActive]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function ValueRow({
+  title,
+  value,
+  options,
+  selected,
+  labels = {},
+  onSelect,
+  disabled = false,
+}: {
+  title: string;
+  value: string;
+  options: string[];
+  selected: string;
+  labels?: Record<string, string>;
+  onSelect: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={[styles.valueRow, disabled && styles.disabled]}>
+      <View style={styles.valueHeader}>
+        <Text style={styles.value}>{value}</Text>
+        <Text style={styles.rowTitle}>{title}</Text>
+      </View>
+      <View style={styles.options}>
+        {options.map((option) => (
+          <Pressable
+            key={option}
+            disabled={disabled}
+            onPress={() => onSelect(option)}
+            style={[styles.option, selected === option && styles.optionActive]}
+          >
+            <Text style={[styles.optionText, selected === option && styles.optionTextActive]}>
+              {labels[option] ?? option}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  scroll: { paddingBottom: 42 },
+  header: {
+    minHeight: 72,
+    paddingHorizontal: 20,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  title: { color: colors.text, fontSize: 27, fontWeight: "500", textAlign: "right" },
+  backButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
+  sectionTitle: {
+    color: "#12B52E",
+    fontSize: 16,
+    fontWeight: "800",
+    textAlign: "right",
+    paddingHorizontal: 22,
+    paddingTop: 19,
+    paddingBottom: 8,
+  },
+  group: { marginHorizontal: 16, borderTopWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  row: {
+    minHeight: 76,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  copy: { flex: 1, alignItems: "flex-end" },
+  rowTitle: { color: colors.text, fontSize: 15, lineHeight: 22, textAlign: "right", fontWeight: "800", flexShrink: 1 },
+  description: { color: colors.muted, fontSize: 11, lineHeight: 17, textAlign: "right", marginTop: 3 },
+  valueRow: { minHeight: 92, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderColor: colors.border },
+  valueHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  value: { color: colors.muted, fontSize: 14 },
+  options: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  option: {
+    minWidth: 48,
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 17,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionActive: { backgroundColor: "#12B52E" },
+  optionText: { color: colors.muted, fontSize: 11, fontWeight: "800" },
+  optionTextActive: { color: "#06101A" },
+  disabled: { opacity: 0.45 },
+  colorOptions: { flexDirection: "row-reverse", gap: 12, marginTop: 13 },
+  colorOption: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: "rgba(255,255,255,0.25)" },
+  colorOptionActive: { borderColor: colors.cyan, borderWidth: 4 },
+  toolSection: { padding: 18, borderBottomWidth: 1, borderColor: colors.border },
+  toolRow: {
+    minHeight: 44,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+  },
+  toolLabel: { flex: 1, color: colors.text, fontSize: 13, textAlign: "right" },
+  checkbox: {
+    width: 23,
+    height: 23,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.muted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
+});

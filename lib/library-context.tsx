@@ -242,6 +242,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isReady || Platform.OS === "web") return;
+    const MediaLibrary = getMediaLibrary();
     const refreshWhenActive = () => {
       if (AppState.currentState === "active") void refreshDeviceLibrary();
     };
@@ -249,11 +250,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void refreshDeviceLibrary();
     });
+    const mediaSubscription = MediaLibrary?.addListener?.(() => refreshWhenActive());
     // MediaLibrary has no reliable cross-device file watcher on all Android
     // versions. A light active-app poll catches add/delete/move operations.
     const interval = setInterval(refreshWhenActive, 8_000);
     return () => {
       subscription.remove();
+      mediaSubscription?.remove();
       clearInterval(interval);
     };
   }, [isReady, refreshDeviceLibrary]);
