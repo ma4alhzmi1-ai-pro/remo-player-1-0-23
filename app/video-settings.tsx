@@ -38,6 +38,7 @@ const TOOL_LABELS: Record<VideoToolId, string> = {
   mirror: "عكس الصورة",
   repeat: "التكرار",
   ab: "تكرار A-B",
+  boost: "تعزيز الصوت الخارق",
 };
 
 const TOOLBAR_POSITIONS = [

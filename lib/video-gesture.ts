@@ -56,8 +56,8 @@ export function resolveLocalBrightness(startBrightness: number, translationY: nu
   return Math.max(0.05, Math.min(1, startBrightness + delta));
 }
 
-export function resolveLocalVolume(startVolume: number, translationY: number, surfaceHeight: number): number | null {
-  if (![startVolume, translationY, surfaceHeight].every(Number.isFinite) || surfaceHeight <= 0) return null;
+export function resolveLocalVolume(startVolume: number, translationY: number, surfaceHeight: number, maxVolume: number = 1): number | null {
+  if (![startVolume, translationY, surfaceHeight, maxVolume].every(Number.isFinite) || surfaceHeight <= 0) return null;
   const delta = -translationY / (surfaceHeight * 0.75);
-  return Math.max(0, Math.min(1, startVolume + delta));
+  return Math.max(0, Math.min(maxVolume, startVolume + delta));
 }

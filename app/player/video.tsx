@@ -1052,6 +1052,27 @@ export default function VideoPlayerScreen() {
   }, [controlsLocked, player, speed, usingCompatibilityEngine, videoSettings.longPressSpeed, videoSettings.longPressSpeedEnabled, videoSettings.longPressVibrationEnabled]);
   useEffect(() => () => { if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current); }, []);
   useEffect(() => () => { restoreTemporarySpeed(); }, [restoreTemporarySpeed]);
+  const cycleVolumeBoost = useCallback(() => {
+    let next = 1.0;
+    if (volume < 0.99) {
+      next = 1.25;
+    } else if (volume < 1.24) {
+      next = 1.25;
+    } else if (volume < 1.49) {
+      next = 1.5;
+    } else if (volume < 1.99) {
+      next = 2.0;
+    } else {
+      next = 1.0;
+    }
+    volumeRef.current = next;
+    setVolume(next);
+    setVolumeHud(true);
+    try { (player as any).setVolumeBoost?.(Math.max(0, next - 1.0)); } catch (_) {}
+    void setSystemMusicVolume(next, true);
+    setActionHudText(next > 1.0 ? `⚡ تعزيز الصوت (Booster): ${Math.round(next * 100)}%` : "الصوت: 100% قياسي");
+  }, [player, volume]);
+
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => !controlsLocked,
     onStartShouldSetPanResponderCapture: () => !controlsLocked,
@@ -1115,11 +1136,12 @@ export default function VideoPlayerScreen() {
         }
       }
       if (activeMode === "volume") {
-        const nextVolume = resolveLocalVolume(volumeStartRef.current, gesture.dy, mediaSurfaceHeight);
+        const nextVolume = resolveLocalVolume(volumeStartRef.current, gesture.dy, mediaSurfaceHeight, 2.0);
         if (nextVolume !== null) {
           volumeRef.current = nextVolume;
           setVolume(nextVolume);
           setVolumeHud(true);
+          try { (player as any).setVolumeBoost?.(Math.max(0, nextVolume - 1.0)); } catch (_) {}
           const now = Date.now();
           if (now - lastVolumeUpdateRef.current >= 65) {
             lastVolumeUpdateRef.current = now;
@@ -1156,6 +1178,7 @@ export default function VideoPlayerScreen() {
       }
       if (activeMode === "volume") {
         const finalVolume = volumeRef.current;
+        try { (player as any).setVolumeBoost?.(Math.max(0, finalVolume - 1.0)); } catch (_) {}
         const request = ++volumeWriteSerialRef.current;
         void setSystemMusicVolume(finalVolume, true).then((systemVolume) => {
           if (request !== volumeWriteSerialRef.current || systemVolume === null) return;
@@ -1708,7 +1731,21 @@ export default function VideoPlayerScreen() {
         <Pressable onPress={() => setSubtitlePanelOpen(true)} style={[styles.captionButton, subtitlePanelOpen && styles.captionButtonActive]} accessibilityLabel="فتح إعدادات الترجمة"><MaterialIcons name="closed-caption" size={23} color={subtitlePanelOpen ? colors.background : colors.text} /><Text style={[styles.captionButtonText, subtitlePanelOpen && styles.captionButtonTextActive]}>CC</Text></Pressable>
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={[styles.subtitleOverlay, { backgroundColor: subtitleAppearance.backgroundColor }]}><Text style={[styles.subtitleText, { color: subtitleAppearance.color, fontSize: subtitleAppearance.fontSize, lineHeight: Math.round(subtitleAppearance.fontSize * 1.4) }]}>{activeCue.text}</Text></View> : null}
-        {volumeHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.volumeMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(volume * 100)}%` }]} /></View><MaterialIcons name="volume-up" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>الصوت: {Math.round(volume * 100)}%</Text></View></> : null}
+        {volumeHud ? (
+          <>
+            <View pointerEvents="none" style={[styles.gestureMeter, styles.volumeMeter, volume > 1.0 && styles.volumeMeterBoost]}>
+              <View style={styles.gestureTrack}>
+                <View style={[styles.gestureFill, { height: `${Math.min(100, Math.round(volume * 100))}%` }, volume > 1.0 && styles.gestureFillBoost]} />
+              </View>
+              <MaterialIcons name={volume > 1.0 ? "bolt" : "volume-up"} size={28} color={volume > 1.0 ? "#F59E0B" : colors.text} />
+            </View>
+            <View pointerEvents="none" style={[styles.gestureReadout, volume > 1.0 && styles.gestureReadoutBoost]}>
+              <Text style={[styles.gestureReadoutText, volume > 1.0 && styles.gestureReadoutTextBoost]}>
+                {volume > 1.0 ? `⚡ تعزيز الصوت (Booster): ${Math.round(volume * 100)}%` : `الصوت: ${Math.round(volume * 100)}%`}
+              </Text>
+            </View>
+          </>
+        ) : null}
         {brightnessHud ? (
     <>
       <View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}>
@@ -2199,6 +2236,10 @@ export default function VideoPlayerScreen() {
                   <Pressable onPress={toggleMute} style={[styles.quickIcon, { display: showTool("mute") ? "flex" : "none" }, { backgroundColor: videoSettings.toolbarButtonColor, borderColor: videoSettings.toolbarBorderColor }, muted && styles.quickIconActive]}>
                     <MaterialIcons name={muted ? "volume-off" : "volume-up"} size={20} color={muted ? colors.background : colors.text} />
                   </Pressable>
+                  <Pressable onPress={cycleVolumeBoost} style={[styles.quickIcon, { display: showTool("boost") ? "flex" : "none" }, { backgroundColor: videoSettings.toolbarButtonColor, borderColor: videoSettings.toolbarBorderColor }, volume > 1.0 && styles.quickIconActiveBoost]} accessibilityLabel="تعزيز الصوت الخارق">
+                    <MaterialIcons name="bolt" size={20} color={volume > 1.0 ? "#050905" : "#F59E0B"} />
+                    {volume > 1.0 ? <Text style={styles.quickBoostBadge}>{Math.round(volume * 100)}%</Text> : null}
+                  </Pressable>
                   <Pressable onPress={() => setMirrored((value) => !value)} style={[styles.quickIcon, { display: showTool("mirror") ? "flex" : "none" }, { backgroundColor: videoSettings.toolbarButtonColor, borderColor: videoSettings.toolbarBorderColor }, mirrored && styles.quickIconActive]}>
                     <MaterialIcons name="flip" size={20} color={mirrored ? colors.background : colors.text} />
                   </Pressable>
@@ -2321,6 +2362,13 @@ function TranslationSheet({ visible, item, selectedLanguage, onSelectLanguage, g
 }
 
 const styles = StyleSheet.create({
+  quickIconActiveBoost: { backgroundColor: "#F59E0B", borderColor: "#FBBF24" },
+  quickBoostBadge: { position: "absolute", top: -7, right: -6, backgroundColor: "#D97706", borderRadius: 8, paddingHorizontal: 4, paddingVertical: 1, color: "#FFFFFF", fontSize: 9, fontWeight: "900" },
+  volumeMeterBoost: { borderColor: "rgba(245,158,11,0.5)", backgroundColor: "rgba(30,20,5,0.85)" },
+  gestureFillBoost: { backgroundColor: "#F59E0B" },
+  gestureReadoutBoost: { backgroundColor: "rgba(30,20,5,0.9)", borderColor: "#F59E0B", borderWidth: 1 },
+  gestureReadoutTextBoost: { color: "#FBBF24", fontWeight: "900" },
+
   scrubbingTooltip: { position: "absolute", top: -36, transform: [{ translateX: "-50%" }], backgroundColor: "rgba(15, 23, 42, 0.9)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.2)", zIndex: 30 },
   scrubbingTooltipText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
   root: { flex: 1 },

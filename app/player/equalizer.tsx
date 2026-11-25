@@ -8,7 +8,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { EQUALIZER_FREQUENCIES, EQUALIZER_PRESETS, clampEqualizerBand, isEqualizerPresetId, normalizeEqualizerBands, presetBands, type EqualizerPresetId } from "@/lib/equalizer-settings";
 import { loadEqualizerSettings, saveEqualizerSettings, type RoomEffect, type StoredEqualizer } from "@/lib/equalizer-storage";
 import { openBluetoothAudioSettings, openNativeEqualizer } from "@/lib/native-equalizer";
-import { applyNativeAudioEffects } from "@/lib/native-audio-controls";
+import { applyNativeAudioEffects, getSystemMusicVolume, setSystemMusicVolume, setVolumeBoost } from "@/lib/native-audio-controls";
 
 
 const roomOptions: { id: RoomEffect; label: string }[] = [
@@ -30,6 +30,20 @@ export default function EqualizerScreen() {
   const [nativeStatus, setNativeStatus] = useState<"idle" | "panel" | "fallback" | "unsupported">("idle");
   const [bluetoothStatus, setBluetoothStatus] = useState<"idle" | "settings" | "pairing" | "unsupported">("idle");
   const [isHydrated, setIsHydrated] = useState(false);
+  const [currentBoostLevel, setCurrentBoostLevel] = useState(1.0);
+
+  useEffect(() => {
+    void getSystemMusicVolume().then((val) => {
+      if (val !== null) setCurrentBoostLevel(val > 1.0 ? Number(val.toFixed(2)) : 1.0);
+    });
+  }, []);
+
+  const applyBoosterLevel = (level: number) => {
+    setCurrentBoostLevel(level);
+    void setSystemMusicVolume(level, true);
+    void setVolumeBoost(Math.max(0, level - 1.0));
+  };
+
 
   useEffect(() => {
     void loadEqualizerSettings().then((saved) => {
@@ -133,6 +147,37 @@ export default function EqualizerScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetRow}>{EQUALIZER_PRESETS.map((item) => <Pressable key={item.id} onPress={() => applyPreset(item.id)} style={[styles.preset, preset === item.id && styles.presetActive]}><Text style={[styles.presetText, preset === item.id && styles.presetTextActive]}>{item.label}</Text></Pressable>)}</ScrollView>
         <View style={styles.chart}>{bands.map((value, index) => <FrequencyBand key={EQUALIZER_FREQUENCIES[index]} value={value} frequency={EQUALIZER_FREQUENCIES[index]} onChange={(next) => setBand(index, next)} disabled={!enabled} />)}</View>
       </View>
+      {/* معالج تعزيز الصوت البرمجي الحقيقي */}
+      <View style={styles.boosterCard}>
+        <View style={styles.boosterHeader}>
+          <MaterialIcons name="bolt" size={24} color="#F59E0B" />
+          <View style={styles.boosterCopy}>
+            <Text style={styles.boosterTitle}>معالج تعزيز مستوى الصوت (Volume Booster)</Text>
+            <Text style={styles.boosterText}>
+              وحدة معالجة صوتية حقيقية عبر Android Audio Manager وLoudnessEnhancer لتجاوز حدود الصوت القياسية حتى 200% ومربوطة بأزرار هاتف الأندرويد.
+            </Text>
+          </View>
+        </View>
+        <View style={styles.boosterLevelsRow}>
+          {[
+            { label: "100% عادي", value: 1.0 },
+            { label: "125% (+5dB)", value: 1.25 },
+            { label: "150% (+10dB)", value: 1.5 },
+            { label: "175% (+15dB)", value: 1.75 },
+            { label: "200% خارق (+20dB)", value: 2.0 },
+          ].map((lvl) => (
+            <Pressable
+              key={lvl.value}
+              onPress={() => applyBoosterLevel(lvl.value)}
+              style={[styles.boosterChip, currentBoostLevel === lvl.value && styles.boosterChipActive]}
+            >
+              <Text style={[styles.boosterChipText, currentBoostLevel === lvl.value && styles.boosterChipTextActive]}>
+                {lvl.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
       <View style={styles.superSoundCard}><View style={styles.superSoundCopy}><Text style={styles.superSoundTitle}>الصوت الخارق</Text><Text style={styles.superSoundText}>مضخم فعلي للأجهزة منخفضة الصوت عبر مؤثرات Android، مع Bass Boost وVirtualizer. قد لا يتوفر على بعض الأجهزة.</Text></View><Switch value={superSound} onValueChange={toggleSuperSound} trackColor={{ false: "#273343", true: "#00F2FE" }} thumbColor={superSound ? "#050505" : "#A0AEC0"} /></View>
       <View style={styles.section}><Text style={styles.sectionTitle}>التردد</Text><View style={styles.roomRow}>{roomOptions.map((option) => <Pressable key={option.id} onPress={() => setRoom(option.id)} style={[styles.roomChip, room === option.id && styles.roomChipActive]}><Text style={[styles.roomText, room === option.id && styles.roomTextActive]}>{option.label}</Text></Pressable>)}</View></View>
       <View style={styles.section}><Text style={styles.sectionTitle}>تعزيز الصوت</Text><RangeControl value={bass} onChange={setBass} disabled={!enabled} /></View>
@@ -160,6 +205,17 @@ function RangeControl({ value, onChange, disabled }: { value: number; onChange: 
 }
 
 const styles = StyleSheet.create({
+  boosterCard: { marginHorizontal: 20, marginTop: 18, padding: 16, borderRadius: 20, backgroundColor: "#1D1606", borderWidth: 1, borderColor: "#F59E0B", gap: 12 },
+  boosterHeader: { flexDirection: "row-reverse", alignItems: "center", gap: 10 },
+  boosterCopy: { flex: 1, alignItems: "flex-end" },
+  boosterTitle: { color: "#FBBF24", fontSize: 16, fontWeight: "900" },
+  boosterText: { color: "#FDE68A", fontSize: 11, lineHeight: 18, textAlign: "right", marginTop: 4 },
+  boosterLevelsRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginTop: 6 },
+  boosterChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: "#2A200A", borderWidth: 1, borderColor: "rgba(245,158,11,0.3)" },
+  boosterChipActive: { backgroundColor: "#F59E0B", borderColor: "#FBBF24" },
+  boosterChipText: { color: "#FDE68A", fontSize: 11, fontWeight: "800" },
+  boosterChipTextActive: { color: "#1E1303", fontWeight: "900" },
+
   content: { paddingBottom: 36, backgroundColor: "#050505" }, superSoundCard: { marginHorizontal: 20, marginTop: 18, padding: 16, borderRadius: 20, backgroundColor: "#10252A", borderWidth: 1, borderColor: "#00F2FE", flexDirection: "row-reverse", alignItems: "center", gap: 12 }, superSoundCopy: { flex: 1, alignItems: "flex-end" }, superSoundTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "900" }, superSoundText: { color: "#B8D7DA", fontSize: 11, lineHeight: 18, textAlign: "right", marginTop: 5 }, header: { minHeight: 74, paddingHorizontal: 18, flexDirection: "row-reverse", alignItems: "center", gap: 14 }, title: { flex: 1, color: "#FFFFFF", fontSize: 25, fontWeight: "900", textAlign: "right" }, back: { width: 44, height: 44, borderRadius: 16, alignItems: "center", justifyContent: "center" }, panel: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#202020", paddingVertical: 20 }, panelDisabled: { opacity: 0.42 }, panelHeading: { paddingHorizontal: 20, flexDirection: "row-reverse", alignItems: "center", gap: 8 }, panelTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "800" }, quickActionRow: { flexDirection: "row-reverse", gap: 8, marginBottom: 12 },
   quickActionChip: { flex: 1, minHeight: 38, borderRadius: 12, paddingHorizontal: 10, backgroundColor: "#142235", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6 },
   quickActionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },

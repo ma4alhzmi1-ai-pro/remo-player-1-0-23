@@ -25,6 +25,7 @@ export const VIDEO_TOOL_IDS = [
   "mirror",
   "repeat",
   "ab",
+  "boost",
 ] as const;
 
 export type VideoToolId = (typeof VIDEO_TOOL_IDS)[number];

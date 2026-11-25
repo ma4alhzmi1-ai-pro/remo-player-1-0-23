@@ -1,5 +1,20 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("react-native", () => ({
+  Platform: { OS: "android" },
+}));
+
+vi.mock("expo-brightness", () => ({
+  getSystemBrightnessAsync: vi.fn(),
+  getBrightnessAsync: vi.fn(),
+  getPermissionsAsync: vi.fn(),
+  requestPermissionsAsync: vi.fn(),
+  setSystemBrightnessAsync: vi.fn(),
+  restoreSystemBrightnessAsync: vi.fn(),
+  setBrightnessAsync: vi.fn(),
+}));
+
 import { clampBrightnessValue } from "../lib/system-brightness";
 import { clampSubtitleOffset, SUBTITLE_STYLE_PRESETS } from "../lib/subtitle-store";
 

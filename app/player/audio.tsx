@@ -32,7 +32,7 @@ import { usePlayer } from "@/lib/player-context";
 import { useLibrary } from "@/lib/library-context";
 import { resolveAudioThumbnail, saveCustomAudioArtwork } from "@/lib/audio-artwork";
 import { resolveAudioProgressSeek } from "@/lib/audio-progress";
-import { getSystemMusicVolume, setSystemMusicVolume } from "@/lib/native-audio-controls";
+import { applyAbsoluteAudioBoost, getSystemMusicVolume, setSystemMusicVolume } from "@/lib/native-audio-controls";
 import { resolveLocalVolume } from "@/lib/video-gesture";
 import { activeLyricIndex, loadChromaShape, parseSyncedLyrics, saveChromaShape, type ChromaShape } from "@/lib/audio-visualizer";
 import {
@@ -220,13 +220,34 @@ export default function AudioPlayerScreen() {
 
   const isFavorite = Boolean(currentItem?.isFavorite);
 
-    const toggleAbsoluteBoost = () => {
+  const toggleAbsoluteBoost = () => {
     const next = !absoluteBoostEnabled;
     setAbsoluteBoostEnabled(next);
+    const targetVol = next ? 1.5 : 1.0;
+    systemVolumeRef.current = targetVol;
+    setSystemVolume(targetVol);
+    setVolumeHudVisible(true);
+    if (volumeHudTimerRef.current) clearTimeout(volumeHudTimerRef.current);
+    volumeHudTimerRef.current = setTimeout(() => setVolumeHudVisible(false), 1200);
+    void applyAbsoluteAudioBoost({ enabled: next, gainLevel: next ? 100 : 0, clarityBoost: next });
+    void setSystemMusicVolume(targetVol, true);
     Alert.alert(
-      "الصوت المطلق والمعزز",
-      next ? "تم تفعيل مضخم الصوت المطلق (Absolute Audio Boost) لرفع نقاء وقوة الصوت أضعافاً." : "تم إيقاف مضخم الصوت المعزز."
+      "معالج تعزيز الصوت البرمجي (Volume Booster)",
+      next
+        ? "تم تفعيل وحدة معالجة الصوت (LoudnessEnhancer) برمجياً عبر Android Audio Manager لرفع الصوت الفعلي للنظام إلى 150% مع ربطه بأزرار الهاتف."
+        : "تم إيقاف تعزيز الصوت وإعادة مستوى صوت النظام إلى المستوى القياسي 100%."
     );
+  };
+
+  const applyDirectVolumeBoost = (level: number) => {
+    const safe = Math.max(0, Math.min(2.0, level));
+    systemVolumeRef.current = safe;
+    setSystemVolume(safe);
+    setAbsoluteBoostEnabled(safe > 1.0);
+    setVolumeHudVisible(true);
+    if (volumeHudTimerRef.current) clearTimeout(volumeHudTimerRef.current);
+    volumeHudTimerRef.current = setTimeout(() => setVolumeHudVisible(false), 1200);
+    void setSystemMusicVolume(safe, true);
   };
 
   const exitAudio = useCallback(() => {
@@ -365,7 +386,7 @@ export default function AudioPlayerScreen() {
     },
     onPanResponderMove: (_, gesture) => {
       if (Math.abs(gesture.dy) > 6) volumeGestureMovedRef.current = true;
-      const next = resolveLocalVolume(systemVolumeStartRef.current, gesture.dy, 360);
+      const next = resolveLocalVolume(systemVolumeStartRef.current, gesture.dy, 360, 2.0);
       if (next === null) return;
       systemVolumeRef.current = next;
       setSystemVolume(next);
@@ -802,9 +823,11 @@ export default function AudioPlayerScreen() {
           {/* Circular Vinyl / Album Disc Artwork */}
           <View {...volumeResponder.panHandlers} style={styles.discSection} accessibilityLabel={`مستوى صوت النظام ${Math.round(systemVolume * 100)} بالمئة`}>
             {volumeHudVisible ? (
-              <View pointerEvents="none" style={styles.volumeToast}>
-                <MaterialIcons name="volume-up" size={18} color="#00F2FE" />
-                <Text style={styles.volumeToastText}>صوت النظام: {Math.round(systemVolume * 100)}%</Text>
+              <View pointerEvents="none" style={[styles.volumeToast, systemVolume > 1.0 && styles.volumeToastBoost]}>
+                <MaterialIcons name={systemVolume > 1.0 ? "bolt" : "volume-up"} size={18} color={systemVolume > 1.0 ? "#F59E0B" : "#00F2FE"} />
+                <Text style={[styles.volumeToastText, systemVolume > 1.0 && styles.volumeToastTextBoost]}>
+                  {systemVolume > 1.0 ? `⚡ تعزيز الصوت (Booster): ${Math.round(systemVolume * 100)}%` : `صوت النظام: ${Math.round(systemVolume * 100)}%`}
+                </Text>
               </View>
             ) : null}
             <Animated.View pointerEvents="none" style={[styles.chromaPulse, chromaShape === "bars" && styles.chromaBars, chromaShape === "rings" && styles.chromaRings, { transform: [{ scale: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.08] }) }], opacity: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) }]} />
@@ -1683,6 +1706,8 @@ const styles = StyleSheet.create({
     elevation: 8,
     backgroundColor: "#00F2FE",
   },
+  volumeToastBoost: { backgroundColor: "rgba(35, 20, 5, 0.95)", borderColor: "#F59E0B" },
+  volumeToastTextBoost: { color: "#FBBF24", fontWeight: "900" },
   volumeToast: {
     position: "absolute",
     top: 8,

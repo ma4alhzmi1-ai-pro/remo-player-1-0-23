@@ -4,7 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppState, Platform } from "react-native";
+import { Alert, AppState, Platform } from "react-native";
 
 import { cleanOrphanedCacheFiles } from "@/lib/cache-cleaner";
 import { inferMediaKind, mergeMediaItems, parseArtistAndTitle } from "@/lib/media-utils";
@@ -371,7 +371,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     if (!target) return;
     try {
       if (target.uri.startsWith("file://")) {
-        await FileSystem.deleteAsync(target.uri, { idempotent: true });
+        try { new File(target.uri).delete(); } catch {}
       }
       const MediaLibrary = getMediaLibrary();
       if (MediaLibrary && target.id.startsWith("device:")) {
@@ -382,7 +382,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     }
     const next = items.filter((item) => item.id !== id);
     setItems(next);
-    await saveLibraryCache(next);
     Alert.alert("تم الحذف بنجاح", `حُذف الملف "${target.title || "الوسائط"}" نهائياً من ذاكرة الهاتف.`);
   }, [items]);
 

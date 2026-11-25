@@ -46,6 +46,7 @@ describe("video gesture resolution", () => {
     expect(resolveLocalVolume(0.7, 120, 400)).toBeCloseTo(0.3, 2);
     expect(resolveLocalVolume(0.2, 500, 400)).toBe(0);
     expect(resolveLocalVolume(0.8, -500, 400)).toBe(1);
+    expect(resolveLocalVolume(0.8, -500, 400, 2)).toBe(2);
     expect(resolveLocalVolume(0.8, 20, 0)).toBeNull();
   });
 });

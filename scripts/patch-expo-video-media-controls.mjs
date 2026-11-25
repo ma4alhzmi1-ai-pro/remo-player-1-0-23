@@ -98,8 +98,24 @@ patchFile("playbackService/ExpoVideoPlaybackService.kt", [
 // 3. VideoPlayer.kt
 patchFile("player/VideoPlayer.kt", [
   [
-    `  override fun emitTimeUpdate() {`,
-    `  fun dispatchMediaControlAction(action: String) {\n    appContext.mainQueue.launch {\n      emit("mediaControlAction", mapOf("action" to action))\n    }\n  }\n\n  override fun emitTimeUpdate() {`,
+    "package expo.modules.video.player\n",
+    "package expo.modules.video.player\nimport android.media.audiofx.LoudnessEnhancer\n",
+  ],
+  [
+    "  override fun emitTimeUpdate() {",
+    "  private var videoLoudnessEnhancer: LoudnessEnhancer? = null\n  var boostGain: Float = 0f\n\n  fun applyVolumeBoost(boost: Float) {\n    boostGain = boost.coerceIn(0f, 1f)\n    try {\n      if (boostGain <= 0.001f) {\n        try { videoLoudnessEnhancer?.enabled = false } catch (_: Exception) {}\n        try { videoLoudnessEnhancer?.release() } catch (_: Exception) {}\n        videoLoudnessEnhancer = null\n        return\n      }\n      val sId = player.audioSessionId\n      if (videoLoudnessEnhancer == null && sId > 0) {\n        videoLoudnessEnhancer = LoudnessEnhancer(sId)\n      }\n      videoLoudnessEnhancer?.let {\n        it.setTargetGain((boostGain * 2000f).toInt())\n        it.enabled = true\n      }\n    } catch (_: Exception) {\n      try { videoLoudnessEnhancer?.release() } catch (_: Exception) {}\n      videoLoudnessEnhancer = null\n    }\n  }\n\n  fun dispatchMediaControlAction(action: String) {\n    appContext.mainQueue.launch {\n      emit(\"mediaControlAction\", mapOf(\"action\" to action))\n    }\n  }\n\n  override fun emitTimeUpdate() {",
+  ],
+  [
+    "      player.removeListener(playerListener)\n      player.release()",
+    "      try { videoLoudnessEnhancer?.release() } catch (_: Exception) {}\n      videoLoudnessEnhancer = null\n      player.removeListener(playerListener)\n      player.release()",
+  ],
+]);
+
+// 4. VideoModule.kt
+patchFile("VideoModule.kt", [
+  [
+    "      Function(\"pause\") { ref: VideoPlayer ->\n        appContext.mainQueue.launch {\n          ref.player.pause()\n        }\n      }",
+    "      Function(\"pause\") { ref: VideoPlayer ->\n        appContext.mainQueue.launch {\n          ref.player.pause()\n        }\n      }\n\n      Function(\"setVolumeBoost\") { ref: VideoPlayer, boost: Double ->\n        appContext.mainQueue.launch {\n          ref.applyVolumeBoost(boost.toFloat())\n        }\n      }\n\n      Property(\"audioSessionId\")\n        .get { ref: VideoPlayer ->\n          ref.player.audioSessionId\n        }",
   ],
 ]);
 

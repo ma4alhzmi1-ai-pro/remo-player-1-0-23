@@ -12,6 +12,9 @@ export type NativeEqualizerSettings = {
 type NativeAndroidAudioControls = {
   getSystemMusicVolumeAsync?: () => Promise<number>;
   setSystemMusicVolumeAsync?: (volume: number, showUi?: boolean) => Promise<number>;
+  setVolumeBoostAsync?: (boostPercent: number, sessionId?: number) => Promise<boolean>;
+  getVolumeBoostAsync?: () => Promise<number>;
+  setAbsoluteAudioBoostAsync?: (enabled: boolean, gainPercent: number, clarityBoost: boolean) => Promise<boolean>;
   applyAudioEffectsAsync?: (
     enabled: boolean,
     bands: number[],
@@ -24,25 +27,47 @@ type NativeAndroidAudioControls = {
 };
 
 const nativeControls = AudioModule as unknown as NativeAndroidAudioControls;
-const clampUnit = (value: number) => Math.max(0, Math.min(3, Number.isFinite(value) ? value : 0));
 
-/** يقرأ مستوى دفق وسائط Android، وليس مستوى صوت المشغل الداخلي فقط. */
+const clampVolume = (value: number) => Math.max(0, Math.min(2.0, Number.isFinite(value) ? value : 0));
+
+/** يقرأ مستوى دفق وسائط Android أو المستوى المعزز حتى 200%. */
 export async function getSystemMusicVolume(): Promise<number | null> {
   if (Platform.OS !== "android" || !nativeControls.getSystemMusicVolumeAsync) return null;
   try {
-    return clampUnit(await nativeControls.getSystemMusicVolumeAsync());
+    return clampVolume(await nativeControls.getSystemMusicVolumeAsync());
   } catch {
     return null;
   }
 }
 
-/** يغيّر مستوى دفق الوسائط الحقيقي في Android ضمن المجال الآمن 0–1. */
+/** يغيّر مستوى دفق الوسائط الحقيقي في Android ويرفع التعزيز البرمجي فوق 100% عبر LoudnessEnhancer. */
 export async function setSystemMusicVolume(volume: number, showSystemUi = false): Promise<number | null> {
   if (Platform.OS !== "android" || !nativeControls.setSystemMusicVolumeAsync) return null;
   try {
-    return clampUnit(await nativeControls.setSystemMusicVolumeAsync(clampUnit(volume), Boolean(showSystemUi)));
+    return clampVolume(await nativeControls.setSystemMusicVolumeAsync(clampVolume(volume), Boolean(showSystemUi)));
   } catch {
     return null;
+  }
+}
+
+/** يطبّق نسبة تعزيز الصوت (0 إلى 1 تعادل 0% إلى +100% فوق الحد الأقصى) عبر معالج LoudnessEnhancer */
+export async function setVolumeBoost(boostPercent: number, sessionId?: number): Promise<boolean> {
+  if (Platform.OS !== "android" || !nativeControls.setVolumeBoostAsync) return false;
+  try {
+    return await nativeControls.setVolumeBoostAsync(Math.max(0, Math.min(1.0, boostPercent)), sessionId);
+  } catch {
+    return false;
+  }
+}
+
+/** يقرأ نسبة تعزيز الصوت النشطة حالياً. */
+export async function getVolumeBoost(): Promise<number> {
+  if (Platform.OS !== "android" || !nativeControls.getVolumeBoostAsync) return 0;
+  try {
+    const val = await nativeControls.getVolumeBoostAsync();
+    return Math.max(0, Math.min(1.0, Number.isFinite(val) ? val : 0));
+  } catch {
+    return 0;
   }
 }
 
@@ -89,11 +114,13 @@ export type AbsoluteAudioBoostSettings = {
 };
 
 export async function applyAbsoluteAudioBoost(settings: AbsoluteAudioBoostSettings): Promise<boolean> {
-  // @ts-ignore
-  const AudioModule = (await import('expo-audio')).AudioModule as any;
-  if (!AudioModule || typeof AudioModule.setAbsoluteAudioBoostAsync !== 'function') return false;
+  if (Platform.OS !== "android" || !nativeControls.setAbsoluteAudioBoostAsync) return false;
   try {
-    return await AudioModule.setAbsoluteAudioBoostAsync(settings.enabled, Math.max(0, Math.min(100, settings.gainLevel)), settings.clarityBoost);
+    return await nativeControls.setAbsoluteAudioBoostAsync(
+      settings.enabled,
+      Math.max(0, Math.min(100, settings.gainLevel)),
+      settings.clarityBoost,
+    );
   } catch {
     return false;
   }
