@@ -72,6 +72,7 @@ type LibraryContextValue = {
   removeItemFromPlaylist: (playlistId: string, itemId: string) => Promise<void>;
   deletePlaylist: (playlistId: string) => Promise<void>;
   deleteMediaItems: (itemIds: string[]) => Promise<number>;
+  deleteMediaItem: (id: string) => Promise<void>;
   updateMediaItem: (itemId: string, changes: Partial<Pick<MediaItem, "title" | "artist" | "album" | "thumbnailUri" | "lyrics" | "isFavorite">>) => Promise<void>;
   exportPlaylistBackup: () => Promise<boolean>;
   importPlaylistBackup: () => Promise<number>;
@@ -365,6 +366,26 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     setPlaylists((current) => current.filter((playlist) => playlist.id !== playlistId));
   }, []);
 
+  const deleteMediaItem = useCallback(async (id: string) => {
+    const target = items.find((item) => item.id === id);
+    if (!target) return;
+    try {
+      if (target.uri.startsWith("file://")) {
+        await FileSystem.deleteAsync(target.uri, { idempotent: true });
+      }
+      const MediaLibrary = getMediaLibrary();
+      if (MediaLibrary && target.id.startsWith("device:")) {
+        await MediaLibrary.deleteAssetsAsync([target.id.slice("device:".length)]).catch(() => undefined);
+      }
+    } catch (error) {
+      console.warn("Delete file error:", error);
+    }
+    const next = items.filter((item) => item.id !== id);
+    setItems(next);
+    await saveLibraryCache(next);
+    Alert.alert("تم الحذف بنجاح", `حُذف الملف "${target.title || "الوسائط"}" نهائياً من ذاكرة الهاتف.`);
+  }, [items]);
+
   const deleteMediaItems = useCallback(async (itemIds: string[]) => {
     const selected = items.filter((item) => itemIds.includes(item.id));
     const deletedIds = new Set<string>();
@@ -444,6 +465,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     removeItemFromPlaylist,
     deletePlaylist,
     deleteMediaItems,
+    deleteMediaItem,
     updateMediaItem,
     exportPlaylistBackup,
     importPlaylistBackup,

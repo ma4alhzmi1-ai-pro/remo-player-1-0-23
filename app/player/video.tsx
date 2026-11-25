@@ -1586,6 +1586,7 @@ export default function VideoPlayerScreen() {
   const generateTranslation = async () => { try { const videoBase64 = await readVideoForTranslation(currentItem.uri); const generated = await translateMutation.mutateAsync({ videoBase64, targetLanguage }); const track: LocalSubtitleTrack = { ...generated, createdAt: Date.now() }; await saveLocalSubtitles(currentItem.id, track); setSubtitleTrack(track); setSubtitleEnabled(true); setTranslationOpen(false); Alert.alert("تم إنشاء الترجمة", `حُفظت ${track.cues.length} أسطر باللغة ${targetLanguage} داخل REMO PLAYER.`); } catch (error) { const message = error instanceof Error ? error.message : "تعذّر إنشاء الترجمة حالياً."; Alert.alert("تعذرت الترجمة", message); } };
   const displayIcon = (mode: DisplayMode): keyof typeof MaterialIcons.glyphMap => mode === "hdr" ? "hdr-on" : mode === "cinematic" ? "movie-filter" : mode === "quality" ? "high-quality" : "auto-awesome";
   const topActions: { icon: keyof typeof MaterialIcons.glyphMap; label: string; active?: boolean; onPress: () => void }[] = [
+    { icon: "share", label: isSharing ? "جارٍ المشاركة" : "مشاركة سريعة", active: isSharing, onPress: () => void shareVideo() },
     ...displayModes.map((mode) => ({ icon: displayIcon(mode.id), label: mode.label, active: displayMode === mode.id, onPress: () => chooseMode(mode.id) })),
     { icon: "translate", label: "ترجمة", active: Boolean(subtitleTrack), onPress: () => setTranslationOpen(true) },
     { icon: "subtitles", label: "مسارات", active: usingCompatibilityEngine ? vlcSubtitleId !== undefined && vlcSubtitleId !== -1 : Boolean(embeddedSubtitleId), onPress: () => setSubtitlePanelOpen(true) },
@@ -1594,7 +1595,6 @@ export default function VideoPlayerScreen() {
     { icon: "edit", label: "تحرير", onPress: () => router.push("/player/edit-video" as never) },
     { icon: "picture-in-picture-alt", label: "نافذة", onPress: () => void openPip() },
     { icon: "photo-camera", label: isCapturingFrame ? "يلتقط" : "لقطة", onPress: () => void captureFrame() },
-    { icon: "share", label: isSharing ? "جارٍ" : "مشاركة", onPress: () => void shareVideo() },
   ];
   const showTool = (id: VideoToolId) => videoSettings.toolbarButtons.includes(id);
   const isLtrProgress = videoSettings.progressDirection === "ltr";
