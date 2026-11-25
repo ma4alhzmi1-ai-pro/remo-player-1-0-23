@@ -81,3 +81,20 @@ export async function remuxToMp4Native(inputUri: string, outputPath: string): Pr
     return false;
   }
 }
+
+export type AbsoluteAudioBoostSettings = {
+  enabled: boolean;
+  gainLevel: number; // 0 to 100
+  clarityBoost: boolean;
+};
+
+export async function applyAbsoluteAudioBoost(settings: AbsoluteAudioBoostSettings): Promise<boolean> {
+  // @ts-ignore
+  const AudioModule = (await import('expo-audio')).AudioModule as any;
+  if (!AudioModule || typeof AudioModule.setAbsoluteAudioBoostAsync !== 'function') return false;
+  try {
+    return await AudioModule.setAbsoluteAudioBoostAsync(settings.enabled, Math.max(0, Math.min(100, settings.gainLevel)), settings.clarityBoost);
+  } catch {
+    return false;
+  }
+}

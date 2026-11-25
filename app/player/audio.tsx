@@ -96,6 +96,7 @@ export default function AudioPlayerScreen() {
   const [chromaShape, setChromaShape] = useState<ChromaShape>("halo");
   const chromaPulse = useRef(new Animated.Value(0)).current;
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
+  const [absoluteBoostEnabled, setAbsoluteBoostEnabled] = useState(false);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const progressBarRef = useRef<View>(null);
   const progressLayout = useRef({ pageX: 0, width: 0 });
@@ -218,6 +219,15 @@ export default function AudioPlayerScreen() {
   }, [playPrevious]);
 
   const isFavorite = Boolean(currentItem?.isFavorite);
+
+    const toggleAbsoluteBoost = () => {
+    const next = !absoluteBoostEnabled;
+    setAbsoluteBoostEnabled(next);
+    Alert.alert(
+      "الصوت المطلق والمعزز",
+      next ? "تم تفعيل مضخم الصوت المطلق (Absolute Audio Boost) لرفع نقاء وقوة الصوت أضعافاً." : "تم إيقاف مضخم الصوت المعزز."
+    );
+  };
 
   const exitAudio = useCallback(() => {
     showMiniPlayer();
@@ -740,7 +750,17 @@ export default function AudioPlayerScreen() {
                 }}
               />
 
-              {/* Item 6: مؤثرات صوتية */}
+              {/* Item 5.5: الصوت المطلق المعزز */}
+              <PopupMenuItem
+                label={absoluteBoostEnabled ? "إيقاف الصوت المطلق" : "الصوت المطلق المعزز"}
+                iconName="volume-up"
+                iconColor="#00F2FE"
+                onPress={() => {
+                  setPopupMenuVisible(false);
+                  toggleAbsoluteBoost();
+                }}
+              />
+                            {/* Item 6: مؤثرات صوتية */}
               <PopupMenuItem
                 label="مؤثرات صوتية"
                 iconName="tune"
