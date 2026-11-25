@@ -86,7 +86,7 @@ export default function VideoScreen() {
     setNewPlaylistName("");
     setPlaylistTarget(null);
   };
-  const toggleSelection = (id: string) => setSelectedIds((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const toggleSelection = (id: string) => setSelectedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const beginSelection = (id: string) => setSelectedIds(new Set([id]));
   const shareSelected = async () => {
     const selected = matchingVideos.filter((item) => selectedIds.has(item.id));
@@ -146,7 +146,7 @@ function FolderDetail({ folder, onBack, onOpenVideo }: { folder: Folder; onBack:
   const { currentItem, isPlaying } = usePlayer();
   const { deleteMediaItems } = useLibrary();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const toggle = (id: string) => setSelectedIds((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const toggle = (id: string) => setSelectedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const share = async () => { const item = folder.items.find((candidate) => selectedIds.has(candidate.id)); if (item && await Sharing.isAvailableAsync()) await Sharing.shareAsync(item.uri, { dialogTitle: `مشاركة ${item.title}`, mimeType: "video/*" }); };
   const remove = () => Alert.alert("حذف الملفات", `هل تريد حذف ${selectedIds.size} ملف؟`, [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: async () => { await deleteMediaItems([...selectedIds]); setSelectedIds(new Set()); onBack(); } }]);
   return <ScreenContainer className="px-0">{selectedIds.size ? <SelectionToolbar count={selectedIds.size} onClose={() => setSelectedIds(new Set())} onShare={() => void share()} onDelete={remove} /> : <DetailHeader title={folder.name} subtitle={`${folder.items.length} مقاطع فيديو · ${folder.path}`} onBack={onBack} />}<FlatList data={folder.items} keyExtractor={(item) => item.id} renderItem={({ item }) => <MediaRow item={item} selected={selectedIds.has(item.id)} selectionMode={selectedIds.size > 0} isCurrent={Boolean(currentItem && (currentItem.id === item.id || currentItem.uri === item.uri))} isPlaying={isPlaying} onLongPress={() => setSelectedIds(new Set([item.id]))} onPress={() => selectedIds.size ? toggle(item.id) : onOpenVideo(item)} />} contentContainerStyle={styles.detailList} /></ScreenContainer>;

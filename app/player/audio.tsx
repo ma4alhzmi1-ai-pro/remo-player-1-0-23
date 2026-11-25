@@ -4,6 +4,7 @@ import {
   Image,
   ImageBackground,
   Pressable,
+  Animated,
   StyleSheet,
   Modal,
   BackHandler,
@@ -12,6 +13,7 @@ import {
   LayoutChangeEvent,
   ScrollView,
   TextInput,
+  Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -27,6 +29,9 @@ import { usePlayer } from "@/lib/player-context";
 import { useLibrary } from "@/lib/library-context";
 import { resolveAudioThumbnail, saveCustomAudioArtwork } from "@/lib/audio-artwork";
 import { resolveAudioProgressSeek } from "@/lib/audio-progress";
+import { getSystemMusicVolume, setSystemMusicVolume } from "@/lib/native-audio-controls";
+import { resolveLocalVolume } from "@/lib/video-gesture";
+import { activeLyricIndex, loadChromaShape, parseSyncedLyrics, saveChromaShape, type ChromaShape } from "@/lib/audio-visualizer";
 import {
   getStoredPlayerTheme,
   savePlayerThemeId,
@@ -85,6 +90,8 @@ export default function AudioPlayerScreen() {
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubbingTime, setScrubbingTime] = useState(0);
   const [showLyricsOnDisc, setShowLyricsOnDisc] = useState(false);
+  const [chromaShape, setChromaShape] = useState<ChromaShape>("halo");
+  const chromaPulse = useRef(new Animated.Value(0)).current;
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const progressBarRef = useRef<View>(null);
@@ -92,10 +99,18 @@ export default function AudioPlayerScreen() {
   const scrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubbingTimeRef = useRef(0);
   const audioInitialTouchRef = useRef<{ startX: number; width: number; startTime: number }>({ startX: 0, width: 280, startTime: 0 });
+  const navigationBusyRef = useRef(false);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
   const [coverImageFailed, setCoverImageFailed] = useState(false);
+  const [systemVolume, setSystemVolume] = useState(1);
+  const systemVolumeStartRef = useRef(1);
+  const systemVolumeRef = useRef(1);
+  const volumeGestureActiveRef = useRef(false);
+  const syncedLyrics = useMemo(() => parseSyncedLyrics(currentItem?.lyrics), [currentItem?.lyrics]);
+  const effectiveTime = isScrubbing ? scrubbingTime : currentTime;
+  const activeSyncedLyric = activeLyricIndex(syncedLyrics, effectiveTime);
 
   useEffect(() => {
     let isMounted = true;
@@ -116,7 +131,7 @@ export default function AudioPlayerScreen() {
     return () => {
       isMounted = false;
     };
-  }, [currentItem]);
+  }, [currentItem, currentItem?.id, currentItem?.thumbnailUri, currentItem?.uri]);
 
   // Load saved theme and custom background on mount
   useEffect(() => {
@@ -125,6 +140,20 @@ export default function AudioPlayerScreen() {
       setCustomBgUri(customImageUri);
     });
   }, []);
+  useEffect(() => { void loadChromaShape().then(setChromaShape); }, []);
+  useEffect(() => {
+    chromaPulse.stopAnimation();
+    if (!isPlaying) {
+      chromaPulse.setValue(0);
+      return;
+    }
+    const pulse = Animated.loop(Animated.sequence([
+      Animated.timing(chromaPulse, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.timing(chromaPulse, { toValue: 0, duration: 420, useNativeDriver: true }),
+    ]));
+    pulse.start();
+    return () => pulse.stop();
+  }, [chromaPulse, isPlaying]);
 
   const activeThemePreset: PlayerThemePreset = useMemo(() => {
     return (
@@ -148,6 +177,24 @@ export default function AudioPlayerScreen() {
     (currentIndex >= 0 && currentIndex < playbackQueue.length - 1) ||
     repeatMode === "all" ||
     shuffle;
+  const navigateNext = useCallback(async () => {
+    if (navigationBusyRef.current) return;
+    navigationBusyRef.current = true;
+    try {
+      await playNext();
+    } finally {
+      navigationBusyRef.current = false;
+    }
+  }, [playNext]);
+  const navigatePrevious = useCallback(async () => {
+    if (navigationBusyRef.current) return;
+    navigationBusyRef.current = true;
+    try {
+      await playPrevious();
+    } finally {
+      navigationBusyRef.current = false;
+    }
+  }, [playPrevious]);
 
   const isFavorite = Boolean(currentItem?.isFavorite);
 
@@ -233,8 +280,8 @@ export default function AudioPlayerScreen() {
         onPanResponderMove: (_evt, gestureState) => {
           const { width: barW, startTime } = audioInitialTouchRef.current;
           const total = duration || 0;
-          // LTR: يميناً يقدم التشغيل ويساراً يرجعه، حسب حركة الإصبع مباشرة.
-          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime + (gestureState.dx / barW) * total)) : 0;
+          // RTL: الشريط يبدأ من اليمين؛ السحب يساراً (dx سالب) يقدّم، ويميناً يرجّع.
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
@@ -242,7 +289,7 @@ export default function AudioPlayerScreen() {
         onPanResponderRelease: (_evt, gestureState) => {
           const { width: barW, startTime } = audioInitialTouchRef.current;
           const total = duration || 0;
-          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime + (gestureState.dx / barW) * total)) : 0;
+          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
@@ -264,6 +311,58 @@ export default function AudioPlayerScreen() {
       }),
     [duration, progressBarWidth, seekTo]
   );
+
+  const volumeResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dy) > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderGrant: () => {
+      volumeGestureActiveRef.current = true;
+      void getSystemMusicVolume().then((value) => {
+        if (value === null) return;
+        systemVolumeStartRef.current = value;
+        systemVolumeRef.current = value;
+        setSystemVolume(value);
+      });
+    },
+    onPanResponderMove: (_, gesture) => {
+      const next = resolveLocalVolume(systemVolumeStartRef.current, gesture.dy, 400);
+      if (next === null) return;
+      systemVolumeRef.current = next;
+      setSystemVolume(next);
+      void setSystemMusicVolume(next).then((applied) => {
+        if (applied === null) return;
+        systemVolumeRef.current = applied;
+        setSystemVolume(applied);
+      });
+    },
+    onPanResponderRelease: () => {
+      void setSystemMusicVolume(systemVolumeRef.current).then((applied) => {
+        if (applied === null) return;
+        systemVolumeRef.current = applied;
+        setSystemVolume(applied);
+      });
+      volumeGestureActiveRef.current = false;
+    },
+  }), []);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    let cancelled = false;
+    const sync = async () => {
+      if (volumeGestureActiveRef.current) return;
+      const value = await getSystemMusicVolume();
+      if (cancelled || value === null) return;
+      systemVolumeRef.current = value;
+      setSystemVolume(value);
+    };
+    void sync();
+    const interval = setInterval(() => void sync(), 250);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const onProgressBarLayout = (event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
@@ -426,7 +525,6 @@ export default function AudioPlayerScreen() {
     );
   }
 
-  const effectiveTime = isScrubbing ? scrubbingTime : currentTime;
   const progressPercent = duration > 0 ? Math.min(100, (effectiveTime / duration) * 100) : 0;
 
   return (
@@ -614,7 +712,8 @@ export default function AudioPlayerScreen() {
         {/* Main Body */}
         <View style={styles.body}>
           {/* Circular Vinyl / Album Disc Artwork */}
-          <View style={styles.discSection}>
+          <View {...volumeResponder.panHandlers} style={styles.discSection} accessibilityLabel={`مستوى صوت النظام ${Math.round(systemVolume * 100)} بالمئة`}>
+            <Animated.View pointerEvents="none" style={[styles.chromaPulse, chromaShape === "bars" && styles.chromaBars, chromaShape === "rings" && styles.chromaRings, { transform: [{ scale: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.08] }) }], opacity: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) }]} />
             <Pressable
               onPress={() => setShowLyricsOnDisc((prev) => !prev)}
               style={({ pressed }) => [styles.circularDiscWrapper, pressed && { opacity: 0.95 }]}
@@ -627,9 +726,7 @@ export default function AudioPlayerScreen() {
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.lyricsScrollContent}
                   >
-                    <Text style={styles.lyricsBodyText}>
-                      {currentItem.lyrics || "لا توجد كلمات مرفقة حالياً.\nانقر على الخيارات لإضافة الكلمات."}
-                    </Text>
+                    {syncedLyrics.length > 0 ? syncedLyrics.map((line, index) => <Text key={`${line.time}-${index}`} style={[styles.lyricsBodyText, index === activeSyncedLyric && styles.lyricsActiveLine]}>{line.text}</Text>) : <Text style={styles.lyricsBodyText}>{currentItem.lyrics || "لا توجد كلمات مرفقة حالياً.\nانقر على الخيارات لإضافة الكلمات."}</Text>}
                   </ScrollView>
                   <Text style={styles.lyricsBackHint}>انقر للعودة لصورة الغلاف</Text>
                 </View>
@@ -711,7 +808,7 @@ export default function AudioPlayerScreen() {
           {/* Scrubber & Progress Bar */}
           <View style={styles.progressSection}>
             <View style={styles.timeRow}>
-              {/* Current time is shown on the left; the visual scrubber is LTR. */}
+              {/* RTL: يبدأ الزمن من اليمين ويتقدم المؤشر بصرياً نحو اليسار. */}
               <Text style={styles.timeText}>{formatDuration(effectiveTime)}</Text>
 
               {/* Scrubber Line - Smooth, Jitter-Free Seeking */}
@@ -765,7 +862,7 @@ export default function AudioPlayerScreen() {
 
             {/* 3. Previous Track */}
             <Pressable
-              onPress={() => void playPrevious()}
+              onPress={() => void navigatePrevious()}
               disabled={!hasPrevious}
               style={({ pressed }) => [
                 styles.controlButton,
@@ -792,7 +889,7 @@ export default function AudioPlayerScreen() {
 
             {/* 5. Next Track */}
             <Pressable
-              onPress={() => void playNext()}
+              onPress={() => void navigateNext()}
               disabled={!hasNext}
               style={({ pressed }) => [
                 styles.controlButton,
@@ -898,6 +995,8 @@ export default function AudioPlayerScreen() {
                   </Pressable>
                 ))}
               </ScrollView>
+              <Text style={styles.presetsLabel}>شكل كروما النبض أثناء التشغيل:</Text>
+              <View style={styles.chromaChoiceRow}>{([{ id: "halo", label: "هالة", icon: "blur-on" }, { id: "bars", label: "أعمدة", icon: "equalizer" }, { id: "rings", label: "حلقات", icon: "radio-button-unchecked" }] as const).map((choice) => <Pressable key={choice.id} onPress={() => { setChromaShape(choice.id); void saveChromaShape(choice.id); }} style={[styles.chromaChoice, chromaShape === choice.id && styles.chromaChoiceActive]}><MaterialIcons name={choice.icon as keyof typeof MaterialIcons.glyphMap} size={20} color={chromaShape === choice.id ? "#050505" : "#00F2FE"} /><Text style={[styles.chromaChoiceText, chromaShape === choice.id && styles.chromaChoiceTextActive]}>{choice.label}</Text></Pressable>)}</View>
 
               {customBgUri && (
                 <Pressable
@@ -1255,6 +1354,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingTop: 10,
   },
+  chromaPulse: { position: "absolute", width: 246, height: 246, borderRadius: 123, borderWidth: 4, borderColor: "#00F2FE", backgroundColor: "rgba(0,242,254,0.08)" },
+  chromaBars: { width: 260, height: 210, borderRadius: 24, borderWidth: 0, backgroundColor: "rgba(233,30,99,0.16)" },
+  chromaRings: { width: 270, height: 270, borderRadius: 135, borderWidth: 9, borderColor: "#E91E63", backgroundColor: "transparent" },
   circularDiscWrapper: {
     width: 260,
     height: 260,
@@ -1318,6 +1420,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: "center",
   },
+  lyricsActiveLine: { color: "#00F2FE", fontSize: 20, fontWeight: "900", textShadowColor: "rgba(0,242,254,0.55)", textShadowRadius: 10 },
+  chromaChoiceRow: { flexDirection: "row-reverse", gap: 8, paddingHorizontal: 18, marginBottom: 12 },
+  chromaChoice: { minHeight: 42, flex: 1, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center", gap: 4 },
+  chromaChoiceActive: { backgroundColor: "#00F2FE" },
+  chromaChoiceText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
+  chromaChoiceTextActive: { color: "#050505" },
   lyricsBackHint: {
     color: "rgba(255,255,255,0.5)",
     fontSize: 11,

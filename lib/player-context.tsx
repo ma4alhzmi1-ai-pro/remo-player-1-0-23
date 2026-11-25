@@ -44,8 +44,10 @@ type PlayerContextValue = {
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 const lockScreenOptions = {
-  showSeekBackward: true,
-  showSeekForward: true,
+  // نثبت التخطيط الأساسي بثلاثة أزرار حتى لا تخفي Android السابق/التالي
+  // عندما تحدد مساحة الإشعار أو شاشة القفل عدد الأزرار المعروضة.
+  showSeekBackward: false,
+  showSeekForward: false,
   showSkipPrevious: true,
   showSkipNext: true,
 };
@@ -92,6 +94,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     currentItemRef.current = currentItem;
   }, [currentItem, videoPlayer]);
+
+  useEffect(() => {
+    const subscription = videoPlayer.addListener("playToEnd", () => {
+      const item = currentItemRef.current;
+      if (item?.mediaType !== "video" || repeatModeRef.current === "one" || isAutoAdvancingRef.current) return;
+      isAutoAdvancingRef.current = true;
+      void autoAdvanceRef.current(repeatModeRef.current === "all")
+        .then((advanced) => { if (!advanced) setIsPlaying(false); })
+        .finally(() => { isAutoAdvancingRef.current = false; });
+    });
+    return () => subscription.remove();
+  }, [videoPlayer]);
 
   useEffect(() => {
     repeatModeRef.current = repeatMode;
@@ -153,7 +167,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         lastSnapshotSecondRef.current = roundedSecond;
         void savePlaybackMemory({ itemId: item.id, position: status.currentTime || 0, updatedAt: Date.now() });
       }
-      if (status.didJustFinish && !player.loop) {
+      const reachedEnd = Boolean(status.duration && status.currentTime >= Math.max(0, status.duration - 0.15));
+      if ((status.didJustFinish || reachedEnd) && !player.loop) {
         const shouldWrap = repeatModeRef.current === "all";
         if (isAutoAdvancingRef.current) return;
         isAutoAdvancingRef.current = true;
@@ -166,9 +181,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       addListener: (event: string, listener: (event: { action?: string }) => void) => { remove: () => void };
     };
     const controlSubscription = nativeControlPlayer.addListener("mediaControlAction", ({ action }) => {
-      if (action === "next" || action === "previous") {
-        remoteQueueActionRef.current(action);
-      }
+      if (action === "next" || action === "previous") remoteQueueActionRef.current(action);
     });
     statusSubscriptionRef.current = {
       remove: () => {
@@ -206,7 +219,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       await prepareAudioSession(audioSession.allowBackgroundPlayback);
       let player = playerRef.current;
       if (!player) {
-        player = createAudioPlayer({ uri: item.uri }, { updateInterval: 300, keepAudioSessionActive: true });
+        player = createAudioPlayer({ uri: item.uri }, { updateInterval: 100, keepAudioSessionActive: true });
         playerRef.current = player;
         attachStatusListener(player);
       } else {

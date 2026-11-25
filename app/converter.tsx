@@ -26,7 +26,7 @@ import {
   AUDIO_QUALITY_OPTIONS,
   AUDIO_SAMPLE_RATE_OPTIONS,
 } from "@/lib/video-converter";
-import { isConvertibleFormat, extensionOf } from "@/lib/media-utils";
+import { extensionOf } from "@/lib/media-utils";
 import { ScreenContainer } from "@/components/screen-container";
 import { colors } from "@/components/remo-ui";
 import { usePlayer } from "@/lib/player-context";
