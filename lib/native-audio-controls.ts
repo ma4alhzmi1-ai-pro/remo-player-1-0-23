@@ -24,7 +24,7 @@ type NativeAndroidAudioControls = {
 };
 
 const nativeControls = AudioModule as unknown as NativeAndroidAudioControls;
-const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+const clampUnit = (value: number) => Math.max(0, Math.min(3, Number.isFinite(value) ? value : 0));
 
 /** يقرأ مستوى دفق وسائط Android، وليس مستوى صوت المشغل الداخلي فقط. */
 export async function getSystemMusicVolume(): Promise<number | null> {
