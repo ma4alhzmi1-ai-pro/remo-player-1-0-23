@@ -42,7 +42,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "alhzmi",
-  version: "1.0.73",
+  version: "1.0.74",
   orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -65,13 +65,14 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    versionCode: 73,
+    versionCode: 74,
     permissions: [
       "READ_EXTERNAL_STORAGE",
       "WRITE_EXTERNAL_STORAGE",
       "READ_MEDIA_AUDIO",
       "READ_MEDIA_VIDEO",
       "READ_MEDIA_IMAGES",
+      "WRITE_SETTINGS",
     ],
     intentFilters: [
       {
@@ -97,6 +98,7 @@ const config: ExpoConfig = {
     "expo-asset",
     "expo-font",
     "expo-web-browser",
+    "expo-brightness",
     [
       "expo-audio",
       {

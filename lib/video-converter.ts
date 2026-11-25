@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
+import { extractAudioTrackNative, remuxToMp4Native } from './native-audio-controls';
 
 export type ConversionProgress = {
   percent: number;
@@ -34,8 +35,8 @@ export type VideoToAudioOptions = {
 };
 
 export const AUDIO_FORMAT_OPTIONS: { id: AudioFormat; label: string; desc: string; ext: string; mime: string }[] = [
+  { id: 'm4a', label: 'M4A / AAC (أصلي سريع)', desc: 'استخراج صوتي فوري وحقيقي عبر محرك Android', ext: 'm4a', mime: 'audio/mp4' },
   { id: 'mp3', label: 'MP3', desc: 'الأكثر توافقاً وشعبية مع جميع الأجهزة والأنظمة', ext: 'mp3', mime: 'audio/mpeg' },
-  { id: 'm4a', label: 'M4A / AAC', desc: 'صوت عالي النقاء متوافق مع Android وApple', ext: 'm4a', mime: 'audio/mp4' },
   { id: 'aac', label: 'AAC', desc: 'ترميز متقدم بجودة استوديو وضغط فعال', ext: 'aac', mime: 'audio/aac' },
   { id: 'wav', label: 'WAV', desc: 'صوت خام فائق الدقة بدون أي ضغط (PCM)', ext: 'wav', mime: 'audio/wav' },
   { id: 'flac', label: 'FLAC', desc: 'صوت نقي فائق الجودة بدون فقدان بيانات (Lossless)', ext: 'flac', mime: 'audio/flac' },
@@ -59,9 +60,37 @@ export const AUDIO_SAMPLE_RATE_OPTIONS: { id: AudioSampleRate; label: string; de
   { id: '96000', label: '96.0 kHz', desc: 'تردد عالي الدقة (Hi-Res Audio)' },
 ];
 
+async function saveToPhoneMediaAlbum(outputUri: string, albumName: string): Promise<{ saved: boolean; storagePath: string }> {
+  try {
+    const existingPermissions = await MediaLibrary.getPermissionsAsync();
+    const permission = existingPermissions.granted
+      ? existingPermissions
+      : await MediaLibrary.requestPermissionsAsync();
+
+    if (permission.granted) {
+      const asset = await MediaLibrary.createAssetAsync(outputUri);
+      if (asset) {
+        try {
+          const album = await MediaLibrary.getAlbumAsync(albumName);
+          if (!album) {
+            await MediaLibrary.createAlbumAsync(albumName, asset, false);
+          } else {
+            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+          }
+        } catch {
+          // Album creation optional
+        }
+        return { saved: true, storagePath: asset.uri || outputUri };
+      }
+    }
+  } catch {
+    // Permission declined or environment without native media gallery
+  }
+  return { saved: false, storagePath: outputUri };
+}
+
 /**
- * Converts any non-standard or legacy video format (such as FLV, MP5, MVR, DVD, VOB, AVI, WMV, etc.)
- * to standard MP4 (H.264 / AAC) and automatically saves it to the phone's internal storage / media library.
+ * يحوّل الفيديو إلى حاوية MP4 حقيقية عبر محرك Android MediaMuxer أو FFmpeg عند توفره.
  */
 export async function convertVideoToMp4(
   inputUri: string,
@@ -72,120 +101,78 @@ export async function convertVideoToMp4(
     .replace(/\.[^.]+$/, '')
     .replace(/[^a-zA-Z0-9_\-\u0600-\u06FF]/g, '_');
   const outputFileName = `${baseName}_converted_${Date.now()}.mp4`;
-  
-  // Destination in device document directory
+
   const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
   const outputUri = `${baseDir}${outputFileName}`;
 
   let conversionSuccessful = false;
 
-  // 1. Attempt Native FFmpeg conversion if package is linked in native APK build
-  try {
-    // @ts-ignore
-    const ffmpegModule = await import('ffmpeg-kit-react-native').catch(() => null);
-    if (ffmpegModule && ffmpegModule.FFmpegKit) {
-      const { FFmpegKit, ReturnCode } = ffmpegModule;
-      const command = `-y -i "${inputUri}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -g 48 -keyint_min 48 -sc_threshold 0 -c:a aac -b:a 128k -movflags +faststart "${outputUri}"`;
+  onProgress?.({ percent: 18, stage: 'جاري فحص المسارات داخل الفيديو عبر محرك Android...' });
 
-      await new Promise<void>((resolve, reject) => {
-        FFmpegKit.executeAsync(
-          command,
-          async (session: any) => {
-            const returnCode = await session.getReturnCode();
-            if (ReturnCode.isSuccess(returnCode)) {
-              conversionSuccessful = true;
-              resolve();
-            } else {
-              reject(new Error('فشل معالجة وترميز الفيديو بواسطة المحرك الأصلي.'));
-            }
-          },
-          () => {},
-          (statistics: any) => {
-            if (onProgress && statistics) {
-              const totalBytes = statistics.getSize ? statistics.getSize() : 0;
-              const currentBytes = statistics.getTime ? statistics.getTime() : 0;
-              const percent = totalBytes > 0 ? Math.min(99, (currentBytes / totalBytes) * 100) : 50;
-              onProgress({ percent, currentBytes, totalBytes, stage: 'جارٍ تحويل وترميز الفيديو إلى MP4...' });
-            }
-          }
-        );
-      });
-    }
-  } catch {
-    // Fallback if native module is not linked or unavailable
+  // 1. Native Android MediaExtractor + MediaMuxer remux (100% real MP4 output)
+  const nativeRemuxed = await remuxToMp4Native(inputUri, outputUri);
+  if (nativeRemuxed) {
+    conversionSuccessful = true;
+    onProgress?.({ percent: 88, stage: 'تم بناء حاوية MP4 القياسية بنجاح...' });
   }
 
-  // 2. Fallback / direct preparation for development & testing
+  // 2. Fallback to FFmpegKit if linked in build for legacy incompatible codecs
   if (!conversionSuccessful) {
-    if (onProgress) {
-      onProgress({ percent: 15, stage: 'قراءة وفحص صيغة الفيديو الأصلية...' });
-      await new Promise((r) => setTimeout(r, 400));
-      onProgress({ percent: 45, stage: 'إعادة هيكلة الحاويات وتحويل الترويسة إلى MP4...' });
-      await new Promise((r) => setTimeout(r, 600));
-      onProgress({ percent: 75, stage: 'ضغط وضبط مسارات الصوت والصورة (H.264 / AAC)...' });
-      await new Promise((r) => setTimeout(r, 500));
-      onProgress({ percent: 95, stage: 'إنهاء ملف MP4 وكتابة الوسوم...' });
-      await new Promise((r) => setTimeout(r, 300));
-    }
-
     try {
-      await FileSystem.copyAsync({ from: inputUri, to: outputUri });
-      conversionSuccessful = true;
-    } catch {
-      // In web or restricted environments, output original or document URI
-      conversionSuccessful = true;
-    }
-  }
+      // @ts-ignore
+      const ffmpegModule = await import('ffmpeg-kit-react-native').catch(() => null);
+      if (ffmpegModule && ffmpegModule.FFmpegKit) {
+        const { FFmpegKit, ReturnCode } = ffmpegModule;
+        const command = `-y -i "${inputUri}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -g 48 -keyint_min 48 -sc_threshold 0 -c:a aac -b:a 128k -movflags +faststart "${outputUri}"`;
 
-  if (onProgress) {
-    onProgress({ percent: 100, stage: 'تم التحويل! جارٍ الحفظ في ذاكرة تخزين الهاتف...' });
-  }
-
-  // 3. Auto-save to phone storage (Android Media Library / Movies gallery)
-  let savedToPhoneStorage = false;
-  let storagePath = outputUri;
-
-  try {
-    const existingPermissions = await MediaLibrary.getPermissionsAsync();
-    const permission = existingPermissions.granted
-      ? existingPermissions
-      : await MediaLibrary.requestPermissionsAsync();
-
-    if (permission.granted) {
-      const asset = await MediaLibrary.createAssetAsync(outputUri);
-      if (asset) {
-        savedToPhoneStorage = true;
-        storagePath = asset.uri || outputUri;
-        // Optionally add to dedicated REMO album if supported
-        try {
-          const album = await MediaLibrary.getAlbumAsync('REMO Converted');
-          if (!album) {
-            await MediaLibrary.createAlbumAsync('REMO Converted', asset, false);
-          } else {
-            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-          }
-        } catch {
-          // Album creation optional
-        }
+        await new Promise<void>((resolve, reject) => {
+          FFmpegKit.executeAsync(
+            command,
+            async (session: any) => {
+              const returnCode = await session.getReturnCode();
+              if (ReturnCode.isSuccess(returnCode)) {
+                conversionSuccessful = true;
+                resolve();
+              } else {
+                reject(new Error('تعذر تحويل هذا الترميز عبر محرك التحويل.'));
+              }
+            },
+            () => {},
+            (statistics: any) => {
+              if (onProgress && statistics) {
+                const totalBytes = statistics.getSize ? statistics.getSize() : 0;
+                const currentBytes = statistics.getTime ? statistics.getTime() : 0;
+                const percent = totalBytes > 0 ? Math.min(99, (currentBytes / totalBytes) * 100) : 55;
+                onProgress({ percent, currentBytes, totalBytes, stage: 'جارٍ تحويل وترميز الفيديو إلى MP4...' });
+              }
+            }
+          );
+        });
       }
+    } catch {
+      // No ffmpeg-kit linked
     }
-  } catch {
-    // Permission declined or environment without native media gallery
-    savedToPhoneStorage = false;
   }
 
+  if (!conversionSuccessful) {
+    await FileSystem.deleteAsync(outputUri, { idempotent: true }).catch(() => undefined);
+    throw new Error('ترميز هذا الملف غير مدعوم في محرك التغليف المباشر لنظام Android؛ يمكنك تشغيله فوراً عبر محرك التوافق VLC في مشغل الفيديو.');
+  }
+
+  onProgress?.({ percent: 100, stage: 'تم التحويل! جارٍ الحفظ في ذاكرة تخزين الهاتف...' });
+
+  const mediaSaved = await saveToPhoneMediaAlbum(outputUri, 'REMO Converted');
   return {
     outputUri,
     fileName: outputFileName,
-    savedToPhoneStorage,
-    storagePath,
+    savedToPhoneStorage: mediaSaved.saved,
+    storagePath: mediaSaved.storagePath,
   };
 }
 
 /**
- * تحويل أي فيديو إلى صوت بأي صيغة (MP3, AAC, M4A, WAV, FLAC, OGG, OPUS, WMA)
- * وبأي جودة ومعدل بت (320k, 256k, 192k, 128k, 96k, 64k)
- * مع الحفظ التلقائي في ذاكرة الهاتف ومكتبة الصوتيات.
+ * يستخرج المسار الصوتي الحقيقي من الفيديو (عبر Android MediaExtractor/MediaMuxer بصيغة M4A
+ * أو عبر FFmpegKit لباقي الصيغ عند توفره) ويحفظه في مكتبة الهاتف.
  */
 export async function convertVideoToAudio(
   inputUri: string,
@@ -193,7 +180,7 @@ export async function convertVideoToAudio(
   onProgress?: (progress: ConversionProgress) => void
 ): Promise<ConversionResult> {
   const {
-    format = 'mp3',
+    format = 'm4a',
     quality = '320k',
     sampleRate = '48000',
     channels = 'stereo',
@@ -206,35 +193,31 @@ export async function convertVideoToAudio(
   const baseName = rawBase
     .replace(/\.[^.]+$/, '')
     .replace(/[^a-zA-Z0-9_\-\u0600-\u06FF]/g, '_');
-  const ext = format.toLowerCase();
-  const outputFileName = `${baseName}_${quality}.${ext}`;
 
   const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
-  const outputUri = `${baseDir}${outputFileName}`;
-
+  let finalFileName = `${baseName}_${quality}.${format.toLowerCase()}`;
+  let outputUri = `${baseDir}${finalFileName}`;
   let conversionSuccessful = false;
 
-  // 1. Native FFmpeg execution if package is available
+  onProgress?.({ percent: 22, stage: 'جاري قراءة المسار الصوتي الحقيقي من الفيديو...' });
+
+  // 1. FFmpegKit if linked (supports all target formats)
   try {
     // @ts-ignore
     const ffmpegModule = await import('ffmpeg-kit-react-native').catch(() => null);
     if (ffmpegModule && ffmpegModule.FFmpegKit) {
       const { FFmpegKit, ReturnCode } = ffmpegModule;
-
-      let codecArgs = '';
+      let codecArgs = `-c:a libmp3lame -b:a ${quality}`;
       switch (format) {
-        case 'mp3':
-          codecArgs = `-c:a libmp3lame -b:a ${quality}`;
-          break;
         case 'm4a':
         case 'aac':
           codecArgs = `-c:a aac -b:a ${quality}`;
           break;
         case 'wav':
-          codecArgs = `-c:a pcm_s16le`;
+          codecArgs = '-c:a pcm_s16le';
           break;
         case 'flac':
-          codecArgs = `-c:a flac`;
+          codecArgs = '-c:a flac';
           break;
         case 'ogg':
           codecArgs = `-c:a libvorbis -b:a ${quality}`;
@@ -245,15 +228,11 @@ export async function convertVideoToAudio(
         case 'wma':
           codecArgs = `-c:a wmav2 -b:a ${quality}`;
           break;
-        default:
-          codecArgs = `-c:a libmp3lame -b:a ${quality}`;
       }
-
       const channelArg = channels === 'mono' ? '-ac 1' : '-ac 2';
       const sampleRateArg = sampleRate ? `-ar ${sampleRate}` : '';
       const metaTitle = title ? `-metadata title="${title.replace(/"/g, '')}"` : '';
       const metaArtist = artist ? `-metadata artist="${artist.replace(/"/g, '')}"` : '';
-
       const command = `-y -i "${inputUri}" -vn ${codecArgs} ${channelArg} ${sampleRateArg} ${metaTitle} ${metaArtist} "${outputUri}"`;
 
       await new Promise<void>((resolve, reject) => {
@@ -265,7 +244,7 @@ export async function convertVideoToAudio(
               conversionSuccessful = true;
               resolve();
             } else {
-              reject(new Error('فشل استخراج وترميز الصوت بواسطة المحرك الأصلي.'));
+              reject(new Error('فشل استخراج الصوت عبر محرك الترميز.'));
             }
           },
           () => {},
@@ -273,7 +252,7 @@ export async function convertVideoToAudio(
             if (onProgress && statistics) {
               const totalBytes = statistics.getSize ? statistics.getSize() : 0;
               const currentBytes = statistics.getTime ? statistics.getTime() : 0;
-              const percent = totalBytes > 0 ? Math.min(99, (currentBytes / totalBytes) * 100) : 50;
+              const percent = totalBytes > 0 ? Math.min(99, (currentBytes / totalBytes) * 100) : 55;
               onProgress({
                 percent,
                 currentBytes,
@@ -286,75 +265,32 @@ export async function convertVideoToAudio(
       });
     }
   } catch {
-    // Fallback if native module unavailable
+    // Try native Android MediaExtractor + MediaMuxer next
   }
 
-  // 2. Direct fallback for web and dev environments
+  // 2. Native Android MediaExtractor + MediaMuxer audio extraction into real .m4a container
   if (!conversionSuccessful) {
-    if (onProgress) {
-      onProgress({ percent: 15, stage: 'قراءة وفصل المسار الصوتي من الفيديو...' });
-      await new Promise((r) => setTimeout(r, 400));
-      onProgress({
-        percent: 45,
-        stage: `معالجة التردد (${sampleRate} Hz) وقنوات الصوت (${channels === 'mono' ? 'أحادي' : 'ستيريو'})...`,
-      });
-      await new Promise((r) => setTimeout(r, 500));
-      onProgress({
-        percent: 75,
-        stage: `ترميز وضغط الصوت بصيغة ${format.toUpperCase()} بمعدل نقل ${quality}...`,
-      });
-      await new Promise((r) => setTimeout(r, 600));
-      onProgress({ percent: 95, stage: 'تضمين وسوم الموسيقى وإنهاء الملف...' });
-      await new Promise((r) => setTimeout(r, 300));
-    }
-
-    try {
-      await FileSystem.copyAsync({ from: inputUri, to: outputUri });
-      conversionSuccessful = true;
-    } catch {
+    finalFileName = `${baseName}_${Date.now()}.m4a`;
+    outputUri = `${baseDir}${finalFileName}`;
+    onProgress?.({ percent: 55, stage: 'جاري فصل المسار الصوتي الأصلي إلى ملف M4A عبر Android...' });
+    const extracted = await extractAudioTrackNative(inputUri, outputUri);
+    if (extracted) {
       conversionSuccessful = true;
     }
   }
 
-  if (onProgress) {
-    onProgress({ percent: 100, stage: 'اكتمل التحويل بنجاح! جارٍ الحفظ في مكتبة الصوتيات...' });
+  if (!conversionSuccessful) {
+    await FileSystem.deleteAsync(outputUri, { idempotent: true }).catch(() => undefined);
+    throw new Error('لا يحتوي الفيديو على مسار صوتي متوافق مع مستخرج Android المباشر، أو أن البيئة الحالية لا تدعم الاستخراج.');
   }
 
-  // 3. Auto-save to phone storage / Media Library (Music / Audio gallery)
-  let savedToPhoneStorage = false;
-  let storagePath = outputUri;
+  onProgress?.({ percent: 100, stage: 'اكتمل استخراج الصوت الحقيقي! جارٍ الحفظ في المكتبة...' });
 
-  try {
-    const existingPermissions = await MediaLibrary.getPermissionsAsync();
-    const permission = existingPermissions.granted
-      ? existingPermissions
-      : await MediaLibrary.requestPermissionsAsync();
-
-    if (permission.granted) {
-      const asset = await MediaLibrary.createAssetAsync(outputUri);
-      if (asset) {
-        savedToPhoneStorage = true;
-        storagePath = asset.uri || outputUri;
-        try {
-          const album = await MediaLibrary.getAlbumAsync('REMO Audio');
-          if (!album) {
-            await MediaLibrary.createAlbumAsync('REMO Audio', asset, false);
-          } else {
-            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-          }
-        } catch {
-          // optional album
-        }
-      }
-    }
-  } catch {
-    savedToPhoneStorage = false;
-  }
-
+  const mediaSaved = await saveToPhoneMediaAlbum(outputUri, 'REMO Audio');
   return {
     outputUri,
-    fileName: outputFileName,
-    savedToPhoneStorage,
-    storagePath,
+    fileName: finalFileName,
+    savedToPhoneStorage: mediaSaved.saved,
+    storagePath: mediaSaved.storagePath,
   };
 }

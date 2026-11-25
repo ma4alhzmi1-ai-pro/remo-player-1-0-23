@@ -1,6 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import * as Brightness from "expo-brightness";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
@@ -20,7 +19,8 @@ import { getPlaybackMemory, resumePosition, savePlaybackMemory } from "@/lib/pla
 import { getSystemMusicVolume, setSystemMusicVolume } from "@/lib/native-audio-controls";
 import { logPlayerDiagnostic } from "@/lib/player-diagnostics";
 import { usePlayer } from "@/lib/player-context";
-import { defaultSubtitleAppearance, loadLocalSubtitles, loadSubtitleAppearance, saveLocalSubtitles, saveSubtitleAppearance, type LocalSubtitleTrack } from "@/lib/subtitle-store";
+import { SUBTITLE_STYLE_PRESETS, defaultSubtitleAppearance, loadLocalSubtitles, loadSubtitleAppearance, loadSubtitleOffset, saveLocalSubtitles, saveSubtitleAppearance, saveSubtitleOffset, type LocalSubtitleTrack } from "@/lib/subtitle-store";
+import { applySystemOrScreenBrightness, hasSystemBrightnessPermission, readCurrentSystemBrightness, requestSystemBrightnessPermission } from "@/lib/system-brightness";
 import { parseSubtitleFile, supportsSubtitleImport } from "@/lib/subtitle-formats";
 import { readVideoForTranslation } from "@/lib/translation-upload";
 import { trpc } from "@/lib/trpc";
@@ -104,7 +104,13 @@ export default function VideoPlayerScreen() {
   const lastVolumeUpdateRef = useRef(0);
   const volumeWriteSerialRef = useRef(0);
   const volumeGestureActiveRef = useRef(false);
+  const brightnessGestureActiveRef = useRef(false);
+  const gestureMovedRef = useRef(false);
+  const lockedGestureModeRef = useRef<"seek" | "volume" | "brightness" | null>(null);
   const brightnessWriteSerialRef = useRef(0);
+  const systemBrightnessPermittedRef = useRef(false);
+  const brightnessPermPromptedRef = useRef(false);
+  const pendingVideoSeekRef = useRef<{ target: number; expiresAt: number } | null>(null);
   const pipActiveOrRequestedRef = useRef(false);
   const titleHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleMarqueeRef = useRef(new Animated.Value(-32)).current;
@@ -142,7 +148,12 @@ export default function VideoPlayerScreen() {
   const [repeatEnd, setRepeatEnd] = useState<number | null>(null);
   const [subtitleTrack, setSubtitleTrack] = useState<LocalSubtitleTrack | null>(null);
   const [subtitleEnabled, setSubtitleEnabled] = useState(true);
+  const [subtitleOffset, setSubtitleOffset] = useState(0);
   const [subtitleAppearance, setSubtitleAppearance] = useState(defaultSubtitleAppearance);
+  const [systemBrightnessLinked, setSystemBrightnessLinked] = useState(false);
+  const [sleepModalOpen, setSleepModalOpen] = useState(false);
+  const [videoSleepMinutes, setVideoSleepMinutes] = useState<number | null>(null);
+  const [sleepOnVideoEnd, setSleepOnVideoEnd] = useState(false);
   const subtitleAppearanceReadyRef = useRef(false);
   const [embeddedSubtitleTracks, setEmbeddedSubtitleTracks] = useState<SubtitleTrack[]>([]);
   const [embeddedSubtitleId, setEmbeddedSubtitleId] = useState<string | null>(null);
@@ -296,20 +307,23 @@ export default function VideoPlayerScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") return;
-    void Brightness.getBrightnessAsync().then((value) => {
-      if (!Number.isFinite(value)) return;
-      const safeValue = Math.max(0.2, Math.min(1, value));
+    player.volume = 1;
+    void hasSystemBrightnessPermission().then((granted) => {
+      systemBrightnessPermittedRef.current = granted;
+      setSystemBrightnessLinked(granted);
+    });
+    void readCurrentSystemBrightness().then((safeValue) => {
       brightnessStartRef.current = safeValue;
       localBrightnessRef.current = safeValue;
       setLocalBrightness(safeValue);
-    }).catch(() => undefined);
+    });
     void getSystemMusicVolume().then((value) => {
       if (value === null) return;
       volumeStartRef.current = value;
       volumeRef.current = value;
       setVolume(value);
     });
-  }, []);
+  }, [player]);
 
   useEffect(() => {
     if (!usingCompatibilityEngine) {
@@ -714,6 +728,13 @@ export default function VideoPlayerScreen() {
       const cur = player.currentTime;
       if (dur > 1 && cur >= Math.max(0, dur - 1.5)) {
         if (lastAutoAdvancedItemRef.current === currentItem?.id) return;
+        if (sleepOnVideoEnd) {
+          setSleepOnVideoEnd(false);
+          player.pause();
+          setIsPlaying(false);
+          setActionHudText("توقف التشغيل بنهاية الفيديو");
+          return;
+        }
         lastAutoAdvancedItemRef.current = currentItem?.id ?? null;
         isAutoAdvancingRef.current = true;
         void playNext(repeatMode === "all").then((advanced) => {
@@ -776,6 +797,7 @@ export default function VideoPlayerScreen() {
       setSubtitleTrack(saved);
       setSubtitleEnabled(Boolean(saved));
     });
+    void loadSubtitleOffset(currentVideoId).then(setSubtitleOffset);
   }, [currentVideoId]);
   useEffect(() => {
     void loadSubtitleAppearance().then((appearance) => {
@@ -812,6 +834,44 @@ export default function VideoPlayerScreen() {
       clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    let cancelled = false;
+    const syncBrightness = async () => {
+      const granted = await hasSystemBrightnessPermission();
+      if (cancelled) return;
+      systemBrightnessPermittedRef.current = granted;
+      setSystemBrightnessLinked(granted);
+      if (brightnessGestureActiveRef.current || !granted) return;
+      const value = await readCurrentSystemBrightness();
+      if (cancelled) return;
+      localBrightnessRef.current = value;
+      setLocalBrightness(value);
+    };
+    const interval = setInterval(() => void syncBrightness(), 550);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (videoSleepMinutes === null || videoSleepMinutes <= 0) return;
+    const timer = setTimeout(() => {
+      setVideoSleepMinutes((prev) => {
+        if (prev === null || prev <= 1) {
+          if (usingCompatibilityEngine) void vlcViewRef.current?.pause();
+          else player.pause();
+          setIsPlaying(false);
+          setActionHudText("انتهى مؤقت النوم");
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 60000);
+    return () => clearTimeout(timer);
+  }, [player, usingCompatibilityEngine, videoSleepMinutes]);
 
   useEffect(() => {
     if (!brightnessHud) return;
@@ -1000,19 +1060,31 @@ export default function VideoPlayerScreen() {
     onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: (event) => {
       volumeGestureActiveRef.current = true;
+      brightnessGestureActiveRef.current = true;
+      gestureMovedRef.current = false;
+      lockedGestureModeRef.current = null;
       touchStartX.current = event.nativeEvent.locationX;
       brightnessStartRef.current = localBrightnessRef.current;
       volumeStartRef.current = volumeRef.current;
       void getSystemMusicVolume().then((systemVolume) => {
-        if (systemVolume === null) return;
+        if (systemVolume === null || gestureMovedRef.current) return;
         volumeStartRef.current = systemVolume;
         volumeRef.current = systemVolume;
         setVolume(systemVolume);
       });
+      if (systemBrightnessPermittedRef.current) {
+        void readCurrentSystemBrightness().then((sysBrightness) => {
+          if (gestureMovedRef.current) return;
+          brightnessStartRef.current = sysBrightness;
+          localBrightnessRef.current = sysBrightness;
+          setLocalBrightness(sysBrightness);
+        });
+      }
       scheduleTemporarySpeed();
     },
     onPanResponderMove: (_, gesture) => {
       if (Math.abs(gesture.dx) > 8 || Math.abs(gesture.dy) > 8) {
+        gestureMovedRef.current = true;
         restoreTemporarySpeed();
         if (singleTapTimerRef.current) {
           clearTimeout(singleTapTimerRef.current);
@@ -1020,43 +1092,44 @@ export default function VideoPlayerScreen() {
         }
       }
       const action = resolveVideoGesture(gesture.dx, gesture.dy, touchStartX.current, width, videoSettings.progressDragDirection);
-      if (action?.type === "brightness") {
+      if (!lockedGestureModeRef.current && action) {
+        lockedGestureModeRef.current = action.type;
+      }
+      const activeMode = lockedGestureModeRef.current ?? action?.type ?? null;
+      if (activeMode === "brightness") {
         const nextBrightness = resolveLocalBrightness(brightnessStartRef.current, gesture.dy, mediaSurfaceHeight);
         if (nextBrightness !== null) {
           localBrightnessRef.current = nextBrightness;
           setLocalBrightness(nextBrightness);
           setBrightnessHud(true);
           const now = Date.now();
-          if (now - lastBrightnessUpdateRef.current >= 70) {
+          if (now - lastBrightnessUpdateRef.current >= 65) {
             lastBrightnessUpdateRef.current = now;
             const request = ++brightnessWriteSerialRef.current;
-            void Brightness.setBrightnessAsync(nextBrightness).catch(() => undefined).then(() => {
+            void applySystemOrScreenBrightness(nextBrightness, systemBrightnessPermittedRef.current).then((res) => {
               if (request !== brightnessWriteSerialRef.current) return;
-              localBrightnessRef.current = nextBrightness;
+              localBrightnessRef.current = res.applied;
+              setSystemBrightnessLinked(res.linkedToSystem);
             });
           }
         }
       }
-      if (action?.type === "volume") {
+      if (activeMode === "volume") {
         const nextVolume = resolveLocalVolume(volumeStartRef.current, gesture.dy, mediaSurfaceHeight);
         if (nextVolume !== null) {
           volumeRef.current = nextVolume;
           setVolume(nextVolume);
           setVolumeHud(true);
           const now = Date.now();
-          if (now - lastVolumeUpdateRef.current >= 70) {
+          if (now - lastVolumeUpdateRef.current >= 65) {
             lastVolumeUpdateRef.current = now;
             const request = ++volumeWriteSerialRef.current;
-            void setSystemMusicVolume(nextVolume).then((systemVolume) => {
+            void setSystemMusicVolume(nextVolume, true).then((systemVolume) => {
               if (request !== volumeWriteSerialRef.current) return;
               if (systemVolume === null) {
-                // Android يجب أن يمر عبر STREAM_MUSIC الحقيقي؛ لا نستخدم
-                // player.volume كبديل لأنه يصنع صوتاً مستقلاً داخل التطبيق.
                 if (Platform.OS === "web") player.volume = nextVolume;
                 return;
               }
-              // Android يعيد القيمة الفعلية بعد تقريبها إلى درجات مستوى الصوت.
-              // لا نسمح لطلبات أقدم بإرجاع HUD إلى قيمة خاطئة.
               player.volume = 1;
               volumeRef.current = systemVolume;
               setVolume(systemVolume);
@@ -1069,31 +1142,44 @@ export default function VideoPlayerScreen() {
     onPanResponderRelease: (event, gesture) => {
       if (controlsLocked) {
         volumeGestureActiveRef.current = false;
+        brightnessGestureActiveRef.current = false;
+        lockedGestureModeRef.current = null;
         return;
       }
       const action = resolveVideoGesture(gesture.dx, gesture.dy, touchStartX.current, width, videoSettings.progressDragDirection);
+      const activeMode = lockedGestureModeRef.current ?? action?.type ?? null;
       const wasTemporarySpeed = restoreTemporarySpeed();
-      if (action?.type === "seek") {
+      if (activeMode === "seek" && action?.type === "seek") {
         if (safeSeekBy(action.seconds)) {
           setActionHudText(action.seconds > 0 ? `تقديم +${action.seconds} ثانية` : `ترجيع ${action.seconds} ثانية`);
         }
       }
-      if (action?.type === "volume") {
-        // The throttled move handler may skip the final frame; commit the
-        // release value and verify Android's STREAM_MUSIC readback.
+      if (activeMode === "volume") {
         const finalVolume = volumeRef.current;
         const request = ++volumeWriteSerialRef.current;
-        void setSystemMusicVolume(finalVolume).then((systemVolume) => {
+        void setSystemMusicVolume(finalVolume, true).then((systemVolume) => {
           if (request !== volumeWriteSerialRef.current || systemVolume === null) return;
+          player.volume = 1;
           volumeRef.current = systemVolume;
           setVolume(systemVolume);
           logPlayerDiagnostic({ event: "system-volume-release", details: { requested: finalVolume.toFixed(3), applied: systemVolume.toFixed(3), verified: true } });
         });
       }
+      if (activeMode === "brightness") {
+        const finalBrightness = localBrightnessRef.current;
+        const request = ++brightnessWriteSerialRef.current;
+        void applySystemOrScreenBrightness(finalBrightness, systemBrightnessPermittedRef.current).then((res) => {
+          if (request !== brightnessWriteSerialRef.current) return;
+          localBrightnessRef.current = res.applied;
+          setSystemBrightnessLinked(res.linkedToSystem);
+        });
+      }
       volumeGestureActiveRef.current = false;
-      if (action?.type === "volume") setVolumeHud(true);
-      if (action?.type === "brightness") setBrightnessHud(true);
-      if (!action && !wasTemporarySpeed) {
+      brightnessGestureActiveRef.current = false;
+      lockedGestureModeRef.current = null;
+      if (activeMode === "volume") setVolumeHud(true);
+      if (activeMode === "brightness") setBrightnessHud(true);
+      if (!activeMode && !wasTemporarySpeed) {
         if (videoSettings.doubleTapSeekEnabled) {
           const now = Date.now();
           const tapX = Number.isFinite(event.nativeEvent.locationX) ? event.nativeEvent.locationX : touchStartX.current;
@@ -1126,6 +1212,8 @@ export default function VideoPlayerScreen() {
     },
     onPanResponderTerminate: () => {
       volumeGestureActiveRef.current = false;
+      brightnessGestureActiveRef.current = false;
+      lockedGestureModeRef.current = null;
       restoreTemporarySpeed();
     },
   }), [controlsLocked, mediaSurfaceHeight, player, restoreTemporarySpeed, safeSeekBy, scheduleTemporarySpeed, toggleControls, videoSettings.doubleTapSeekEnabled, videoSettings.progressDragDirection, videoSettings.seekInterval, width]);
@@ -1142,6 +1230,7 @@ export default function VideoPlayerScreen() {
             clearTimeout(videoScrubCooldownRef.current);
             videoScrubCooldownRef.current = null;
           }
+          pendingVideoSeekRef.current = null;
           setIsScrubbing(true);
           revealControls();
 
@@ -1156,22 +1245,23 @@ export default function VideoPlayerScreen() {
         },
         onPanResponderMove: (_event, gestureState) => {
           revealControls();
-          const { width: trackW, startTime } = videoInitialTouchRef.current;
+          const { width: trackW, startX } = videoInitialTouchRef.current;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const direction = videoSettings.progressDragDirection === "ltr" ? 1 : -1;
-          const target = dur > 0 ? Math.max(0, Math.min(dur, startTime + direction * (gestureState.dx / trackW) * dur * videoSettings.progressScrubSpeed)) : 0;
+          const currentLocalX = Math.max(0, Math.min(trackW, startX + gestureState.dx * videoSettings.progressScrubSpeed));
+          const target = resolveVideoProgressSeek(currentLocalX, trackW, dur, videoSettings.progressDirection) ?? 0;
 
           videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);
         },
         onPanResponderRelease: (_event, gestureState) => {
-          const { width: trackW, startTime } = videoInitialTouchRef.current;
+          const { width: trackW, startX } = videoInitialTouchRef.current;
           const dur = playbackDuration || currentItem?.duration || 0;
-          const direction = videoSettings.progressDragDirection === "ltr" ? 1 : -1;
-          const target = dur > 0 ? Math.max(0, Math.min(dur, startTime + direction * (gestureState.dx / trackW) * dur * videoSettings.progressScrubSpeed)) : 0;
+          const currentLocalX = Math.max(0, Math.min(trackW, startX + gestureState.dx * videoSettings.progressScrubSpeed));
+          const target = resolveVideoProgressSeek(currentLocalX, trackW, dur, videoSettings.progressDirection) ?? 0;
 
           videoScrubbingTimeRef.current = target;
           setScrubbingTime(target);
+          pendingVideoSeekRef.current = { target, expiresAt: Date.now() + 950 };
 
           if (usingCompatibilityEngine) {
             void vlcViewRef.current?.seek(target * 1000, "time");
@@ -1183,10 +1273,11 @@ export default function VideoPlayerScreen() {
           if (videoScrubCooldownRef.current) clearTimeout(videoScrubCooldownRef.current);
           videoScrubCooldownRef.current = setTimeout(() => {
             setIsScrubbing(false);
-          }, 250);
+          }, 120);
         },
         onPanResponderTerminate: () => {
           const target = videoScrubbingTimeRef.current;
+          pendingVideoSeekRef.current = { target, expiresAt: Date.now() + 950 };
           if (usingCompatibilityEngine) {
             void vlcViewRef.current?.seek(target * 1000, "time");
             setVlcTime(target);
@@ -1196,15 +1287,24 @@ export default function VideoPlayerScreen() {
           if (videoScrubCooldownRef.current) clearTimeout(videoScrubCooldownRef.current);
           videoScrubCooldownRef.current = setTimeout(() => {
             setIsScrubbing(false);
-          }, 250);
+          }, 120);
         },
       }),
-    [currentItem?.duration, playbackDuration, player, revealControls, usingCompatibilityEngine, videoSettings.progressDirection, videoSettings.progressDragDirection, videoSettings.progressScrubSpeed]
+    [currentItem?.duration, playbackDuration, player, revealControls, usingCompatibilityEngine, videoSettings.progressDirection, videoSettings.progressScrubSpeed]
   );
 
   const videoLibraryRoute = folderPath ? `/(tabs)/video?folderPath=${encodeURIComponent(folderPath)}` : "/(tabs)/video";
-  const activeCue = subtitleTrack?.cues.find((cue) => playbackTime >= cue.start && playbackTime <= cue.end);
-  const effectivePlaybackTime = isScrubbing ? scrubbingTime : playbackTime;
+  const pendingVideoSeek = pendingVideoSeekRef.current;
+  if (pendingVideoSeek && (Math.abs(playbackTime - pendingVideoSeek.target) <= 1.2 || Date.now() >= pendingVideoSeek.expiresAt)) {
+    pendingVideoSeekRef.current = null;
+  }
+  const effectivePlaybackTime = isScrubbing
+    ? scrubbingTime
+    : pendingVideoSeek && Date.now() < pendingVideoSeek.expiresAt && Math.abs(playbackTime - pendingVideoSeek.target) > 1.2
+      ? pendingVideoSeek.target
+      : playbackTime;
+  const shiftedSubtitleTime = Math.max(0, effectivePlaybackTime - subtitleOffset);
+  const activeCue = subtitleTrack?.cues.find((cue) => shiftedSubtitleTime >= cue.start && shiftedSubtitleTime <= cue.end);
   const progress = playbackDuration > 0 ? Math.min(100, (effectivePlaybackTime / playbackDuration) * 100) : 0;
   const exitVideo = useCallback(async () => {
     if (isNavigatingVideoRef.current) return;
@@ -1490,6 +1590,7 @@ export default function VideoPlayerScreen() {
     { icon: "translate", label: "ترجمة", active: Boolean(subtitleTrack), onPress: () => setTranslationOpen(true) },
     { icon: "subtitles", label: "مسارات", active: usingCompatibilityEngine ? vlcSubtitleId !== undefined && vlcSubtitleId !== -1 : Boolean(embeddedSubtitleId), onPress: () => setSubtitlePanelOpen(true) },
     { icon: "subtitles", label: "استيراد", onPress: () => void importSubtitleFile() },
+    { icon: "bedtime", label: videoSleepMinutes ? `نوم ${videoSleepMinutes}د` : sleepOnVideoEnd ? "نوم: النهاية" : "مؤقت نوم", active: Boolean(videoSleepMinutes || sleepOnVideoEnd), onPress: () => setSleepModalOpen(true) },
     { icon: "edit", label: "تحرير", onPress: () => router.push("/player/edit-video" as never) },
     { icon: "picture-in-picture-alt", label: "نافذة", onPress: () => void openPip() },
     { icon: "photo-camera", label: isCapturingFrame ? "يلتقط" : "لقطة", onPress: () => void captureFrame() },
@@ -1608,7 +1709,39 @@ export default function VideoPlayerScreen() {
         {nightMode ? <View pointerEvents="none" style={styles.nightOverlay} /> : null}
         {subtitleEnabled && activeCue ? <View pointerEvents="none" style={[styles.subtitleOverlay, { backgroundColor: subtitleAppearance.backgroundColor }]}><Text style={[styles.subtitleText, { color: subtitleAppearance.color, fontSize: subtitleAppearance.fontSize, lineHeight: Math.round(subtitleAppearance.fontSize * 1.4) }]}>{activeCue.text}</Text></View> : null}
         {volumeHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.volumeMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(volume * 100)}%` }]} /></View><MaterialIcons name="volume-up" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>الصوت: {Math.round(volume * 100)}%</Text></View></> : null}
-        {brightnessHud ? <><View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}><View style={styles.gestureTrack}><View style={[styles.gestureFill, { height: `${Math.round(localBrightness * 100)}%` }]} /></View><MaterialIcons name="brightness-high" size={28} color={colors.text} /></View><View pointerEvents="none" style={styles.gestureReadout}><Text style={styles.gestureReadoutText}>السطوع داخل المشغل: {Math.round(localBrightness * 100)}%</Text></View></> : null}
+        {brightnessHud ? (
+    <>
+      <View pointerEvents="none" style={[styles.gestureMeter, styles.brightnessMeter]}>
+        <View style={styles.gestureTrack}>
+          <View style={[styles.gestureFill, { height: `${Math.round(localBrightness * 100)}%` }]} />
+        </View>
+        <MaterialIcons name="brightness-high" size={28} color={colors.text} />
+      </View>
+      <View style={styles.gestureReadout}>
+        <Text style={styles.gestureReadoutText}>
+          {systemBrightnessLinked ? "سطوع النظام" : "سطوع الشاشة"}: {Math.round(localBrightness * 100)}%
+        </Text>
+        {!systemBrightnessLinked && Platform.OS === "android" ? (
+          <Pressable
+            onPress={() => {
+              brightnessPermPromptedRef.current = true;
+              void requestSystemBrightnessPermission().then((granted) => {
+                systemBrightnessPermittedRef.current = granted;
+                setSystemBrightnessLinked(granted);
+                if (granted) {
+                  void applySystemOrScreenBrightness(localBrightnessRef.current, true);
+                  setActionHudText("تم ربط السطوع بنظام Android");
+                }
+              });
+            }}
+            style={styles.brightnessLinkChip}
+          >
+            <Text style={styles.brightnessLinkChipText}>ربط بنظام الهاتف</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </>
+  ) : null}
         {temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 250, minHeight: 54, paddingHorizontal: 14, flexDirection: "row-reverse", gap: 8 }]}><MaterialIcons name="fast-forward" size={23} color={colors.text} /><Text style={styles.volumeText}>زيادة سرعة التشغيل <Text style={{ color: "#39D353" }}>{videoSettings.longPressSpeed}×</Text></Text></View> : null}
         {speedHud && !temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 24, minWidth: 130, minHeight: 45, paddingHorizontal: 14 }]}><Text style={styles.volumeText}>السرعة {speed}×</Text></View> : null}
         {actionHudText && !temporarySpeedActive ? <View pointerEvents="none" style={[styles.temporarySpeedHud, { top: 76, minWidth: 150, minHeight: 42, paddingHorizontal: 14 }]}><Text style={styles.volumeText}>{actionHudText}</Text></View> : null}
@@ -1765,17 +1898,46 @@ export default function VideoPlayerScreen() {
               )}
 
               <Pressable onPress={() => { setSubtitlePanelOpen(false); void importSubtitleFile(); }} style={styles.subtitleMenuItem}>
-                <Text style={styles.subtitleMenuItemText}>فتح ملف</Text>
-              </Pressable>
-              <Pressable onPress={() => Alert.alert("تنزيل الترجمة", "سيتم إضافة تنزيل الترجمة عبر الإنترنت في إصدار لاحق.")} style={styles.subtitleMenuItem}>
-                <Text style={styles.subtitleMenuItemText}>تنزيل عبر الإنترنت</Text>
+                <Text style={styles.subtitleMenuItemText}>فتح ملف ترجمة (SRT / VTT / ASS)</Text>
               </Pressable>
               <Pressable onPress={() => { setSubtitlePanelOpen(false); setTranslationOpen(true); }} style={styles.subtitleMenuItem}>
-                <Text style={styles.subtitleMenuItemText}>ترجمة AI</Text>
+                <Text style={styles.subtitleMenuItemText}>ترجمة AI الذكية للفيديو</Text>
               </Pressable>
-              <Pressable onPress={() => undefined} style={styles.subtitleMenuItem}>
-                <Text style={styles.subtitleMenuItemText}>نمط الترجمة</Text>
-              </Pressable>
+              <Text style={styles.subtitleMenuSection}>تزامن توقيت الترجمة</Text>
+              <View style={styles.subtitleSetting}>
+                <Text style={styles.subtitleSettingLabel}>الإزاحة الحالية: {subtitleOffset > 0 ? `+${subtitleOffset}` : subtitleOffset} ثانية</Text>
+                <View style={styles.subtitleChoiceRow}>
+                  {[-1, -0.5, 0, 0.5, 1].map((step) => (
+                    <Pressable
+                      key={step}
+                      onPress={() => {
+                        const next = step === 0 ? 0 : subtitleOffset + step;
+                        void saveSubtitleOffset(currentItem.id, next).then(setSubtitleOffset);
+                      }}
+                      style={[styles.subtitleSizeChoice, step === 0 && subtitleOffset === 0 && styles.subtitleChoiceActive]}
+                    >
+                      <Text style={[styles.subtitleSizeText, step === 0 && subtitleOffset === 0 && styles.subtitleChoiceTextActive]}>
+                        {step === 0 ? "0" : step > 0 ? `+${step}` : String(step)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+              <Text style={styles.subtitleMenuSection}>أنماط سريعة للترجمة</Text>
+              <View style={styles.subtitlePresetGrid}>
+                {SUBTITLE_STYLE_PRESETS.map((preset) => {
+                  const active = subtitleAppearance.fontSize === preset.appearance.fontSize && subtitleAppearance.color === preset.appearance.color && subtitleAppearance.backgroundColor === preset.appearance.backgroundColor;
+                  return (
+                    <Pressable
+                      key={preset.id}
+                      onPress={() => setSubtitleAppearance(preset.appearance)}
+                      style={[styles.subtitlePresetChip, active && styles.subtitleChoiceActive]}
+                    >
+                      <Text style={[styles.subtitlePresetText, active && styles.subtitleChoiceTextActive]}>{preset.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
               <Text style={styles.subtitleMenuSection}>مظهر الترجمة</Text>
               <View style={styles.subtitleSetting}>
@@ -1851,7 +2013,15 @@ export default function VideoPlayerScreen() {
                       <MaterialIcons name="play-arrow" size={13} color={colors.cyan} />
                       <Text style={styles.progressTimeCurrent}>{formatDuration(effectivePlaybackTime)}</Text>
                     </View>
-                    <Text style={styles.progressTitle}>شريط التشغيل</Text>
+                    <View style={styles.fineStepGroup}>
+                      <Pressable onPress={() => safeSeekBy(-1)} style={styles.fineStepChip} hitSlop={6} accessibilityLabel="ترجيع ثانية واحدة">
+                        <Text style={styles.fineStepText}>-1ث</Text>
+                      </Pressable>
+                      <Text style={styles.progressTitle}>شريط التشغيل</Text>
+                      <Pressable onPress={() => safeSeekBy(1)} style={styles.fineStepChip} hitSlop={6} accessibilityLabel="تقديم ثانية واحدة">
+                        <Text style={styles.fineStepText}>+1ث</Text>
+                      </Pressable>
+                    </View>
                     <View style={styles.progressTimeBadge}>
                       <Text style={styles.progressTimeTotal}>{formatDuration(playbackDuration || currentItem.duration)}</Text>
                       <MaterialIcons name="schedule" size={13} color={colors.muted} />
@@ -1885,6 +2055,34 @@ export default function VideoPlayerScreen() {
                       ) : (
                         <View style={styles.progressTrackBase} />
                       )}
+                      {repeatStart !== null && repeatEnd !== null && (playbackDuration || currentItem.duration) > 0 ? (() => {
+                        const totalDur = playbackDuration || currentItem.duration;
+                        const aPct = Math.max(0, Math.min(100, (repeatStart / totalDur) * 100));
+                        const bPct = Math.max(aPct, Math.min(100, (repeatEnd / totalDur) * 100));
+                        const rangeW = Math.max(1, bPct - aPct);
+                        return (
+                          <View
+                            style={[
+                              styles.abLoopRange,
+                              isLtrProgress ? { left: `${aPct}%`, width: `${rangeW}%` } : { right: `${aPct}%`, width: `${rangeW}%` },
+                            ]}
+                          />
+                        );
+                      })() : null}
+                      {memoryCapsules.map((capsule) => {
+                        const totalDur = playbackDuration || currentItem.duration;
+                        if (totalDur <= 0) return null;
+                        const pinPct = Math.max(0, Math.min(100, (capsule.position / totalDur) * 100));
+                        return (
+                          <View
+                            key={capsule.id}
+                            style={[
+                              styles.timelineCapsulePin,
+                              isLtrProgress ? { left: `${pinPct}%`, marginLeft: -3 } : { right: `${pinPct}%`, marginRight: -3 },
+                            ]}
+                          />
+                        );
+                      })}
                       <View
                         style={[
                           styles.progressFill,
@@ -2057,6 +2255,64 @@ export default function VideoPlayerScreen() {
       {!isLandscape && repeatEnd !== null ? <Pressable onPress={resetAb} style={styles.resetAb}><MaterialIcons name="restart-alt" size={19} color={colors.cyan} /><Text style={styles.resetAbText}>إلغاء تكرار A-B</Text></Pressable> : null}
     </View>
     <TranslationSheet visible={translationOpen} item={currentItem} selectedLanguage={targetLanguage} onSelectLanguage={setTargetLanguage} generating={translateMutation.isPending} onClose={() => setTranslationOpen(false)} onGenerate={() => void generateTranslation()} />
+    <Modal transparent animationType="fade" visible={sleepModalOpen} onRequestClose={() => setSleepModalOpen(false)}>
+      <Pressable onPress={() => setSleepModalOpen(false)} style={sheetStyles.backdrop}>
+        <Pressable onPress={() => undefined} style={sheetStyles.sheet}>
+          <View style={sheetStyles.sheetHead}>
+            <MaterialIcons name="bedtime" size={24} color={colors.cyan} />
+            <View style={sheetStyles.headCopy}>
+              <Text style={sheetStyles.title}>مؤقت النوم لمشغل الفيديو</Text>
+              <Text style={sheetStyles.subtitle}>
+                {videoSleepMinutes ? `سيتوقف التشغيل تلقائياً خلال ${videoSleepMinutes} دقيقة` : sleepOnVideoEnd ? "سيتوقف التشغيل عند نهاية هذا الفيديو" : "اختر مدة الإيقاف التلقائي"}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.sleepGrid}>
+            {[10, 15, 30, 45, 60].map((mins) => (
+              <Pressable
+                key={mins}
+                onPress={() => {
+                  setSleepOnVideoEnd(false);
+                  setVideoSleepMinutes(mins);
+                  setSleepModalOpen(false);
+                  setActionHudText(`مؤقت النوم: ${mins} دقيقة`);
+                }}
+                style={[styles.sleepOption, videoSleepMinutes === mins && styles.sleepOptionActive]}
+              >
+                <Text style={[styles.sleepOptionText, videoSleepMinutes === mins && styles.sleepOptionTextActive]}>{mins} دقيقة</Text>
+              </Pressable>
+            ))}
+            <Pressable
+              onPress={() => {
+                setVideoSleepMinutes(null);
+                setSleepOnVideoEnd(true);
+                setSleepModalOpen(false);
+                setActionHudText("مؤقت النوم: عند نهاية المقطع");
+              }}
+              style={[styles.sleepOption, sleepOnVideoEnd && styles.sleepOptionActive]}
+            >
+              <Text style={[styles.sleepOptionText, sleepOnVideoEnd && styles.sleepOptionTextActive]}>نهاية المقطع</Text>
+            </Pressable>
+          </View>
+          {(videoSleepMinutes !== null || sleepOnVideoEnd) ? (
+            <Pressable
+              onPress={() => {
+                setVideoSleepMinutes(null);
+                setSleepOnVideoEnd(false);
+                setSleepModalOpen(false);
+                setActionHudText("تم إلغاء مؤقت النوم");
+              }}
+              style={sheetStyles.generate}
+            >
+              <Text style={sheetStyles.generateText}>إلغاء المؤقت الحالي</Text>
+            </Pressable>
+          ) : null}
+          <Pressable onPress={() => setSleepModalOpen(false)} style={sheetStyles.cancel}>
+            <Text style={sheetStyles.cancelText}>إغلاق</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
   </ScreenContainer>;
 }
 
@@ -2098,6 +2354,21 @@ const styles = StyleSheet.create({
   gestureTrack: { width: 8, height: 166, borderRadius: 4, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.28)", justifyContent: "flex-end" },
   gestureFill: { width: "100%", borderRadius: 4, backgroundColor: "#39D353" },
   gestureReadout: { position: "absolute", top: 20, alignSelf: "center", zIndex: 3, elevation: 3, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "rgba(0,0,0,0.70)" },
+  brightnessLinkChip: { marginTop: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: "rgba(72,207,255,0.22)", borderWidth: 1, borderColor: "rgba(72,207,255,0.55)" },
+  brightnessLinkChipText: { color: colors.cyan, fontSize: 11, fontWeight: "900" },
+  abLoopRange: { position: "absolute", top: -1, bottom: -1, backgroundColor: "rgba(250, 204, 21, 0.55)", borderRadius: 4, zIndex: 1 },
+  timelineCapsulePin: { position: "absolute", top: -3, width: 6, height: 10, borderRadius: 3, backgroundColor: "#FACC15", borderWidth: 1, borderColor: "#08111F", zIndex: 3 },
+  fineStepGroup: { flexDirection: "row", alignItems: "center", gap: 6 },
+  fineStepChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
+  fineStepText: { color: colors.cyan, fontSize: 9, fontWeight: "900" },
+  subtitlePresetGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  subtitlePresetChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.08)" },
+  subtitlePresetText: { color: colors.text, fontSize: 11, fontWeight: "800" },
+  sleepGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginTop: 14 },
+  sleepOption: { minWidth: "30%", flexGrow: 1, minHeight: 40, borderRadius: 12, paddingHorizontal: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  sleepOptionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
+  sleepOptionText: { color: colors.text, fontSize: 12, fontWeight: "800" },
+  sleepOptionTextActive: { color: colors.background },
   gestureReadoutText: { color: colors.text, fontSize: 16, fontWeight: "900" },
   temporarySpeedHud: { position: "absolute", alignSelf: "center", zIndex: 3, elevation: 3, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center" },
   compatibilityBadge: { position: "absolute", top: 22, zIndex: 4, elevation: 4, minHeight: 28, paddingHorizontal: 9, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: colors.cyan },
@@ -2234,7 +2505,7 @@ const styles = StyleSheet.create({
   topActionActive: { backgroundColor: colors.cyan, borderColor: colors.cyan },
   topActionText: { color: colors.text, fontSize: 10, fontWeight: "800" },
   topActionTextActive: { color: colors.background },
-  overlayBottom: { paddingHorizontal: 4, direction: "ltr" },
+  overlayBottom: { paddingHorizontal: 8, direction: "ltr" },
   progressHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2, direction: "ltr" },
   progressTitle: { color: "rgba(255,255,255,0.72)", fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
   progressTimeBadge: { minWidth: 58, height: 22, paddingHorizontal: 7, borderRadius: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, backgroundColor: "rgba(5,13,25,0.84)", borderWidth: 1, borderColor: "rgba(255,255,255,0.14)" },
@@ -2246,7 +2517,7 @@ const styles = StyleSheet.create({
   memoryCapsuleAddText: { color: colors.cyan, fontSize: 10, fontWeight: "900" },
   memoryCapsule: { minHeight: 26, maxWidth: 150, paddingHorizontal: 9, borderRadius: 13, flexDirection: "row-reverse", alignItems: "center", gap: 4, backgroundColor: "rgba(8,17,31,0.86)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)" },
   memoryCapsuleText: { color: colors.text, fontSize: 10, fontWeight: "800" },
-  progressTouchArea: { width: "100%", height: 32, justifyContent: "center", paddingHorizontal: 4, direction: "ltr" },
+  progressTouchArea: { width: "100%", height: 34, justifyContent: "center", paddingHorizontal: 0, direction: "ltr" },
   time: { color: "rgba(255,255,255,0.62)", fontSize: 9, fontWeight: "700", fontVariant: ["tabular-nums"] },
   progressTrack: { height: 4, borderRadius: 2, position: "relative", justifyContent: "center", direction: "ltr" },
   progressThick: { height: 8, borderRadius: 4 },

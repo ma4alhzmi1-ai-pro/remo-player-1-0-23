@@ -20,7 +20,35 @@ export const defaultSubtitleAppearance: SubtitleAppearance = {
   backgroundColor: "rgba(0,0,0,0.78)",
 };
 
+export const SUBTITLE_STYLE_PRESETS: Array<{
+  id: string;
+  label: string;
+  appearance: SubtitleAppearance;
+}> = [
+  {
+    id: "classic",
+    label: "كلاسيكي أبيض",
+    appearance: { fontSize: 18, color: "#FFFFFF", backgroundColor: "rgba(0,0,0,0.78)" },
+  },
+  {
+    id: "cinema",
+    label: "سينمائي أصفر",
+    appearance: { fontSize: 22, color: "#FFE66D", backgroundColor: "rgba(0,0,0,0.34)" },
+  },
+  {
+    id: "night",
+    label: "ليلي هادئ",
+    appearance: { fontSize: 18, color: "#75E6DA", backgroundColor: "rgba(4,28,52,0.88)" },
+  },
+  {
+    id: "clean",
+    label: "شفاف كبير",
+    appearance: { fontSize: 26, color: "#FFFFFF", backgroundColor: "rgba(0,0,0,0.34)" },
+  },
+];
+
 const keyFor = (mediaId: string) => `remo-player.subtitles.v1:${mediaId}`;
+const offsetKeyFor = (mediaId: string) => `remo-player.subtitle-offset.v1:${mediaId}`;
 const appearanceKey = "remo-player.subtitle-appearance.v1";
 
 export async function loadLocalSubtitles(mediaId: string) {
@@ -36,6 +64,29 @@ export async function loadLocalSubtitles(mediaId: string) {
 
 export async function saveLocalSubtitles(mediaId: string, track: LocalSubtitleTrack) {
   await AsyncStorage.setItem(keyFor(mediaId), JSON.stringify(track));
+}
+
+export function clampSubtitleOffset(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(-10, Math.min(10, Math.round(value * 2) / 2));
+}
+
+export async function loadSubtitleOffset(mediaId: string): Promise<number> {
+  if (!mediaId) return 0;
+  try {
+    const raw = await AsyncStorage.getItem(offsetKeyFor(mediaId));
+    return raw ? clampSubtitleOffset(Number(raw)) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function saveSubtitleOffset(mediaId: string, offsetSeconds: number): Promise<number> {
+  const safe = clampSubtitleOffset(offsetSeconds);
+  if (mediaId) {
+    await AsyncStorage.setItem(offsetKeyFor(mediaId), String(safe));
+  }
+  return safe;
 }
 
 export function normalizeSubtitleAppearance(input: Partial<SubtitleAppearance> | null | undefined): SubtitleAppearance {

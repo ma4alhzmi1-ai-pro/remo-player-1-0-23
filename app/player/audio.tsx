@@ -14,6 +14,7 @@ import {
   ScrollView,
   TextInput,
   Platform,
+  Linking,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -22,6 +23,8 @@ import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import * as IntentLauncher from "expo-intent-launcher";
+import * as MediaLibrary from "expo-media-library";
 
 import { formatDuration } from "@/components/remo-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -98,6 +101,7 @@ export default function AudioPlayerScreen() {
   const progressLayout = useRef({ pageX: 0, width: 0 });
   const scrubCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubbingTimeRef = useRef(0);
+  const pendingAudioSeekRef = useRef<{ target: number; expiresAt: number } | null>(null);
   const audioInitialTouchRef = useRef<{ startX: number; width: number; startTime: number }>({ startX: 0, width: 280, startTime: 0 });
   const navigationBusyRef = useRef(false);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,11 +109,28 @@ export default function AudioPlayerScreen() {
   const [resolvedCoverArt, setResolvedCoverArt] = useState<string | null>(currentItem?.thumbnailUri || null);
   const [coverImageFailed, setCoverImageFailed] = useState(false);
   const [systemVolume, setSystemVolume] = useState(1);
+  const [volumeHudVisible, setVolumeHudVisible] = useState(false);
   const systemVolumeStartRef = useRef(1);
   const systemVolumeRef = useRef(1);
   const volumeGestureActiveRef = useRef(false);
+  const volumeGestureMovedRef = useRef(false);
+  const lastVolumeWriteRef = useRef(0);
+  const volumeHudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncedLyrics = useMemo(() => parseSyncedLyrics(currentItem?.lyrics), [currentItem?.lyrics]);
-  const effectiveTime = isScrubbing ? scrubbingTime : currentTime;
+  const pendingAudioSeek = pendingAudioSeekRef.current;
+  const effectiveTime = isScrubbing
+    ? scrubbingTime
+    : pendingAudioSeek && Date.now() < pendingAudioSeek.expiresAt && Math.abs(currentTime - pendingAudioSeek.target) > 1.2
+      ? pendingAudioSeek.target
+      : currentTime;
+  useEffect(() => {
+    const pending = pendingAudioSeekRef.current;
+    if (!pending) return;
+    if (Math.abs(currentTime - pending.target) <= 1.2 || Date.now() >= pending.expiresAt) {
+      pendingAudioSeekRef.current = null;
+    }
+  }, [currentTime]);
+
   const activeSyncedLyric = activeLyricIndex(syncedLyrics, effectiveTime);
 
   useEffect(() => {
@@ -268,6 +289,7 @@ export default function AudioPlayerScreen() {
             clearTimeout(scrubCooldownRef.current);
             scrubCooldownRef.current = null;
           }
+          pendingAudioSeekRef.current = null;
           setIsScrubbing(true);
           const barW = progressBarWidth > 0 ? progressBarWidth : 280;
           const localX = Math.max(0, Math.min(barW, evt.nativeEvent.locationX));
@@ -278,35 +300,39 @@ export default function AudioPlayerScreen() {
           setScrubbingTime(targetTime);
         },
         onPanResponderMove: (_evt, gestureState) => {
-          const { width: barW, startTime } = audioInitialTouchRef.current;
+          const { width: barW, startX } = audioInitialTouchRef.current;
           const total = duration || 0;
-          // RTL: الشريط يبدأ من اليمين؛ السحب يساراً (dx سالب) يقدّم، ويميناً يرجّع.
-          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
+          // Track RTL is locked via direction: "ltr": finger moves right -> localX increases -> time decreases; finger moves left -> localX decreases -> time increases.
+          const currentLocalX = Math.max(0, Math.min(barW, startX + gestureState.dx));
+          const targetTime = resolveAudioProgressSeek(currentLocalX, barW, total) ?? 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
         },
         onPanResponderRelease: (_evt, gestureState) => {
-          const { width: barW, startTime } = audioInitialTouchRef.current;
+          const { width: barW, startX } = audioInitialTouchRef.current;
           const total = duration || 0;
-          const targetTime = total > 0 ? Math.max(0, Math.min(total, startTime - (gestureState.dx / barW) * total)) : 0;
+          const currentLocalX = Math.max(0, Math.min(barW, startX + gestureState.dx));
+          const targetTime = resolveAudioProgressSeek(currentLocalX, barW, total) ?? 0;
 
           scrubbingTimeRef.current = targetTime;
           setScrubbingTime(targetTime);
+          pendingAudioSeekRef.current = { target: targetTime, expiresAt: Date.now() + 950 };
           void seekTo(targetTime);
 
           if (scrubCooldownRef.current) clearTimeout(scrubCooldownRef.current);
           scrubCooldownRef.current = setTimeout(() => {
             setIsScrubbing(false);
-          }, 250);
+          }, 120);
         },
         onPanResponderTerminate: () => {
           const targetTime = scrubbingTimeRef.current;
+          pendingAudioSeekRef.current = { target: targetTime, expiresAt: Date.now() + 950 };
           void seekTo(targetTime);
           if (scrubCooldownRef.current) clearTimeout(scrubCooldownRef.current);
           scrubCooldownRef.current = setTimeout(() => {
             setIsScrubbing(false);
-          }, 250);
+          }, 120);
         },
       }),
     [duration, progressBarWidth, seekTo]
@@ -318,31 +344,46 @@ export default function AudioPlayerScreen() {
     onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dy) > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onPanResponderGrant: () => {
       volumeGestureActiveRef.current = true;
+      volumeGestureMovedRef.current = false;
+      systemVolumeStartRef.current = systemVolumeRef.current;
       void getSystemMusicVolume().then((value) => {
-        if (value === null) return;
+        if (value === null || volumeGestureMovedRef.current) return;
         systemVolumeStartRef.current = value;
         systemVolumeRef.current = value;
         setSystemVolume(value);
       });
     },
     onPanResponderMove: (_, gesture) => {
-      const next = resolveLocalVolume(systemVolumeStartRef.current, gesture.dy, 400);
+      if (Math.abs(gesture.dy) > 6) volumeGestureMovedRef.current = true;
+      const next = resolveLocalVolume(systemVolumeStartRef.current, gesture.dy, 360);
       if (next === null) return;
       systemVolumeRef.current = next;
       setSystemVolume(next);
-      void setSystemMusicVolume(next).then((applied) => {
-        if (applied === null) return;
-        systemVolumeRef.current = applied;
-        setSystemVolume(applied);
-      });
+      setVolumeHudVisible(true);
+      if (volumeHudTimerRef.current) clearTimeout(volumeHudTimerRef.current);
+      volumeHudTimerRef.current = setTimeout(() => setVolumeHudVisible(false), 950);
+      const now = Date.now();
+      if (now - lastVolumeWriteRef.current >= 70) {
+        lastVolumeWriteRef.current = now;
+        void setSystemMusicVolume(next, true).then((applied) => {
+          if (applied === null) return;
+          systemVolumeRef.current = applied;
+          setSystemVolume(applied);
+        });
+      }
     },
     onPanResponderRelease: () => {
-      void setSystemMusicVolume(systemVolumeRef.current).then((applied) => {
+      void setSystemMusicVolume(systemVolumeRef.current, true).then((applied) => {
         if (applied === null) return;
         systemVolumeRef.current = applied;
         setSystemVolume(applied);
       });
       volumeGestureActiveRef.current = false;
+      volumeGestureMovedRef.current = false;
+    },
+    onPanResponderTerminate: () => {
+      volumeGestureActiveRef.current = false;
+      volumeGestureMovedRef.current = false;
     },
   }), []);
 
@@ -437,11 +478,38 @@ export default function AudioPlayerScreen() {
   };
 
   // Use as Ringtone
-  const handleSetAsRingtone = () => {
+  const handleSetAsRingtone = async () => {
+    if (!currentItem) return;
+    try {
+      const perm = await MediaLibrary.getPermissionsAsync();
+      const granted = perm.granted ? true : (await MediaLibrary.requestPermissionsAsync()).granted;
+      if (granted && currentItem.uri.startsWith("file://")) {
+        const asset = await MediaLibrary.createAssetAsync(currentItem.uri).catch(() => null);
+        if (asset) {
+          const album = await MediaLibrary.getAlbumAsync("Ringtones").catch(() => null);
+          if (album) await MediaLibrary.addAssetsToAlbumAsync([asset], album, false).catch(() => undefined);
+          else await MediaLibrary.createAlbumAsync("Ringtones", asset, false).catch(() => undefined);
+        }
+      }
+    } catch {
+      // Optional copy to Ringtones album
+    }
     Alert.alert(
       "استخدام كنغمة رنين",
-      `يمكنك استخدام "${currentItem?.title || "الأغنية"}" كنغمة رنين لهاتفك:\n\n1. اذهب إلى إعدادات الهاتف > الأصوات والاهتزاز > نغمة الرنين.\n2. اختر إضافة نغمة مخصصة وحدد هذا الملف.\nمسار الملف:\n${currentItem?.uri || ""}`,
-      [{ text: "حسناً" }]
+      `المسار جاهز: "${currentItem.title || "الأغنية"}". اضغط "فتح إعدادات الصوت" لاختياره فوراً كنغمة رنين في نظام Android.`,
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "فتح إعدادات الصوت",
+          onPress: () => {
+            if (Platform.OS === "android") {
+              void IntentLauncher.startActivityAsync("android.settings.SOUND_SETTINGS").catch(() => void Linking.openSettings());
+            } else {
+              void Linking.openSettings();
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -668,7 +736,7 @@ export default function AudioPlayerScreen() {
                 iconColor="#E91E63"
                 onPress={() => {
                   setPopupMenuVisible(false);
-                  handleSetAsRingtone();
+                  void handleSetAsRingtone();
                 }}
               />
 
@@ -713,6 +781,12 @@ export default function AudioPlayerScreen() {
         <View style={styles.body}>
           {/* Circular Vinyl / Album Disc Artwork */}
           <View {...volumeResponder.panHandlers} style={styles.discSection} accessibilityLabel={`مستوى صوت النظام ${Math.round(systemVolume * 100)} بالمئة`}>
+            {volumeHudVisible ? (
+              <View pointerEvents="none" style={styles.volumeToast}>
+                <MaterialIcons name="volume-up" size={18} color="#00F2FE" />
+                <Text style={styles.volumeToastText}>صوت النظام: {Math.round(systemVolume * 100)}%</Text>
+              </View>
+            ) : null}
             <Animated.View pointerEvents="none" style={[styles.chromaPulse, chromaShape === "bars" && styles.chromaBars, chromaShape === "rings" && styles.chromaRings, { transform: [{ scale: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.08] }) }], opacity: chromaPulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) }]} />
             <Pressable
               onPress={() => setShowLyricsOnDisc((prev) => !prev)}
@@ -821,11 +895,21 @@ export default function AudioPlayerScreen() {
               >
                 <View style={styles.progressTrack} pointerEvents="none">
                   <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                  {isScrubbing ? (
+                    <View
+                      style={[
+                        styles.scrubbingTooltip,
+                        { right: `${Math.max(4, Math.min(92, progressPercent))}%` },
+                      ]}
+                    >
+                      <Text style={styles.scrubbingTooltipText}>{formatDuration(effectiveTime)}</Text>
+                    </View>
+                  ) : null}
                   <View
                     style={[
                       styles.progressThumb,
                       isScrubbing && styles.progressThumbActive,
-                      { right: `${Math.max(0, Math.min(100, 100 - progressPercent))}%` },
+                      { right: `${Math.max(0, Math.min(100, progressPercent))}%` },
                     ]}
                   />
                 </View>
@@ -1518,6 +1602,7 @@ const styles = StyleSheet.create({
   },
   timeRow: {
     flexDirection: "row",
+    direction: "ltr",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
@@ -1535,12 +1620,14 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: "center",
     position: "relative",
+    direction: "ltr",
   },
   progressTrack: {
     height: 5,
     backgroundColor: "rgba(255, 255, 255, 0.28)",
     borderRadius: 3,
     position: "relative",
+    direction: "ltr",
   },
   progressFill: {
     position: "absolute",
@@ -1576,10 +1663,29 @@ const styles = StyleSheet.create({
     elevation: 8,
     backgroundColor: "#00F2FE",
   },
+  volumeToast: {
+    position: "absolute",
+    top: 8,
+    zIndex: 20,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: "rgba(10, 5, 22, 0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(0, 242, 254, 0.45)",
+  },
+  volumeToastText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
   scrubbingTooltip: {
     position: "absolute",
-    top: -30,
-    transform: [{ translateX: -22 }],
+    top: -34,
+    marginRight: -24,
     backgroundColor: "rgba(0, 242, 254, 0.95)",
     paddingHorizontal: 8,
     paddingVertical: 2,
